@@ -43,6 +43,12 @@ export function mapArticle(a: any) {
 export function mapFeed(f: any) {
   if (!f) return f;
   const fav = f.faviconUrl ?? f.favicon ?? undefined;
+  const intervalRaw = f.refreshIntervalMinutes ?? f.RefreshIntervalMinutes ?? 0;
+  const interval =
+    typeof intervalRaw === "number" && Number.isFinite(intervalRaw)
+      ? Math.max(0, Math.floor(intervalRaw))
+      : 0;
+  const lastErr = f.lastError ?? f.LastError;
   return {
     id: f.id,
     title: f.title ?? "",
@@ -51,7 +57,10 @@ export function mapFeed(f: any) {
     favicon: typeof fav === "string" && fav.trim() ? fav.trim() : undefined,
     folderId: f.folderId ?? undefined,
     unreadCount: f.unreadCount ?? 0,
-    lastFetchedAt: f.lastFetchedAt ?? new Date().toISOString(),
+    lastFetchedAt: f.lastFetchedAt ?? f.LastFetchedAt ?? "",
+    isPaused: !!(f.isPaused ?? f.IsPaused),
+    refreshIntervalMinutes: interval,
+    lastError: typeof lastErr === "string" && lastErr.trim() ? lastErr.trim() : undefined,
   };
 }
 

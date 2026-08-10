@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"lrss/internal/model"
+	"lrss/internal/repo"
 	"lrss/internal/service"
 )
 
@@ -153,6 +154,17 @@ func (s *FeedService) SetFeedPaused(id string, paused bool) error {
 	return s.lib.SetPaused(context.Background(), id, paused)
 }
 
+// RenameFeed sets a custom display title (will not be overwritten by refresh).
+func (s *FeedService) RenameFeed(id, title string) error {
+	return s.lib.RenameFeed(context.Background(), id, title)
+}
+
+// SetFeedRefreshInterval sets per-feed auto-refresh minutes.
+// 0 means follow the global default; otherwise clamped to [5, 180].
+func (s *FeedService) SetFeedRefreshInterval(id string, minutes int) error {
+	return s.lib.SetFeedRefreshInterval(context.Background(), id, minutes)
+}
+
 // OPMLImportResult is the Wails-facing import summary (mirrors service.OPMLImportResult).
 type OPMLImportResult struct {
 	FoldersCreated int      `json:"foldersCreated"`
@@ -204,6 +216,11 @@ func NewArticleService(lib *service.Library) *ArticleService {
 // List returns articles for a collection (unread|today|starred|all|feed:ID|folder:ID).
 func (s *ArticleService) List(collection string, limit, offset int) ([]model.Article, error) {
 	return s.lib.ListArticles(context.Background(), collection, limit, offset)
+}
+
+// SmartCounts returns full library totals for sidebar badges (not capped by list limit).
+func (s *ArticleService) SmartCounts() (repo.SmartCounts, error) {
+	return s.lib.SmartCounts(context.Background())
 }
 
 // Get returns one article with sanitized HTML.

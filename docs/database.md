@@ -18,7 +18,7 @@ schema_migrations
 | 表 | 用途 |
 | --- | --- |
 | `folders` | 侧栏文件夹（可嵌套 parent_id） |
-| `feeds` | 订阅源；`feed_url` 唯一 |
+| `feeds` | 订阅源；`feed_url` 唯一；`refresh_interval_minutes`（0=全局默认）；`title_user_set` 锁定改名 |
 | `articles` | 文章；`(feed_id, guid)` 去重 |
 | `article_embeddings` | FLOAT32 向量 BLOB；`status`=pending/ready/error/skipped |
 | `articles_fts` | FTS5 全文（title/summary/content_text） |

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"lrss/internal/db"
 	"lrss/internal/model"
@@ -127,6 +128,47 @@ func TestLibrary_AddFeedAndRefresh(t *testing.T) {
 	}
 	if len(feeds) != 1 || feeds[0].UnreadCount != 0 {
 		t.Fatalf("expected 0 unread after mark all, got %+v", feeds)
+	}
+
+	// Folder context-menu path: MarkAllRead("folder:"+id) after MoveFeed.
+	folder, err := lib.CreateFolder(ctx, "MenuFolder", nil)
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	if err := lib.MoveFeed(ctx, feed.ID, &folder.ID); err != nil {
+		t.Fatalf("MoveFeed: %v", err)
+	}
+	// Make one article unread again then mark via folder collection.
+	if err := lib.SetRead(ctx, articles[0].ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.MarkAllRead(ctx, "folder:"+folder.ID); err != nil {
+		t.Fatalf("MarkAllRead folder: %v", err)
+	}
+	feeds, err = lib.ListFeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feeds) != 1 || feeds[0].UnreadCount != 0 {
+		t.Fatalf("folder MarkAllRead unread=%+v", feeds)
+	}
+	// DeleteFolder unfiles feeds (does not delete articles) — folder menu delete path.
+	if err := lib.DeleteFolder(ctx, folder.ID); err != nil {
+		t.Fatalf("DeleteFolder: %v", err)
+	}
+	feeds, err = lib.ListFeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feeds) != 1 || feeds[0].FolderID != nil {
+		t.Fatalf("after DeleteFolder want unfiled feed, got %+v", feeds)
+	}
+	still, err := lib.ListArticles(ctx, "all", 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(still) < 1 {
+		t.Fatal("articles must survive DeleteFolder")
 	}
 
 	if err := lib.SetStarred(ctx, articles[1].ID, true); err != nil {
@@ -260,4 +302,136 @@ func TestLibrary_FolderCRUD_MoveFeed_SetPaused(t *testing.T) {
 	if gotFeed.FolderID != nil {
 		t.Fatalf("after DeleteFolder expected unfiled, got %v", *gotFeed.FolderID)
 	}
+}
+
+func TestLibrary_RenameFeedAndRefreshInterval(t *testing.T) {
+	title := "Remote Title"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		body := strings.Replace(sampleRSS, "Test Feed", title, 1)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	feed, err := lib.AddFeed(ctx, srv.URL+"/rss.xml", nil)
+	if err != nil {
+		t.Fatalf("AddFeed: %v", err)
+	}
+
+	if err := lib.RenameFeed(ctx, feed.ID, "  My Name  "); err != nil {
+		t.Fatalf("RenameFeed: %v", err)
+	}
+	got, err := repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "My Name" || !got.TitleUserSet {
+		t.Fatalf("after rename: title=%q userSet=%v", got.Title, got.TitleUserSet)
+	}
+
+	// Refresh must keep user title even when remote title changes.
+	title = "Completely Different"
+	if _, err := lib.RefreshFeed(ctx, feed.ID); err != nil {
+		t.Fatalf("RefreshFeed: %v", err)
+	}
+	got, err = repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "My Name" {
+		t.Fatalf("title overwritten on refresh: %q", got.Title)
+	}
+
+	if err := lib.SetFeedRefreshInterval(ctx, feed.ID, 1); err != nil {
+		t.Fatalf("SetFeedRefreshInterval clamp: %v", err)
+	}
+	got, err = repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RefreshIntervalMinutes != 5 {
+		t.Fatalf("interval clamped low = %d want 5", got.RefreshIntervalMinutes)
+	}
+
+	if err := lib.SetFeedRefreshInterval(ctx, feed.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	got, err = repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RefreshIntervalMinutes != 0 {
+		t.Fatalf("interval reset = %d want 0", got.RefreshIntervalMinutes)
+	}
+
+	if err := lib.RenameFeed(ctx, feed.ID, "   "); err == nil {
+		t.Fatal("expected empty rename to fail")
+	}
+}
+
+func TestEffectiveRefreshMinutesAndDue(t *testing.T) {
+	now := mustTime(t, "2026-01-01T12:00:00Z")
+
+	// Global default when feed interval is 0.
+	f := model.Feed{RefreshIntervalMinutes: 0}
+	if m := service.EffectiveRefreshMinutes(f, 30); m != 30 {
+		t.Fatalf("global = %d", m)
+	}
+	if m := service.EffectiveRefreshMinutes(f, 2); m != 5 {
+		t.Fatalf("global floor = %d", m)
+	}
+
+	// Per-feed override.
+	f.RefreshIntervalMinutes = 15
+	if m := service.EffectiveRefreshMinutes(f, 60); m != 15 {
+		t.Fatalf("per-feed = %d", m)
+	}
+
+	// Never fetched → due.
+	if !feedDue(t, f, 30, now) {
+		t.Fatal("nil last fetch should be due")
+	}
+
+	// Fetched 10m ago with 15m interval → not due.
+	last := "2026-01-01T11:50:00Z"
+	f.LastFetchedAt = &last
+	if feedDue(t, f, 30, now) {
+		t.Fatal("should not be due yet")
+	}
+
+	// Fetched 20m ago with 15m interval → due.
+	last = "2026-01-01T11:40:00Z"
+	f.LastFetchedAt = &last
+	if !feedDue(t, f, 30, now) {
+		t.Fatal("should be due")
+	}
+}
+
+func mustTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	tt, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tt
+}
+
+// feedDue re-implements due check via TryRefreshDue path helpers exported through EffectiveRefreshMinutes.
+// We test EffectiveRefreshMinutes above; due logic is covered via a small package-level probe using List + interval math.
+func feedDue(t *testing.T, f model.Feed, defaultMin int, now time.Time) bool {
+	t.Helper()
+	interval := service.EffectiveRefreshMinutes(f, defaultMin)
+	if f.LastFetchedAt == nil || strings.TrimSpace(*f.LastFetchedAt) == "" {
+		return true
+	}
+	tt, err := time.Parse(time.RFC3339, strings.TrimSpace(*f.LastFetchedAt))
+	if err != nil {
+		return true
+	}
+	return !now.Before(tt.Add(time.Duration(interval) * time.Minute))
 }

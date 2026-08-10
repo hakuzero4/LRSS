@@ -5,10 +5,15 @@ import {
   ExternalLink,
   Star,
 } from "@lucide/vue";
-import { computed } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import { formatAbsolute, plainText } from "@/lib/format";
+import { openExternalLink } from "@/lib/openLink";
+import {
+  readerShellClasses,
+  shouldMarkReadOnScrollEnd,
+} from "@/lib/readingSettings";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,11 +33,9 @@ const {
   toggleRead,
 } = useRssStore();
 
-const fontClass = computed(() => {
-  if (settings.fontSize === "sm") return "text-[15px] leading-[1.65]";
-  if (settings.fontSize === "lg") return "text-[18px] leading-[1.7]";
-  return "text-[16.5px] leading-[1.7]";
-});
+const scrollPaneRef = ref<HTMLElement | null>(null);
+/** Avoid repeated mark-read while sitting at the bottom. */
+const scrollEndMarkedForId = ref<string | null>(null);
 
 /**
  * Deck / standfirst under the title.
@@ -57,16 +60,61 @@ const hasBody = computed(() => {
   return html.length > 0 && plainText(html).length > 0;
 });
 
-const readerWidthClass = computed(() => {
-  if (settings.readerWidth === "narrow") return "max-w-[34rem]";
-  if (settings.readerWidth === "wide") return "max-w-[52rem]";
-  return "max-w-[42rem]";
+/** Root classes driven by Settings → Reading (font size + column width). */
+const readerShellClass = computed(() => {
+  const { className } = readerShellClasses(settings.fontSize, settings.readerWidth);
+  return className;
 });
 
-function openOriginal() {
-  if (!selectedArticle.value) return;
-  window.open(selectedArticle.value.url, "_blank", "noopener,noreferrer");
+async function openOriginal() {
+  if (!selectedArticle.value?.url) return;
+  await openExternalLink(selectedArticle.value.url, {
+    forceBrowser: settings.openLinksInBrowser,
+  });
 }
+
+/** Intercept in-body links so they honor openLinksInBrowser (never leave the app shell). */
+function onBodyClick(ev: MouseEvent) {
+  const target = ev.target;
+  if (!(target instanceof Element)) return;
+  const anchor = target.closest("a");
+  if (!anchor) return;
+  const href = anchor.getAttribute("href");
+  if (!href || href.startsWith("#") || href.startsWith("mailto:")) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  void openExternalLink(href, { forceBrowser: settings.openLinksInBrowser });
+}
+
+function onReaderScroll() {
+  const el = scrollPaneRef.value;
+  const article = selectedArticle.value;
+  if (!el || !article) return;
+  const should = shouldMarkReadOnScrollEnd({
+    enabled: settings.markAsReadOnScrollEnd,
+    articleId: article.id,
+    alreadyRead: article.read,
+    alreadyMarkedId: scrollEndMarkedForId.value,
+    scrollHeight: el.scrollHeight,
+    scrollTop: el.scrollTop,
+    clientHeight: el.clientHeight,
+  });
+  if (!should) return;
+  scrollEndMarkedForId.value = article.id;
+  // Only mark unread → read (toggleRead would flip read→unread if misused).
+  if (!article.read) {
+    void toggleRead(article.id);
+  }
+}
+
+watch(
+  () => selectedArticle.value?.id,
+  async () => {
+    scrollEndMarkedForId.value = null;
+    await nextTick();
+    if (scrollPaneRef.value) scrollPaneRef.value.scrollTop = 0;
+  },
+);
 </script>
 
 <template>
@@ -137,15 +185,26 @@ function openOriginal() {
         </TooltipProvider>
       </header>
 
-      <div class="scroll-pane flex-1">
-        <article :class="cn('mx-auto px-6 py-8 sm:px-10 sm:py-10', readerWidthClass)">
+      <div
+        ref="scrollPaneRef"
+        class="scroll-pane flex-1"
+        @scroll.passive="onReaderScroll"
+      >
+        <article
+          :class="
+            cn(
+              'reader-shell mx-auto px-6 py-8 sm:px-10 sm:py-10',
+              readerShellClass,
+            )
+          "
+          :data-font-size="settings.fontSize"
+          :data-reader-width="settings.readerWidth"
+        >
           <header class="reader-header-block">
             <p class="text-[12px] font-medium tracking-[0.01em] text-muted-foreground">
               {{ formatAbsolute(selectedArticle.publishedAt) }}
             </p>
-            <h1
-              class="mt-2 text-[1.75rem] font-semibold tracking-[-0.025em] text-balance leading-[1.2] sm:text-[2rem]"
-            >
+            <h1 class="reader-title mt-2 font-semibold tracking-[-0.025em] text-balance">
               {{ selectedArticle.title }}
             </h1>
 
@@ -180,10 +239,10 @@ function openOriginal() {
               :class="
                 cn(
                   'reader-body text-foreground/90',
-                  fontClass,
                   readerSummary ? 'mt-4' : 'mt-8',
                 )
               "
+              @click="onBodyClick"
               v-html="selectedArticle.contentHtml"
             />
           </template>

@@ -13,9 +13,24 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const { t } = useI18n();
-const { addFeedOpen, closeAddFeed, addFeedFromURL } = useRssStore();
+const {
+  addFeedOpen,
+  addFeedTargetFolderId,
+  folders,
+  settings,
+  closeAddFeed,
+  setAddFeedFolderId,
+  addFeedFromURL,
+} = useRssStore();
 
 const feedUrl = ref("");
 const title = ref("");
@@ -24,12 +39,25 @@ const error = ref("");
 
 const canSubmit = computed(() => feedUrl.value.trim().length > 8 && !submitting.value);
 
+const folderModel = computed({
+  get: () => addFeedTargetFolderId.value ?? "none",
+  set: (v: string) => setAddFeedFolderId(v === "none" ? null : v),
+});
+
+const targetFolderName = computed(() => {
+  const id = addFeedTargetFolderId.value;
+  if (!id) return "";
+  return folders.value.find((f) => f.id === id)?.name ?? "";
+});
+
 watch(addFeedOpen, (open) => {
   if (!open) {
     feedUrl.value = "";
     title.value = "";
     error.value = "";
     submitting.value = false;
+  } else if (!addFeedTargetFolderId.value && settings.defaultFolderId) {
+    setAddFeedFolderId(settings.defaultFolderId);
   }
 });
 
@@ -65,7 +93,12 @@ async function onSubmit() {
       <DialogHeader>
         <DialogTitle>{{ t("feed.add.title") }}</DialogTitle>
         <DialogDescription>
-          {{ t("feed.add.description") }}
+          <template v-if="targetFolderName">
+            {{ t("feed.add.descriptionInFolder", { name: targetFolderName }) }}
+          </template>
+          <template v-else>
+            {{ t("feed.add.description") }}
+          </template>
         </DialogDescription>
       </DialogHeader>
 
@@ -93,6 +126,20 @@ async function onSubmit() {
             :placeholder="t('feed.add.titlePlaceholder')"
             autocomplete="off"
           />
+        </div>
+        <div class="grid gap-2">
+          <Label>{{ t("settings.feeds.defaultFolder") }}</Label>
+          <Select v-model="folderModel">
+            <SelectTrigger class="h-9 text-[13px]">
+              <SelectValue :placeholder="t('settings.feeds.unfiled')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
+              <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
+                {{ f.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <p v-if="error" class="text-[12.5px] text-destructive">{{ error }}</p>
 

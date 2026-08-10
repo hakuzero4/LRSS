@@ -36,6 +36,17 @@ export interface Feed {
     "lastFetchedAt"?: string | null;
     "lastError"?: string | null;
     "isPaused": boolean;
+
+    /**
+     * RefreshIntervalMinutes is per-feed auto-refresh interval.
+     * 0 means use the global LibraryConfig default.
+     */
+    "refreshIntervalMinutes": number;
+
+    /**
+     * TitleUserSet is true when the user renamed the feed; refresh must not overwrite title.
+     */
+    "titleUserSet": boolean;
     "unreadCount": number;
     "createdAt": string;
     "updatedAt": string;

@@ -162,22 +162,20 @@ func runAutoRefresh(ctx context.Context, library *service.Library, store *settin
 			continue
 		}
 
-		res, ok, err := library.TryRefreshAll(ctx)
+		// Per-feed intervals: only fetch sources that are due (global or custom).
+		// Tick every minute so short per-feed intervals (e.g. 5m) are honored.
+		res, ok, err := library.TryRefreshDue(ctx, cfg.RefreshIntervalMinutes)
 		if err != nil {
 			log.Printf("auto-refresh: error: %v", err)
 		} else if !ok {
 			log.Printf("auto-refresh: skipped (refresh already in progress)")
-		} else {
+		} else if res.FeedsOK > 0 || res.FeedsErr > 0 {
 			log.Printf("auto-refresh: ok=%d err=%d added=%d", res.FeedsOK, res.FeedsErr, res.ArticlesAdded)
 			if notifier != nil {
 				notifier.AfterRefresh(ctx, res.ArticlesAdded)
 			}
 		}
 
-		interval := time.Duration(cfg.RefreshIntervalMinutes) * time.Minute
-		if interval < 5*time.Minute {
-			interval = 5 * time.Minute
-		}
-		timer.Reset(interval)
+		timer.Reset(time.Minute)
 	}
 }

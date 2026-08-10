@@ -30,6 +30,14 @@ export interface Feed {
   folderId?: string;
   unreadCount: number;
   lastFetchedAt: string;
+  /** true when auto-refresh is paused for this feed */
+  isPaused?: boolean;
+  /**
+   * Per-feed auto-refresh interval in minutes.
+   * 0 (or undefined) = follow global LibraryConfig default.
+   */
+  refreshIntervalMinutes?: number;
+  lastError?: string;
 }
 
 export interface Article {

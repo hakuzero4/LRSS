@@ -3,19 +3,26 @@ import { Sparkles } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
+import { openExternalLink } from "@/lib/openLink";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import { Button } from "@/components/ui/button";
 
 const { t } = useI18n();
-const { feeds, articles, smartCounts } = useRssStore();
+const { feeds, smartCounts } = useRssStore();
 
 const summary = computed(() =>
   t("settings.about.summary", {
     feeds: feeds.value.length,
-    articles: articles.value.length,
-    unread: smartCounts.value.unread,
+    articles: smartCounts.all,
+    unread: smartCounts.unread,
   }),
 );
+
+function openDocs() {
+  void openExternalLink("https://github.com/wailsapp/wails", {
+    forceBrowser: true,
+  });
+}
 </script>
 
 <template>
@@ -38,16 +45,31 @@ const summary = computed(() =>
 
     <SettingsGroup :title="t('settings.about.resources')">
       <div class="flex flex-wrap gap-2 py-3">
-        <Button variant="outline" size="sm" type="button">
+        <Button variant="outline" size="sm" type="button" @click="openDocs">
           {{ t("settings.about.docs") }}
         </Button>
-        <Button variant="outline" size="sm" type="button">
+        <Button
+          variant="outline"
+          size="sm"
+          type="button"
+          disabled
+          :title="t('settings.unavailable.comingSoon')"
+        >
           {{ t("settings.about.checkUpdate") }}
         </Button>
-        <Button variant="outline" size="sm" type="button">
+        <Button
+          variant="outline"
+          size="sm"
+          type="button"
+          disabled
+          :title="t('settings.unavailable.comingSoon')"
+        >
           {{ t("settings.about.licenses") }}
         </Button>
       </div>
+      <p class="text-[11.5px] text-muted-foreground">
+        {{ t("settings.unavailable.aboutNote") }}
+      </p>
     </SettingsGroup>
   </div>
 </template>

@@ -106,6 +106,13 @@ export function RefreshFeed(id: string): $CancellablePromise<$models.RefreshResu
 }
 
 /**
+ * RenameFeed sets a custom display title (will not be overwritten by refresh).
+ */
+export function RenameFeed(id: string, title: string): $CancellablePromise<void> {
+    return $Call.ByID(1087303506, id, title);
+}
+
+/**
  * RenameFolder renames a folder.
  */
 export function RenameFolder(id: string, name: string): $CancellablePromise<void> {
@@ -117,4 +124,12 @@ export function RenameFolder(id: string, name: string): $CancellablePromise<void
  */
 export function SetFeedPaused(id: string, paused: boolean): $CancellablePromise<void> {
     return $Call.ByID(3296238782, id, paused);
+}
+
+/**
+ * SetFeedRefreshInterval sets per-feed auto-refresh minutes.
+ * 0 means follow the global default; otherwise clamped to [5, 180].
+ */
+export function SetFeedRefreshInterval(id: string, minutes: number): $CancellablePromise<void> {
+    return $Call.ByID(1949052462, id, minutes);
 }

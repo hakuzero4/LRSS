@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRssStore } from "@/composables/useRssStore";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -11,17 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 
 const { t } = useI18n();
-const { settings } = useRssStore();
-
-const providerModel = computed({
-  get: () => settings.syncProvider,
-  set: (v: typeof settings.syncProvider) => {
-    settings.syncProvider = v;
-  },
-});
 </script>
 
 <template>
@@ -30,35 +20,38 @@ const providerModel = computed({
       :title="t('settings.sync.group')"
       :description="t('settings.sync.groupDesc')"
     >
-      <div class="py-2.5">
+      <p
+        class="mb-2 rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground"
+        role="status"
+      >
+        {{ t("settings.unavailable.previewBanner") }}
+      </p>
+      <div class="py-2.5 opacity-60">
         <SettingsRow
           :title="t('settings.sync.enable')"
           :description="t('settings.sync.enableDesc')"
         >
-          <Switch
-            :checked="settings.syncEnabled"
-            @update:checked="(v: boolean) => (settings.syncEnabled = v)"
-          />
+          <Switch :checked="false" disabled :aria-disabled="true" />
         </SettingsRow>
       </div>
-      <div class="py-2.5" :class="!settings.syncEnabled && 'opacity-50'">
+      <div class="py-2.5 opacity-60">
         <SettingsRow
           :title="t('settings.sync.provider')"
           :description="t('settings.sync.providerDesc')"
         >
-          <Select v-model="providerModel" :disabled="!settings.syncEnabled">
+          <Select model-value="none" disabled>
             <SelectTrigger class="h-8 w-[150px] text-[13px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">{{ t("settings.sync.providerNone") }}</SelectItem>
-              <SelectItem value="icloud">{{ t("settings.sync.providerICloud") }}</SelectItem>
-              <SelectItem value="webdav">{{ t("settings.sync.providerWebDAV") }}</SelectItem>
-              <SelectItem value="custom">{{ t("settings.sync.providerCustom") }}</SelectItem>
             </SelectContent>
           </Select>
         </SettingsRow>
       </div>
+      <p class="text-[11.5px] text-muted-foreground">
+        {{ t("settings.unavailable.syncNote") }}
+      </p>
     </SettingsGroup>
   </div>
 </template>

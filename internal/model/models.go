@@ -23,9 +23,14 @@ type Feed struct {
 	LastFetchedAt *string `json:"lastFetchedAt,omitempty"`
 	LastError     *string `json:"lastError,omitempty"`
 	IsPaused      bool    `json:"isPaused"`
-	UnreadCount   int     `json:"unreadCount"`
-	CreatedAt     string  `json:"createdAt"`
-	UpdatedAt     string  `json:"updatedAt"`
+	// RefreshIntervalMinutes is per-feed auto-refresh interval.
+	// 0 means use the global LibraryConfig default.
+	RefreshIntervalMinutes int `json:"refreshIntervalMinutes"`
+	// TitleUserSet is true when the user renamed the feed; refresh must not overwrite title.
+	TitleUserSet bool `json:"titleUserSet"`
+	UnreadCount  int  `json:"unreadCount"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
 }
 
 // Article is a single feed item.

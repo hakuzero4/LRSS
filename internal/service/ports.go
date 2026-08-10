@@ -18,6 +18,8 @@ type FeedStore interface {
 	UpdateAfterFetch(ctx context.Context, feedID string, title string, etag, lastModified, lastError *string) error
 	SetFolder(ctx context.Context, feedID string, folderID *string) error
 	SetPaused(ctx context.Context, feedID string, paused bool) error
+	SetTitle(ctx context.Context, feedID, title string) error
+	SetRefreshInterval(ctx context.Context, feedID string, minutes int) error
 	SetSiteURL(ctx context.Context, feedID, siteURL string) error
 	SetFaviconURL(ctx context.Context, feedID, faviconURL string) error
 	Delete(ctx context.Context, feedID string) error
@@ -33,6 +35,7 @@ type ArticleStore interface {
 	SetStarred(ctx context.Context, articleID string, starred bool) error
 	MarkAllRead(ctx context.Context, collection string) error
 	PurgeOlderThan(ctx context.Context, days int) (int, error)
+	CountSmart(ctx context.Context) (repo.SmartCounts, error)
 }
 
 // FolderStore is the folder persistence port (satisfied by *repo.FolderRepo).

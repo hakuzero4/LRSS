@@ -255,6 +255,77 @@ func (lib *Library) TryRefreshAll(ctx context.Context) (res RefreshAllResult, ok
 	return res, true, nil
 }
 
+// EffectiveRefreshMinutes returns the interval used for auto-refresh for one feed.
+// Per-feed value wins when > 0; otherwise defaultMinutes (clamped to [5, 180]).
+func EffectiveRefreshMinutes(feed model.Feed, defaultMinutes int) int {
+	if feed.RefreshIntervalMinutes > 0 {
+		return repo.NormalizeRefreshInterval(feed.RefreshIntervalMinutes)
+	}
+	if defaultMinutes < 5 {
+		return 5
+	}
+	if defaultMinutes > 180 {
+		return 180
+	}
+	return defaultMinutes
+}
+
+// feedRefreshDue reports whether feed should be fetched now for auto-refresh.
+func feedRefreshDue(feed model.Feed, defaultMinutes int, now time.Time) bool {
+	interval := EffectiveRefreshMinutes(feed, defaultMinutes)
+	if feed.LastFetchedAt == nil || strings.TrimSpace(*feed.LastFetchedAt) == "" {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(*feed.LastFetchedAt))
+	if err != nil {
+		// Tolerate fractional seconds / space separator from older rows.
+		t, err = time.Parse(time.RFC3339Nano, strings.TrimSpace(*feed.LastFetchedAt))
+		if err != nil {
+			return true
+		}
+	}
+	return !now.Before(t.Add(time.Duration(interval) * time.Minute))
+}
+
+// TryRefreshDue refreshes only non-paused feeds whose last fetch is older than
+// their effective interval. defaultMinutes is the global LibraryConfig interval.
+// ok is false when another refresh holds the lock.
+func (lib *Library) TryRefreshDue(ctx context.Context, defaultMinutes int) (res RefreshAllResult, ok bool, err error) {
+	if !lib.refreshMu.TryLock() {
+		return RefreshAllResult{}, false, nil
+	}
+	defer lib.refreshMu.Unlock()
+
+	feeds, err := lib.Feeds.ListActive(ctx)
+	if err != nil {
+		return RefreshAllResult{}, true, err
+	}
+	now := time.Now().UTC()
+	for _, f := range feeds {
+		if !feedRefreshDue(f, defaultMinutes, now) {
+			continue
+		}
+		n, rerr := lib.refreshOne(ctx, f)
+		if rerr != nil {
+			res.FeedsErr++
+			continue
+		}
+		res.FeedsOK++
+		res.ArticlesAdded += n
+	}
+	return res, true, nil
+}
+
+// RenameFeed sets a custom display title (locked against feed-document overwrites).
+func (lib *Library) RenameFeed(ctx context.Context, feedID, title string) error {
+	return lib.Feeds.SetTitle(ctx, feedID, title)
+}
+
+// SetFeedRefreshInterval sets per-feed auto-refresh minutes (0 = global default).
+func (lib *Library) SetFeedRefreshInterval(ctx context.Context, feedID string, minutes int) error {
+	return lib.Feeds.SetRefreshInterval(ctx, feedID, minutes)
+}
+
 func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error) {
 	opts := rss.FetchOptions{}
 	if feed.ETag != nil {
@@ -293,10 +364,13 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 		return 0, nil
 	}
 
+	// Only adopt remote title when the user has not renamed this feed.
 	title := ""
 	var siteURL *string
 	if parsed != nil {
-		title = strings.TrimSpace(parsed.Title)
+		if !feed.TitleUserSet {
+			title = strings.TrimSpace(parsed.Title)
+		}
 		if s := strings.TrimSpace(parsed.SiteURL); s != "" {
 			siteURL = &s
 			// Persist site URL when discovered (also helps favicon).
@@ -338,6 +412,11 @@ func (lib *Library) ListArticles(ctx context.Context, collection string, limit, 
 		lib.normalizeArticleForUI(&list[i], false)
 	}
 	return list, nil
+}
+
+// SmartCounts returns sidebar smart-list totals (full DB counts, not list page size).
+func (lib *Library) SmartCounts(ctx context.Context) (repo.SmartCounts, error) {
+	return lib.Articles.CountSmart(ctx)
 }
 
 // GetArticle returns one article with sanitized ContentHTML for UI.

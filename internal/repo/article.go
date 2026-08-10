@@ -66,6 +66,36 @@ type UpsertResult struct {
 	Skipped  int
 }
 
+// SmartCounts is the sidebar badge totals (independent of the current list page).
+type SmartCounts struct {
+	Unread  int `json:"unread"`
+	Today   int `json:"today"`
+	Starred int `json:"starred"`
+	All     int `json:"all"`
+}
+
+// CountSmart returns true totals for smart lists (not capped by list limit).
+// "today" uses the same UTC day window as collectionWhere("today").
+func (r *ArticleRepo) CountSmart(ctx context.Context) (SmartCounts, error) {
+	start := time.Now().UTC().Truncate(24 * time.Hour)
+	end := start.Add(24 * time.Hour)
+	var c SmartCounts
+	err := r.DB.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM articles WHERE is_read = 0),
+			(SELECT COUNT(*) FROM articles
+			  WHERE COALESCE(published_at, fetched_at) >= ?
+			    AND COALESCE(published_at, fetched_at) < ?),
+			(SELECT COUNT(*) FROM articles WHERE is_starred = 1),
+			(SELECT COUNT(*) FROM articles)`,
+		start.Format(time.RFC3339), end.Format(time.RFC3339),
+	).Scan(&c.Unread, &c.Today, &c.Starred, &c.All)
+	if err != nil {
+		return SmartCounts{}, fmt.Errorf("count smart: %w", err)
+	}
+	return c, nil
+}
+
 // List returns articles for a collection filter with optional opts.
 // collection: unread | today | starred | all | feed:<id> | folder:<id>
 func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts) ([]model.Article, error) {

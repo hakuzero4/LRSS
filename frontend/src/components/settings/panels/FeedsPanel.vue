@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
+import FeedIcon from "@/components/feed/FeedIcon.vue";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
 import {
@@ -18,6 +19,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -26,7 +36,9 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { TriangleAlert } from "@lucide/vue";
+import { relativeTime } from "@/lib/format";
+import type { Feed } from "@/types/rss";
+import { Pencil, TriangleAlert } from "@lucide/vue";
 
 const { t } = useI18n();
 
@@ -39,6 +51,9 @@ const {
   clearAllSubscriptions,
   persistUIPrefs,
   purgeOldArticles,
+  renameFeed,
+  setFeedRefreshInterval,
+  setFeedPaused,
 } = useRssStore();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -53,7 +68,105 @@ const clearing = ref(false);
 const clearStatus = ref("");
 const purging = ref(false);
 
+/** Interval presets (minutes). 0 = follow global default. */
+const INTERVAL_OPTIONS = [0, 5, 15, 30, 60, 120, 180] as const;
+
 const subscriptionCount = computed(() => feeds.value.length);
+
+const sortedFeeds = computed(() =>
+  [...feeds.value].sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+  ),
+);
+
+const globalIntervalLabel = computed(() => formatIntervalMinutes(settings.refreshIntervalMinutes));
+
+function formatIntervalMinutes(m: number): string {
+  if (m < 60) return t("common.minutes", { n: m });
+  if (m === 60) return t("common.oneHour");
+  if (m % 60 === 0) return t("common.hours", { n: m / 60 });
+  return t("common.minutes", { n: m });
+}
+
+function intervalOptionLabel(minutes: number): string {
+  if (minutes === 0) {
+    return t("settings.feeds.intervalDefault", { n: globalIntervalLabel.value });
+  }
+  return t("settings.feeds.intervalCustom", { n: formatIntervalMinutes(minutes) });
+}
+
+function intervalValue(feed: Feed): string {
+  const n = feed.refreshIntervalMinutes ?? 0;
+  // If user somehow has a non-preset value, still show it via select string.
+  return String(n);
+}
+
+function lastUpdatedLabel(feed: Feed): string {
+  const iso = feed.lastFetchedAt?.trim();
+  if (!iso) return t("settings.feeds.neverUpdated");
+  const tms = Date.parse(iso);
+  if (Number.isNaN(tms)) return t("settings.feeds.neverUpdated");
+  return relativeTime(iso);
+}
+
+function folderName(feed: Feed): string {
+  if (!feed.folderId) return t("settings.feeds.unfiled");
+  return folders.value.find((f) => f.id === feed.folderId)?.name ?? t("settings.feeds.unfiled");
+}
+
+const busy = computed(() => importing.value || exporting.value || clearing.value || purging.value);
+
+async function onIntervalChange(feed: Feed, raw: string) {
+  const minutes = Math.max(0, Math.floor(Number(raw) || 0));
+  try {
+    await setFeedRefreshInterval(feed.id, minutes);
+    toast.success(t("settings.feeds.intervalSaved"));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.feeds.intervalFailed"), { description: msg });
+  }
+}
+
+async function onPauseChange(feed: Feed, paused: boolean) {
+  try {
+    await setFeedPaused(feed.id, paused);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.feeds.pauseFailed"), { description: msg });
+  }
+}
+
+// ── Rename dialog ──────────────────────────────────────────────
+const renameOpen = ref(false);
+const renameFeedId = ref<string | null>(null);
+const renameDraft = ref("");
+const renameSaving = ref(false);
+
+function openRename(feed: Feed) {
+  renameFeedId.value = feed.id;
+  renameDraft.value = feed.title;
+  renameOpen.value = true;
+}
+
+async function confirmRename() {
+  if (!renameFeedId.value || renameSaving.value) return;
+  const title = renameDraft.value.trim();
+  if (!title) {
+    toast.error(t("settings.feeds.renameEmpty"));
+    return;
+  }
+  renameSaving.value = true;
+  try {
+    await renameFeed(renameFeedId.value, title);
+    renameOpen.value = false;
+    toast.success(t("settings.feeds.renameSaved"));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.feeds.renameFailed"), { description: msg });
+  } finally {
+    renameSaving.value = false;
+  }
+}
 
 const importPercent = computed(() => {
   if (!importTotal.value) return 0;
@@ -76,16 +189,10 @@ const defaultFolderModel = computed({
   },
 });
 
-function onFetchFullContent(v: boolean) {
-  settings.fetchFullContent = v;
-  persistUIPrefs();
-}
-
 async function onPurgeNow() {
-  if (purging.value || importing.value || exporting.value || clearing.value) return;
+  if (purging.value || busy.value) return;
   purging.value = true;
   try {
-    // purgeOldArticles flushes pending SetUIPrefs so keep days is current.
     const deleted = await purgeOldArticles();
     toast.success(t("settings.feeds.purged", { n: deleted }));
   } catch (e: unknown) {
@@ -110,7 +217,6 @@ function triggerImport() {
 async function onImportFileChange(ev: Event) {
   const input = ev.target as HTMLInputElement;
   const file = input.files?.[0];
-  // Allow re-selecting the same file later
   input.value = "";
   if (!file) return;
 
@@ -181,13 +287,11 @@ function openClearConfirm() {
 }
 
 function onConfirmOpenChange(open: boolean) {
-  // Block dismiss (Esc / overlay) while the wipe is running.
   if (clearing.value && !open) return;
   confirmClearOpen.value = open;
 }
 
 async function confirmClearAll(ev: Event) {
-  // Keep dialog open until the async wipe finishes (AlertDialogAction closes by default).
   ev.preventDefault();
   if (clearing.value) return;
   clearing.value = true;
@@ -211,6 +315,120 @@ async function confirmClearAll(ev: Event) {
 
 <template>
   <div class="space-y-7">
+    <!-- All subscriptions -->
+    <SettingsGroup
+      :title="t('settings.feeds.listGroup')"
+      :description="t('settings.feeds.listGroupDesc')"
+    >
+      <p
+        v-if="subscriptionCount === 0"
+        class="py-4 text-center text-[12.5px] text-muted-foreground"
+      >
+        {{ t("settings.feeds.listEmpty") }}
+      </p>
+      <template v-else>
+        <p class="pb-2 pt-1 text-[11.5px] tabular-nums text-muted-foreground">
+          {{ t("settings.feeds.listCount", { n: subscriptionCount }) }}
+        </p>
+        <ul class="divide-y divide-border/70 rounded-lg border border-border/70">
+          <li
+            v-for="feed in sortedFeeds"
+            :key="feed.id"
+            class="flex flex-col gap-2.5 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start gap-2.5">
+                <FeedIcon
+                  :src="feed.favicon"
+                  :title="feed.title"
+                  size="md"
+                  class="mt-0.5"
+                />
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <p class="truncate text-[13px] font-medium leading-snug">
+                      {{ feed.title }}
+                    </p>
+                    <span
+                      v-if="feed.isPaused"
+                      class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                    >
+                      {{ t("settings.feeds.paused") }}
+                    </span>
+                  </div>
+                  <p
+                    class="mt-0.5 truncate text-[11.5px] text-muted-foreground"
+                    :title="feed.feedUrl"
+                  >
+                    {{ feed.feedUrl }}
+                  </p>
+                  <p class="mt-1 text-[11.5px] text-muted-foreground">
+                    <span class="text-foreground/70">{{ t("settings.feeds.lastUpdated") }}</span>
+                    ·
+                    <span class="tabular-nums">{{ lastUpdatedLabel(feed) }}</span>
+                    ·
+                    <span>{{ folderName(feed) }}</span>
+                  </p>
+                  <p
+                    v-if="feed.lastError"
+                    class="mt-1 line-clamp-2 text-[11px] text-destructive/90"
+                    :title="feed.lastError"
+                  >
+                    {{ feed.lastError }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex shrink-0 flex-col gap-2 sm:items-end">
+              <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+                <Select
+                  :model-value="intervalValue(feed)"
+                  :disabled="busy || feed.isPaused"
+                  @update:model-value="(v) => onIntervalChange(feed, String(v))"
+                >
+                  <SelectTrigger class="h-8 w-[168px] text-[12px]">
+                    <SelectValue :placeholder="t('settings.feeds.refreshInterval')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="opt in INTERVAL_OPTIONS"
+                      :key="opt"
+                      :value="String(opt)"
+                      class="text-[12.5px]"
+                    >
+                      {{ intervalOptionLabel(opt) }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-8 gap-1 px-2.5 text-[12px]"
+                  :disabled="busy"
+                  @click="openRename(feed)"
+                >
+                  <Pencil class="size-3.5 opacity-70" />
+                  {{ t("settings.feeds.editName") }}
+                </Button>
+              </div>
+              <label
+                class="flex cursor-pointer items-center gap-2 text-[11.5px] text-muted-foreground"
+              >
+                <Switch
+                  :checked="!!feed.isPaused"
+                  :disabled="busy"
+                  @update:checked="(v) => onPauseChange(feed, v)"
+                />
+                {{ t("settings.feeds.pause") }}
+              </label>
+            </div>
+          </li>
+        </ul>
+      </template>
+    </SettingsGroup>
+
     <SettingsGroup
       :title="t('settings.feeds.opmlGroup')"
       :description="t('settings.feeds.opmlGroupDesc')"
@@ -303,14 +521,16 @@ async function confirmClearAll(ev: Event) {
           </Select>
         </SettingsRow>
       </div>
-      <div class="py-2.5">
+      <div class="py-2.5 opacity-60">
         <SettingsRow
           :title="t('settings.feeds.fetchFullContent')"
-          :description="t('settings.feeds.fetchFullContentDesc')"
+          :description="t('settings.unavailable.fetchFullContent')"
         >
           <Switch
-            :checked="settings.fetchFullContent"
-            @update:checked="onFetchFullContent"
+            :checked="false"
+            disabled
+            :aria-disabled="true"
+            :aria-label="t('settings.unavailable.comingSoon')"
           />
         </SettingsRow>
       </div>
@@ -369,6 +589,48 @@ async function confirmClearAll(ev: Event) {
         {{ clearStatus }}
       </p>
     </SettingsGroup>
+
+    <!-- Rename dialog -->
+    <Dialog :open="renameOpen" @update:open="(v) => (renameOpen = v)">
+      <DialogContent class="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ t("settings.feeds.renameTitle") }}</DialogTitle>
+          <DialogDescription>{{ t("settings.feeds.renameDesc") }}</DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2 py-1">
+          <label class="text-[12.5px] font-medium" for="feed-rename-input">
+            {{ t("settings.feeds.renameLabel") }}
+          </label>
+          <Input
+            id="feed-rename-input"
+            v-model="renameDraft"
+            :placeholder="t('settings.feeds.renamePlaceholder')"
+            class="h-9"
+            :disabled="renameSaving"
+            @keydown.enter.prevent="confirmRename"
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            :disabled="renameSaving"
+            @click="renameOpen = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            :disabled="renameSaving || !renameDraft.trim()"
+            @click="confirmRename"
+          >
+            {{ renameSaving ? t("common.saving") : t("settings.feeds.saveName") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <AlertDialog :open="confirmClearOpen" @update:open="onConfirmOpenChange">
       <AlertDialogContent class="sm:max-w-sm">

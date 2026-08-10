@@ -21,10 +21,15 @@ const {
   collectionTitle,
   selectedArticleId,
   searchQuery,
+  searchBusy,
+  searchSource,
+  emptyListReason,
   refreshing,
   selectArticle,
   markAllRead,
   refreshFeeds,
+  openAddFeed,
+  setSearchQuery,
 } = useRssStore();
 
 const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
@@ -33,6 +38,25 @@ const empty = computed(() => filteredArticles.value.length === 0);
 const articleCountLabel = computed(() => {
   const n = filteredArticles.value.length;
   return n === 1 ? t("article.countOne") : t("article.count", { n });
+});
+
+const searchModel = computed({
+  get: () => searchQuery.value,
+  set: (v: string) => setSearchQuery(v),
+});
+
+const emptyTitle = computed(() => {
+  const r = emptyListReason.value;
+  if (r === "no-feeds") return t("empty.noFeedsTitle");
+  if (r === "no-matches") return t("empty.noMatchesTitle");
+  return t("empty.emptyCollectionTitle");
+});
+
+const emptyHint = computed(() => {
+  const r = emptyListReason.value;
+  if (r === "no-feeds") return t("empty.noFeedsHint");
+  if (r === "no-matches") return t("empty.noMatchesHint");
+  return t("empty.emptyCollectionHint");
 });
 </script>
 
@@ -45,6 +69,19 @@ const articleCountLabel = computed(() => {
         </h2>
         <p class="text-[11px] text-muted-foreground tabular-nums">
           {{ articleCountLabel }}
+          <span v-if="searchBusy" class="ml-1">· {{ t("shell.searching") }}</span>
+          <span
+            v-else-if="searchQuery.trim() && searchSource === 'backend'"
+            class="ml-1"
+          >
+            · {{ t("shell.searchBackend") }}
+          </span>
+          <span
+            v-else-if="searchQuery.trim() && searchSource === 'local'"
+            class="ml-1"
+          >
+            · {{ t("shell.searchLocal") }}
+          </span>
         </p>
       </div>
 
@@ -89,7 +126,7 @@ const articleCountLabel = computed(() => {
           class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
         />
         <Input
-          v-model="searchQuery"
+          v-model="searchModel"
           type="search"
           :placeholder="t('article.searchPlaceholder')"
           class="h-8 bg-muted/50 pl-8 pr-8 text-[13px]"
@@ -100,7 +137,7 @@ const articleCountLabel = computed(() => {
           type="button"
           class="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
           :aria-label="t('article.clearSearch')"
-          @click="searchQuery = ''"
+          @click="setSearchQuery('')"
         >
           <X class="size-3.5" />
         </button>
@@ -109,10 +146,19 @@ const articleCountLabel = computed(() => {
 
     <div class="scroll-pane flex-1">
       <div v-if="empty" class="flex h-48 flex-col items-center justify-center px-6 text-center">
-        <p class="text-[13px] font-medium text-foreground/80">{{ t("article.emptyTitle") }}</p>
+        <p class="text-[13px] font-medium text-foreground/80">{{ emptyTitle }}</p>
         <p class="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-          {{ t("article.emptyHint") }}
+          {{ emptyHint }}
         </p>
+        <Button
+          v-if="emptyListReason === 'no-feeds'"
+          type="button"
+          size="sm"
+          class="mt-3"
+          @click="openAddFeed"
+        >
+          {{ t("empty.noFeedsAction") }}
+        </Button>
       </div>
 
       <ArticleListItem

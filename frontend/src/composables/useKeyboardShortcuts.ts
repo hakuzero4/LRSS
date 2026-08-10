@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted } from "vue";
 import { useRssStore } from "@/composables/useRssStore";
+import { openExternalLink } from "@/lib/openLink";
 
 /** Documented shortcut map (keys → action id). */
 export const KEYBOARD_SHORTCUT_MAP = {
@@ -91,7 +92,9 @@ export function useKeyboardShortcuts() {
   function openSelectedUrl() {
     const article = selectedArticle.value;
     if (!article?.url) return;
-    window.open(article.url, "_blank", "noopener,noreferrer");
+    void openExternalLink(article.url, {
+      forceBrowser: settings.openLinksInBrowser,
+    });
   }
 
   function onKeydown(e: KeyboardEvent) {

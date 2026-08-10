@@ -13,6 +13,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as model$0 from "../model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as repo$0 from "../repo/models.js";
 
 /**
  * Get returns one article with sanitized HTML.
@@ -47,4 +50,11 @@ export function SetRead(id: string, read: boolean): $CancellablePromise<void> {
  */
 export function SetStarred(id: string, starred: boolean): $CancellablePromise<void> {
     return $Call.ByID(3275888491, id, starred);
+}
+
+/**
+ * SmartCounts returns full library totals for sidebar badges (not capped by list limit).
+ */
+export function SmartCounts(): $CancellablePromise<repo$0.SmartCounts> {
+    return $Call.ByID(1651368005);
 }

@@ -139,14 +139,16 @@ function patchBool(
       :title="t('settings.general.startup')"
       :description="t('settings.general.startupDesc')"
     >
-      <div class="py-2.5">
+      <div class="py-2.5 opacity-60">
         <SettingsRow
           :title="t('settings.general.launchAtLogin')"
-          :description="t('settings.general.launchAtLoginDesc')"
+          :description="t('settings.unavailable.launchAtLogin')"
         >
           <Switch
-            :checked="settings.launchAtLogin"
-            @update:checked="(v: boolean) => patchBool('launchAtLogin', v)"
+            :checked="false"
+            disabled
+            :aria-disabled="true"
+            :aria-label="t('settings.unavailable.comingSoon')"
           />
         </SettingsRow>
       </div>
