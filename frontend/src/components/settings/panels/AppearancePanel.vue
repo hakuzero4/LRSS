@@ -2,9 +2,12 @@
 import { computed } from "vue";
 import { useRssStore } from "@/composables/useRssStore";
 import { useLocale } from "@/composables/useLocale";
+import { useTheme } from "@/composables/useTheme";
 import type { AppLocale } from "@/i18n";
+import { normalizeAccent } from "@/lib/accent";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
+import { ColorPicker } from "@/components/ui/color-picker";
 import {
   Select,
   SelectContent,
@@ -18,6 +21,7 @@ import type { AppSettings } from "@/types/rss";
 
 const { settings, persistUIPrefs } = useRssStore();
 const { locale, setLocale, t } = useLocale();
+const { isDark } = useTheme();
 
 const languageModel = computed({
   get: () => locale.value,
@@ -35,8 +39,8 @@ const themeModel = computed({
 const accentModel = computed({
   get: () => settings.accent,
   set: (v: string) => {
-    settings.accent = v as AppSettings["accent"];
-    persistUIPrefs();
+    settings.accent = normalizeAccent(v, settings.accent) as AppSettings["accent"];
+    persistUIPrefs(true);
   },
 });
 
@@ -62,17 +66,17 @@ function onCompactSidebar(v: boolean) {
           </TabsList>
         </Tabs>
       </div>
+
       <div class="space-y-3 py-3">
-        <p class="text-[13px] font-medium">{{ t("settings.appearance.accent") }}</p>
-        <Tabs v-model="accentModel" class="w-full">
-          <TabsList class="grid w-full grid-cols-4">
-            <TabsTrigger value="purple">{{ t("settings.appearance.accentPurple") }}</TabsTrigger>
-            <TabsTrigger value="blue">{{ t("settings.appearance.accentBlue") }}</TabsTrigger>
-            <TabsTrigger value="teal">{{ t("settings.appearance.accentTeal") }}</TabsTrigger>
-            <TabsTrigger value="orange">{{ t("settings.appearance.accentOrange") }}</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div>
+          <p class="text-[13px] font-medium">{{ t("settings.appearance.accent") }}</p>
+          <p class="mt-0.5 text-[12px] text-muted-foreground">
+            {{ t("settings.appearance.accentDesc") }}
+          </p>
+        </div>
+        <ColorPicker v-model="accentModel" :is-dark="isDark" />
       </div>
+
       <div class="py-2.5">
         <SettingsRow
           :title="t('settings.appearance.compactSidebar')"

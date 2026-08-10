@@ -121,7 +121,8 @@ export interface AppSettings {
 
   // 外观
   theme: "system" | "light" | "dark";
-  accent: "blue" | "purple" | "teal" | "orange";
+  /** Preset id (purple|blue|teal|orange) or custom #rrggbb */
+  accent: string;
   compactSidebar: boolean;
 
   // 阅读

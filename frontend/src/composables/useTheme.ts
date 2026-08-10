@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { useRssStore } from "@/composables/useRssStore";
+import { applyAccentToDocument } from "@/lib/accent";
 
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -15,6 +16,7 @@ export function useTheme() {
   function apply() {
     isDark.value = resolveDark(settings.theme);
     document.documentElement.classList.toggle("dark", isDark.value);
+    applyAccentToDocument(settings.accent, isDark.value);
   }
 
   function onSystemChange() {
@@ -31,6 +33,7 @@ export function useTheme() {
   });
 
   watch(() => settings.theme, apply);
+  watch(() => settings.accent, apply);
 
   return { isDark, apply };
 }

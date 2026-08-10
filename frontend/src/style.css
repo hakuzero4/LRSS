@@ -269,9 +269,14 @@
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 0.55rem;
-  background: linear-gradient(145deg, #8b74ff 0%, #7c5cfc 55%, #6d4ef0 100%);
-  color: white;
-  box-shadow: 0 1px 2px rgb(124 92 252 / 0.35);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--primary) 88%, white) 0%,
+    var(--primary) 55%,
+    color-mix(in srgb, var(--primary) 82%, black) 100%
+  );
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 .brand-mark svg {

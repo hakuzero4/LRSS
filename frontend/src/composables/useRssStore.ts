@@ -1,5 +1,4 @@
 import { computed, reactive, ref } from "vue";
-import { articles as seedArticles, feeds as seedFeeds, folders as seedFolders } from "@/data/mock";
 import i18n from "@/i18n";
 import { loadAppsvc, mapArticle, mapFeed, mapFolder } from "@/lib/backend";
 import type {
@@ -21,9 +20,10 @@ function t(key: string, params?: Record<string, unknown>): string {
   return i18n.global.t(key, params as any);
 }
 
-const folders = ref<FeedFolder[]>(structuredClone(seedFolders));
-const feeds = ref<Feed[]>(structuredClone(seedFeeds));
-const articles = ref<Article[]>(structuredClone(seedArticles));
+// Empty until backend bootstrap (or offline add-folder mock). No seed/demo library.
+const folders = ref<FeedFolder[]>([]);
+const feeds = ref<Feed[]>([]);
+const articles = ref<Article[]>([]);
 
 const collectionId = ref<CollectionId>("unread");
 const selectedArticleId = ref<string | null>(null);
@@ -211,7 +211,7 @@ async function persistLibraryConfig(): Promise<void> {
 
 const SMART_COLLECTIONS: SmartCollectionId[] = ["unread", "today", "starred", "all"];
 const THEMES = new Set(["system", "light", "dark"]);
-const ACCENTS = new Set(["blue", "purple", "teal", "orange"]);
+
 const FONT_SIZES = new Set(["sm", "md", "lg"]);
 const READER_WIDTHS = new Set(["narrow", "medium", "wide"]);
 
@@ -287,8 +287,23 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
     settings.theme = theme as AppSettings["theme"];
   }
   const accent = p.accent ?? p.Accent;
-  if (typeof accent === "string" && ACCENTS.has(accent)) {
-    settings.accent = accent as AppSettings["accent"];
+  if (typeof accent === "string") {
+    // Preset id or #rrggbb custom color
+    const a = accent.trim();
+    if (
+      a === "blue" ||
+      a === "purple" ||
+      a === "teal" ||
+      a === "orange" ||
+      /^#[0-9a-fA-F]{6}$/.test(a) ||
+      /^#[0-9a-fA-F]{3}$/.test(a)
+    ) {
+      settings.accent = a.length === 4 && a.startsWith("#")
+        ? `#${a[1]}${a[1]}${a[2]}${a[2]}${a[3]}${a[3]}`.toLowerCase()
+        : a.startsWith("#")
+          ? a.toLowerCase()
+          : a;
+    }
   }
 
   const compact = pickBool(p, "compactSidebar", "CompactSidebar");
