@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
 import { loadAppsvc } from "@/lib/backend";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
@@ -13,13 +12,35 @@ const { t } = useI18n();
 const { settings, persistUIPrefs } = useRssStore();
 
 const testing = ref(false);
+/** In-panel status only — success should be the OS toast, not an in-app Sonner banner. */
 const status = ref("");
+const statusError = ref(false);
 
 async function patchBool(key: "notifyOnNewArticles" | "notifySound", v: boolean) {
   settings[key] = v;
-  persistUIPrefs();
-  if (key === "notifyOnNewArticles" && v) {
-    await ensurePermission();
+  statusError.value = false;
+  // Immediate write — debounced save can be lost if settings close quickly.
+  await Promise.resolve(persistUIPrefs(true));
+  if (key === "notifyOnNewArticles") {
+    if (v) {
+      const ok = await ensurePermission();
+      if (!ok) {
+        // Permission denied — still leave switch on so user can retry test / OS settings.
+        statusError.value = true;
+        status.value = t("settings.notifications.permissionDenied");
+        return;
+      }
+      statusError.value = false;
+      status.value = t("settings.notifications.enabledHint");
+    } else {
+      statusError.value = false;
+      status.value = t("settings.notifications.disabledHint");
+    }
+  } else if (key === "notifySound") {
+    statusError.value = false;
+    status.value = v
+      ? t("settings.notifications.soundOnHint")
+      : t("settings.notifications.soundOffHint");
   }
 }
 
@@ -30,14 +51,15 @@ async function ensurePermission(): Promise<boolean> {
   try {
     const ok = await fn();
     if (!ok) {
+      statusError.value = true;
       status.value = t("settings.notifications.permissionDenied");
-      toast.error(t("settings.notifications.permissionDenied"));
       return false;
     }
     return true;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[lrss] EnsureNotificationPermission", e);
+    statusError.value = true;
     status.value = msg;
     return false;
   }
@@ -47,23 +69,26 @@ async function onTestNotification() {
   if (testing.value) return;
   testing.value = true;
   status.value = "";
+  statusError.value = false;
   try {
     const ok = await ensurePermission();
     if (!ok) return;
     const api = await loadAppsvc();
     const testFn = api?.SettingsService?.TestNotification;
     if (typeof testFn !== "function") {
+      statusError.value = true;
       status.value = t("settings.notifications.unavailable");
-      toast.error(t("settings.notifications.unavailable"));
       return;
     }
     await testFn();
-    status.value = t("settings.notifications.testSent");
-    toast.success(t("settings.notifications.testSent"));
+    // Do NOT use vue-sonner here — that is in-app UI and looks like a "system" toast
+    // stuck inside the window. Success is the OS notification itself.
+    statusError.value = false;
+    status.value = t("settings.notifications.testHint");
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
+    statusError.value = true;
     status.value = msg;
-    toast.error(msg);
     console.warn("[lrss] TestNotification", e);
   } finally {
     testing.value = false;
@@ -118,7 +143,8 @@ async function onTestNotification() {
       </div>
       <p
         v-if="status"
-        class="px-0.5 pb-2.5 text-[12px] leading-relaxed text-muted-foreground"
+        class="px-0.5 pb-2.5 text-[12px] leading-relaxed"
+        :class="statusError ? 'text-destructive' : 'text-muted-foreground'"
         role="status"
       >
         {{ status }}

@@ -37,12 +37,22 @@ import ShortcutsPanel from "@/components/settings/panels/ShortcutsPanel.vue";
 import SyncPanel from "@/components/settings/panels/SyncPanel.vue";
 
 const { t } = useI18n();
-const { settingsOpen, closeSettings } = useRssStore();
+const { settingsOpen, closeSettings, loadUIPrefs, persistUIPrefs } = useRssStore();
 
 const activeSection = ref<SettingsSectionId>("general");
 
 watch(settingsOpen, (open) => {
-  if (open) activeSection.value = "general";
+  if (open) {
+    activeSection.value = "general";
+    // Flush pending saves first, then re-sync from SQLite (avoids stale overwrite).
+    void (async () => {
+      await Promise.resolve(persistUIPrefs(true));
+      await loadUIPrefs();
+    })();
+  } else {
+    // Flush any pending debounced writes when leaving settings.
+    void persistUIPrefs(true);
+  }
 });
 
 const navItems = computed(() => {

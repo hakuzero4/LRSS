@@ -246,76 +246,109 @@ function buildUIPrefs(): UIPrefs {
   };
 }
 
-function applyUIPrefs(prefs: Partial<UIPrefs> | null | undefined) {
-  if (!prefs || typeof prefs !== "object") return;
+/** Coerce Wails / JSON quirks (boolean | "true" | 0/1) into real booleans. */
+function coerceBool(v: unknown): boolean | undefined {
+  if (typeof v === "boolean") return v;
+  if (v === 1 || v === "1" || v === "true" || v === "TRUE" || v === "True") return true;
+  if (v === 0 || v === "0" || v === "false" || v === "FALSE" || v === "False") return false;
+  return undefined;
+}
 
-  if (typeof prefs.markAsReadOnOpen === "boolean") {
-    settings.markAsReadOnOpen = prefs.markAsReadOnOpen;
+function pickBool(obj: Record<string, unknown>, ...keys: string[]): boolean | undefined {
+  for (const k of keys) {
+    if (k in obj) {
+      const b = coerceBool(obj[k]);
+      if (b !== undefined) return b;
+    }
   }
-  if (typeof prefs.markAsReadOnScrollEnd === "boolean") {
-    settings.markAsReadOnScrollEnd = prefs.markAsReadOnScrollEnd;
+  return undefined;
+}
+
+function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null | undefined) {
+  if (!prefs || typeof prefs !== "object") return;
+  const p = prefs as Record<string, unknown>;
+
+  const markOpen = pickBool(p, "markAsReadOnOpen", "MarkAsReadOnOpen");
+  if (markOpen !== undefined) settings.markAsReadOnOpen = markOpen;
+
+  const markScroll = pickBool(p, "markAsReadOnScrollEnd", "MarkAsReadOnScrollEnd");
+  if (markScroll !== undefined) settings.markAsReadOnScrollEnd = markScroll;
+
+  const openStartup = p.openOnStartup ?? p.OpenOnStartup;
+  if (isSmartCollection(openStartup)) {
+    settings.openOnStartup = openStartup;
   }
-  if (isSmartCollection(prefs.openOnStartup)) {
-    settings.openOnStartup = prefs.openOnStartup;
+
+  const hideRead = pickBool(p, "hideReadOnStartup", "HideReadOnStartup");
+  if (hideRead !== undefined) settings.hideReadOnStartup = hideRead;
+
+  const theme = p.theme ?? p.Theme;
+  if (typeof theme === "string" && THEMES.has(theme)) {
+    settings.theme = theme as AppSettings["theme"];
   }
-  if (typeof prefs.hideReadOnStartup === "boolean") {
-    settings.hideReadOnStartup = prefs.hideReadOnStartup;
+  const accent = p.accent ?? p.Accent;
+  if (typeof accent === "string" && ACCENTS.has(accent)) {
+    settings.accent = accent as AppSettings["accent"];
   }
-  if (typeof prefs.theme === "string" && THEMES.has(prefs.theme)) {
-    settings.theme = prefs.theme as AppSettings["theme"];
+
+  const compact = pickBool(p, "compactSidebar", "CompactSidebar");
+  if (compact !== undefined) settings.compactSidebar = compact;
+
+  const fontSize = p.fontSize ?? p.FontSize;
+  if (typeof fontSize === "string" && FONT_SIZES.has(fontSize)) {
+    settings.fontSize = fontSize as AppSettings["fontSize"];
   }
-  if (typeof prefs.accent === "string" && ACCENTS.has(prefs.accent)) {
-    settings.accent = prefs.accent as AppSettings["accent"];
+
+  const showUnread = pickBool(p, "showUnreadOnly", "ShowUnreadOnly");
+  if (showUnread !== undefined) settings.showUnreadOnly = showUnread;
+
+  const openLinks = pickBool(p, "openLinksInBrowser", "OpenLinksInBrowser");
+  if (openLinks !== undefined) settings.openLinksInBrowser = openLinks;
+
+  const readerWidth = p.readerWidth ?? p.ReaderWidth;
+  if (typeof readerWidth === "string" && READER_WIDTHS.has(readerWidth)) {
+    settings.readerWidth = readerWidth as AppSettings["readerWidth"];
   }
-  if (typeof prefs.compactSidebar === "boolean") {
-    settings.compactSidebar = prefs.compactSidebar;
+
+  const folderId = p.defaultFolderId ?? p.DefaultFolderId;
+  if (typeof folderId === "string") {
+    settings.defaultFolderId = folderId.trim() ? folderId : null;
   }
-  if (typeof prefs.fontSize === "string" && FONT_SIZES.has(prefs.fontSize)) {
-    settings.fontSize = prefs.fontSize as AppSettings["fontSize"];
-  }
-  if (typeof prefs.showUnreadOnly === "boolean") {
-    settings.showUnreadOnly = prefs.showUnreadOnly;
-  }
-  if (typeof prefs.openLinksInBrowser === "boolean") {
-    settings.openLinksInBrowser = prefs.openLinksInBrowser;
-  }
-  if (typeof prefs.readerWidth === "string" && READER_WIDTHS.has(prefs.readerWidth)) {
-    settings.readerWidth = prefs.readerWidth as AppSettings["readerWidth"];
-  }
-  if (typeof prefs.defaultFolderId === "string") {
-    settings.defaultFolderId = prefs.defaultFolderId.trim() ? prefs.defaultFolderId : null;
-  }
-  if (typeof prefs.fetchFullContent === "boolean") {
-    settings.fetchFullContent = prefs.fetchFullContent;
-  }
-  if (typeof prefs.keepArticlesDays === "number" && Number.isFinite(prefs.keepArticlesDays)) {
-    const d = Math.round(prefs.keepArticlesDays);
+
+  const fetchFull = pickBool(p, "fetchFullContent", "FetchFullContent");
+  if (fetchFull !== undefined) settings.fetchFullContent = fetchFull;
+
+  const keepDays = p.keepArticlesDays ?? p.KeepArticlesDays;
+  if (typeof keepDays === "number" && Number.isFinite(keepDays)) {
+    const d = Math.round(keepDays);
     settings.keepArticlesDays = Math.min(365, Math.max(7, d));
   }
-  if (typeof prefs.hideDuplicateTitles === "boolean") {
-    settings.hideDuplicateTitles = prefs.hideDuplicateTitles;
+
+  const hideDup = pickBool(p, "hideDuplicateTitles", "HideDuplicateTitles");
+  if (hideDup !== undefined) settings.hideDuplicateTitles = hideDup;
+
+  const keywords = p.blockKeywords ?? p.BlockKeywords;
+  if (typeof keywords === "string") {
+    settings.blockKeywords = keywords;
   }
-  if (typeof prefs.blockKeywords === "string") {
-    settings.blockKeywords = prefs.blockKeywords;
-  }
-  if (typeof prefs.enableKeyboardShortcuts === "boolean") {
-    settings.enableKeyboardShortcuts = prefs.enableKeyboardShortcuts;
-  }
-  if (typeof prefs.notifyOnNewArticles === "boolean") {
-    settings.notifyOnNewArticles = prefs.notifyOnNewArticles;
-  }
-  if (typeof prefs.notifySound === "boolean") {
-    settings.notifySound = prefs.notifySound;
-  }
-  if (typeof prefs.hardwareAcceleration === "boolean") {
-    settings.hardwareAcceleration = prefs.hardwareAcceleration;
-  }
-  if (typeof prefs.clearCacheOnQuit === "boolean") {
-    settings.clearCacheOnQuit = prefs.clearCacheOnQuit;
-  }
-  if (typeof prefs.developerMode === "boolean") {
-    settings.developerMode = prefs.developerMode;
-  }
+
+  const kb = pickBool(p, "enableKeyboardShortcuts", "EnableKeyboardShortcuts");
+  if (kb !== undefined) settings.enableKeyboardShortcuts = kb;
+
+  const notifyNew = pickBool(p, "notifyOnNewArticles", "NotifyOnNewArticles");
+  if (notifyNew !== undefined) settings.notifyOnNewArticles = notifyNew;
+
+  const notifySnd = pickBool(p, "notifySound", "NotifySound");
+  if (notifySnd !== undefined) settings.notifySound = notifySnd;
+
+  const hw = pickBool(p, "hardwareAcceleration", "HardwareAcceleration");
+  if (hw !== undefined) settings.hardwareAcceleration = hw;
+
+  const clearCache = pickBool(p, "clearCacheOnQuit", "ClearCacheOnQuit");
+  if (clearCache !== undefined) settings.clearCacheOnQuit = clearCache;
+
+  const dev = pickBool(p, "developerMode", "DeveloperMode");
+  if (dev !== undefined) settings.developerMode = dev;
 }
 
 async function loadUIPrefs() {
@@ -332,24 +365,46 @@ async function loadUIPrefs() {
 
 let persistUIPrefsTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Debounced (300ms) persist of UI prefs to backend when available. */
-function persistUIPrefs(): void {
-  if (persistUIPrefsTimer) clearTimeout(persistUIPrefsTimer);
+/** Serialize saves so concurrent callers don't interleave. */
+let persistUIPrefsChain: Promise<void> = Promise.resolve();
+
+/**
+ * Persist UI prefs to SQLite via SetUIPrefs.
+ * @param immediate skip debounce (use for switches the user expects to stick)
+ */
+function persistUIPrefs(immediate = false): void | Promise<void> {
+  if (persistUIPrefsTimer) {
+    clearTimeout(persistUIPrefsTimer);
+    persistUIPrefsTimer = null;
+  }
+  if (immediate) {
+    return persistUIPrefsNow();
+  }
   persistUIPrefsTimer = setTimeout(() => {
     persistUIPrefsTimer = null;
     void persistUIPrefsNow();
   }, 300);
 }
 
-async function persistUIPrefsNow(): Promise<void> {
-  const api = await loadAppsvc();
-  const setPrefs = api?.SettingsService?.SetUIPrefs;
-  if (typeof setPrefs !== "function") return;
-  try {
-    await setPrefs(buildUIPrefs());
-  } catch (e) {
-    console.warn("[lrss] SetUIPrefs failed", e);
-  }
+function persistUIPrefsNow(): Promise<void> {
+  const run = async () => {
+    try {
+      const api = await loadAppsvc();
+      const setPrefs = api?.SettingsService?.SetUIPrefs;
+      if (typeof setPrefs !== "function") {
+        console.warn("[lrss] SetUIPrefs not available — UI prefs will not persist");
+        return;
+      }
+      // Plain JSON object — avoids reactive Proxy issues with Wails IPC.
+      const payload = JSON.parse(JSON.stringify(buildUIPrefs())) as UIPrefs;
+      await setPrefs(payload);
+    } catch (e) {
+      console.warn("[lrss] SetUIPrefs failed", e);
+    }
+  };
+  // Always continue the chain even if a previous save failed.
+  persistUIPrefsChain = persistUIPrefsChain.then(run, run);
+  return persistUIPrefsChain;
 }
 
 /**
@@ -835,6 +890,7 @@ export function useRssStore() {
     reloadLibrary,
     persistLibraryConfig,
     persistUIPrefs,
+    loadUIPrefs,
     purgeOldArticles,
     importOPMLFile,
     exportOPMLDownload,
