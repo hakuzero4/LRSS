@@ -102,6 +102,9 @@ func mapItem(item *gofeed.Item, baseURL, feedURL string) ParsedItem {
 	if author == "" && len(item.Authors) > 0 && item.Authors[0] != nil {
 		author = strings.TrimSpace(item.Authors[0].Name)
 	}
+	// Some feeds (e.g. Google Blog) put person markup in author:
+	// <name>…</name><title>…</title><department>…</department>
+	author = normalizeAuthor(author)
 
 	return ParsedItem{
 		GUID:        guid,
@@ -121,6 +124,59 @@ func bestContentHTML(item *gofeed.Item) string {
 		return c
 	}
 	return strings.TrimSpace(item.Description)
+}
+
+// normalizeAuthor turns RSS author fields into plain display text.
+// Handles Google-style person fragments that still contain XML tags.
+func normalizeAuthor(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if !strings.Contains(raw, "<") {
+		return raw
+	}
+	// Prefer structured person fields when present.
+	var parts []string
+	for _, tag := range []string{"name", "title", "department", "company", "email"} {
+		if v := extractSimpleTag(raw, tag); v != "" {
+			parts = append(parts, v)
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, " · ")
+	}
+	// Generic HTML/XML → plain text (may concatenate tags with spaces via ToText).
+	return strings.TrimSpace(htmltext.ToText(raw))
+}
+
+// extractSimpleTag returns the first non-empty text of <tag>...</tag> (case-insensitive).
+func extractSimpleTag(raw, tag string) string {
+	lower := strings.ToLower(raw)
+	open := "<" + strings.ToLower(tag)
+	idx := strings.Index(lower, open)
+	if idx < 0 {
+		return ""
+	}
+	// Skip to end of opening tag (allow attributes).
+	rest := raw[idx:]
+	gt := strings.IndexByte(rest, '>')
+	if gt < 0 {
+		return ""
+	}
+	// Self-closing or empty.
+	if gt > 0 && rest[gt-1] == '/' {
+		return ""
+	}
+	inner := rest[gt+1:]
+	close := "</" + tag
+	// case-insensitive close search
+	innerLower := strings.ToLower(inner)
+	cidx := strings.Index(innerLower, strings.ToLower(close))
+	if cidx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(htmltext.ToText(inner[:cidx]))
 }
 
 func truncateRunes(s string, max int) string {

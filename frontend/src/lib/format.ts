@@ -31,6 +31,27 @@ export function feedInitials(title: string): string {
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "F";
 }
 
+/**
+ * Normalize RSS author for display. Google Blog etc. store person markup like
+ * `<name>…</name><title>…</title>` which must not render as raw tags.
+ */
+export function formatAuthor(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  if (!/[<>]/.test(s)) return s;
+  const pick = (tag: string): string => {
+    const re = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "i");
+    const m = s.match(re);
+    return m ? plainText(m[1]).trim() : "";
+  };
+  const parts = ["name", "title", "department", "company", "email"]
+    .map(pick)
+    .filter(Boolean);
+  if (parts.length > 0) return parts.join(" · ");
+  return plainText(s);
+}
+
 /** Strip tags / decode entities for safe plain-text display (list/reader summary). */
 export function plainText(htmlOrText: string | null | undefined, maxLen = 0): string {
   if (!htmlOrText) return "";

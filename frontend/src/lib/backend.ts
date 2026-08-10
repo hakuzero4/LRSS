@@ -1,6 +1,6 @@
 /** Lazy load Wails-generated appsvc bindings. */
 
-import { plainText } from "./format";
+import { formatAuthor, plainText } from "./format";
 
 export async function loadAppsvc(): Promise<any | null> {
   try {
@@ -29,7 +29,10 @@ export function mapArticle(a: any) {
     id: a.id,
     feedId: a.feedId,
     title: plainText(a.title ?? a.Title ?? ""),
-    author: a.author ?? a.Author ?? undefined,
+    author: (() => {
+      const araw = formatAuthor(a.author ?? a.Author ?? "");
+      return araw || undefined;
+    })(),
     summary,
     contentHtml,
     url: a.url ?? a.URL ?? "",

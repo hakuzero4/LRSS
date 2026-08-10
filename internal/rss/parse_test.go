@@ -37,6 +37,21 @@ const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
   </channel>
 </rss>`
 
+func TestNormalizeAuthor_GooglePersonMarkup(t *testing.T) {
+	raw := `<name>Brenda Flynn</name><title>Partnerships Lead</title><department>Kaggle</department><company/>`
+	got := normalizeAuthor(raw)
+	want := "Brenda Flynn · Partnerships Lead · Kaggle"
+	if got != want {
+		t.Fatalf("normalizeAuthor = %q want %q", got, want)
+	}
+	if normalizeAuthor("Alice") != "Alice" {
+		t.Fatalf("plain author changed")
+	}
+	if normalizeAuthor("") != "" {
+		t.Fatalf("empty")
+	}
+}
+
 func TestToParsedFeed_RSS20(t *testing.T) {
 	parser := gofeed.NewParser()
 	feed, err := parser.ParseString(sampleRSS)
