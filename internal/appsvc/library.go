@@ -10,12 +10,33 @@ import (
 
 // FeedService is the Wails-facing feed API.
 type FeedService struct {
-	lib *service.Library
+	lib    *service.Library
+	notify RefreshNotifier
+}
+
+// RefreshNotifier is called after a successful refresh with new article count.
+// Implemented by *notify.Sender (optional).
+type RefreshNotifier interface {
+	AfterRefresh(ctx context.Context, articlesAdded int)
 }
 
 // NewFeedService wraps the library orchestrator.
 func NewFeedService(lib *service.Library) *FeedService {
 	return &FeedService{lib: lib}
+}
+
+// SetNotifier injects desktop notification hooks for refresh results.
+//
+//wails:ignore
+func (s *FeedService) SetNotifier(n RefreshNotifier) {
+	s.notify = n
+}
+
+func (s *FeedService) afterRefresh(added int) {
+	if s == nil || s.notify == nil || added <= 0 {
+		return
+	}
+	s.notify.AfterRefresh(context.Background(), added)
 }
 
 // ListFolders returns all folders.
@@ -43,6 +64,24 @@ func (s *FeedService) DeleteFeed(id string) error {
 	return s.lib.DeleteFeed(context.Background(), id)
 }
 
+// ClearAllResult is returned by ClearAllSubscriptions.
+type ClearAllResult struct {
+	FeedsDeleted   int `json:"feedsDeleted"`
+	FoldersDeleted int `json:"foldersDeleted"`
+}
+
+// ClearAllSubscriptions removes every feed, article, and folder. Irreversible.
+func (s *FeedService) ClearAllSubscriptions() (ClearAllResult, error) {
+	res, err := s.lib.ClearAllSubscriptions(context.Background())
+	if err != nil {
+		return ClearAllResult{}, err
+	}
+	return ClearAllResult{
+		FeedsDeleted:   res.FeedsDeleted,
+		FoldersDeleted: res.FoldersDeleted,
+	}, nil
+}
+
 // RefreshResult is returned by RefreshFeed.
 type RefreshResult struct {
 	Added int `json:"added"`
@@ -54,6 +93,7 @@ func (s *FeedService) RefreshFeed(id string) (RefreshResult, error) {
 	if err != nil {
 		return RefreshResult{}, err
 	}
+	s.afterRefresh(n)
 	return RefreshResult{Added: n}, nil
 }
 
@@ -70,11 +110,85 @@ func (s *FeedService) RefreshAll() (RefreshAllResult, error) {
 	if err != nil {
 		return RefreshAllResult{}, err
 	}
+	s.afterRefresh(res.ArticlesAdded)
 	return RefreshAllResult{
 		FeedsOK:       res.FeedsOK,
 		FeedsErr:      res.FeedsErr,
 		ArticlesAdded: res.ArticlesAdded,
 	}, nil
+}
+
+// CreateFolder creates a folder. Empty parentId means root.
+func (s *FeedService) CreateFolder(name, parentId string) (model.Folder, error) {
+	var parent *string
+	if strings.TrimSpace(parentId) != "" {
+		parentId = strings.TrimSpace(parentId)
+		parent = &parentId
+	}
+	return s.lib.CreateFolder(context.Background(), name, parent)
+}
+
+// RenameFolder renames a folder.
+func (s *FeedService) RenameFolder(id, name string) error {
+	return s.lib.RenameFolder(context.Background(), id, name)
+}
+
+// DeleteFolder removes a folder (feeds become unfiled).
+func (s *FeedService) DeleteFolder(id string) error {
+	return s.lib.DeleteFolder(context.Background(), id)
+}
+
+// MoveFeed assigns a feed to a folder. Empty folderId means unfiled.
+func (s *FeedService) MoveFeed(feedId, folderId string) error {
+	var folder *string
+	if strings.TrimSpace(folderId) != "" {
+		folderId = strings.TrimSpace(folderId)
+		folder = &folderId
+	}
+	return s.lib.MoveFeed(context.Background(), feedId, folder)
+}
+
+// SetFeedPaused pauses or unpauses a feed.
+func (s *FeedService) SetFeedPaused(id string, paused bool) error {
+	return s.lib.SetPaused(context.Background(), id, paused)
+}
+
+// OPMLImportResult is the Wails-facing import summary (mirrors service.OPMLImportResult).
+type OPMLImportResult struct {
+	FoldersCreated int      `json:"foldersCreated"`
+	FeedsAdded     int      `json:"feedsAdded"`
+	FeedsSkipped   int      `json:"feedsSkipped"`
+	FeedsFailed    int      `json:"feedsFailed"`
+	Errors         []string `json:"errors"`
+	AddedFeedIDs   []string `json:"addedFeedIds"`
+}
+
+// ImportOPML imports an OPML document.
+// Prefer fetch=false from the UI so the call returns after writing subscriptions;
+// then refresh AddedFeedIDs with RefreshFeed for progress. fetch=true blocks until
+// every new feed is fetched (slow for large OPML files).
+func (s *FeedService) ImportOPML(xml string, fetch bool) (OPMLImportResult, error) {
+	res, err := s.lib.ImportOPML(context.Background(), xml, fetch)
+	if err != nil {
+		return OPMLImportResult{}, err
+	}
+	ids := res.AddedFeedIDs
+	if ids == nil {
+		ids = []string{}
+	}
+	return OPMLImportResult{
+		FoldersCreated: res.FoldersCreated,
+		FeedsAdded:     res.FeedsAdded,
+		FeedsSkipped:   res.FeedsSkipped,
+		FeedsFailed:    res.FeedsFailed,
+		Errors:         res.Errors,
+		AddedFeedIDs:   ids,
+	}, nil
+}
+
+// ExportOPML returns the subscription tree as OPML 2.0 XML text.
+func (s *FeedService) ExportOPML() (string, error) {
+	return s.lib.ExportOPML(context.Background())
 }
 
 // ArticleService is the Wails-facing article API.

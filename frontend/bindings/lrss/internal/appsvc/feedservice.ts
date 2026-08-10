@@ -26,10 +26,48 @@ export function AddFeed(feedURL: string, folderId: string): $CancellablePromise<
 }
 
 /**
+ * ClearAllSubscriptions removes every feed, article, and folder. Irreversible.
+ */
+export function ClearAllSubscriptions(): $CancellablePromise<$models.ClearAllResult> {
+    return $Call.ByID(4271003402);
+}
+
+/**
+ * CreateFolder creates a folder. Empty parentId means root.
+ */
+export function CreateFolder(name: string, parentId: string): $CancellablePromise<model$0.Folder> {
+    return $Call.ByID(3823558712, name, parentId);
+}
+
+/**
  * DeleteFeed removes a subscription.
  */
 export function DeleteFeed(id: string): $CancellablePromise<void> {
     return $Call.ByID(1993950911, id);
+}
+
+/**
+ * DeleteFolder removes a folder (feeds become unfiled).
+ */
+export function DeleteFolder(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1978788375, id);
+}
+
+/**
+ * ExportOPML returns the subscription tree as OPML 2.0 XML text.
+ */
+export function ExportOPML(): $CancellablePromise<string> {
+    return $Call.ByID(3473081360);
+}
+
+/**
+ * ImportOPML imports an OPML document.
+ * Prefer fetch=false from the UI so the call returns after writing subscriptions;
+ * then refresh AddedFeedIDs with RefreshFeed for progress. fetch=true blocks until
+ * every new feed is fetched (slow for large OPML files).
+ */
+export function ImportOPML(xml: string, fetch: boolean): $CancellablePromise<$models.OPMLImportResult> {
+    return $Call.ByID(3830505915, xml, fetch);
 }
 
 /**
@@ -47,6 +85,13 @@ export function ListFolders(): $CancellablePromise<model$0.Folder[] | null> {
 }
 
 /**
+ * MoveFeed assigns a feed to a folder. Empty folderId means unfiled.
+ */
+export function MoveFeed(feedId: string, folderId: string): $CancellablePromise<void> {
+    return $Call.ByID(1053389845, feedId, folderId);
+}
+
+/**
  * RefreshAll refreshes all non-paused feeds.
  */
 export function RefreshAll(): $CancellablePromise<$models.RefreshAllResult> {
@@ -58,4 +103,18 @@ export function RefreshAll(): $CancellablePromise<$models.RefreshAllResult> {
  */
 export function RefreshFeed(id: string): $CancellablePromise<$models.RefreshResult> {
     return $Call.ByID(4066473343, id);
+}
+
+/**
+ * RenameFolder renames a folder.
+ */
+export function RenameFolder(id: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(2070165874, id, name);
+}
+
+/**
+ * SetFeedPaused pauses or unpauses a feed.
+ */
+export function SetFeedPaused(id: string, paused: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3296238782, id, paused);
 }

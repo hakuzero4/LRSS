@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"lrss/internal/id"
 	"lrss/internal/model"
@@ -46,6 +47,23 @@ func (r *FolderRepo) List(ctx context.Context) ([]model.Folder, error) {
 	return out, rows.Err()
 }
 
+// Get loads one folder by id.
+func (r *FolderRepo) Get(ctx context.Context, folderID string) (model.Folder, error) {
+	row := r.DB.QueryRowContext(ctx, `
+		SELECT id, name, parent_id, sort_order, created_at, updated_at
+		FROM folders WHERE id = ?`, folderID)
+	var f model.Folder
+	var parent sql.NullString
+	if err := row.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return model.Folder{}, fmt.Errorf("folder not found: %s", folderID)
+		}
+		return model.Folder{}, fmt.Errorf("get folder: %w", err)
+	}
+	f.ParentID = strPtr(parent)
+	return f, nil
+}
+
 // Create inserts a folder and returns it with generated id/timestamps.
 func (r *FolderRepo) Create(ctx context.Context, name string, parentID *string) (model.Folder, error) {
 	now := nowUTC()
@@ -66,6 +84,38 @@ func (r *FolderRepo) Create(ctx context.Context, name string, parentID *string) 
 		return model.Folder{}, fmt.Errorf("create folder: %w", err)
 	}
 	return f, nil
+}
+
+// Rename updates a folder's name. Name is trimmed; empty after trim is rejected.
+func (r *FolderRepo) Rename(ctx context.Context, folderID, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("folder name is required")
+	}
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE folders SET name = ?, updated_at = ? WHERE id = ?`,
+		name, now, folderID)
+	if err != nil {
+		return fmt.Errorf("rename folder: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("folder not found: %s", folderID)
+	}
+	return nil
+}
+
+// DeleteAll removes every folder. Prefer clearing feeds first (or rely on ON DELETE SET NULL).
+func (r *FolderRepo) DeleteAll(ctx context.Context) (int, error) {
+	var n int
+	if err := r.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM folders`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count folders: %w", err)
+	}
+	if _, err := r.DB.ExecContext(ctx, `DELETE FROM folders`); err != nil {
+		return 0, fmt.Errorf("delete all folders: %w", err)
+	}
+	return n, nil
 }
 
 // Delete removes a folder (feeds.folder_id set null by FK).

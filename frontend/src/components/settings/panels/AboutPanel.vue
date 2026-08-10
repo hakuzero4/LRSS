@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { Sparkles } from "@lucide/vue";
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import { Button } from "@/components/ui/button";
 
+const { t } = useI18n();
 const { feeds, articles, smartCounts } = useRssStore();
 
-const summary = computed(
-  () =>
-    `${feeds.value.length} 个订阅 · ${articles.value.length} 篇文章 · ${smartCounts.value.unread} 未读`,
+const summary = computed(() =>
+  t("settings.about.summary", {
+    feeds: feeds.value.length,
+    articles: articles.value.length,
+    unread: smartCounts.value.unread,
+  }),
 );
 </script>
 
@@ -21,19 +26,27 @@ const summary = computed(
       </div>
       <div class="min-w-0 pt-0.5">
         <h3 class="text-[17px] font-semibold tracking-tight">LRSS</h3>
-        <p class="mt-0.5 text-[12.5px] text-muted-foreground">版本 0.1.0 · 设计预览</p>
+        <p class="mt-0.5 text-[12.5px] text-muted-foreground">
+          {{ t("settings.about.version", { version: "0.1.0" }) }}
+        </p>
         <p class="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-          本地优先的桌面 RSS 阅读器。Wails v3 · Vue 3 · shadcn-vue。
+          {{ t("settings.about.blurb") }}
         </p>
         <p class="mt-1 text-[12px] text-muted-foreground">{{ summary }}</p>
       </div>
     </div>
 
-    <SettingsGroup title="资源">
+    <SettingsGroup :title="t('settings.about.resources')">
       <div class="flex flex-wrap gap-2 py-3">
-        <Button variant="outline" size="sm" type="button">使用说明</Button>
-        <Button variant="outline" size="sm" type="button">检查更新</Button>
-        <Button variant="outline" size="sm" type="button">开源许可</Button>
+        <Button variant="outline" size="sm" type="button">
+          {{ t("settings.about.docs") }}
+        </Button>
+        <Button variant="outline" size="sm" type="button">
+          {{ t("settings.about.checkUpdate") }}
+        </Button>
+        <Button variant="outline" size="sm" type="button">
+          {{ t("settings.about.licenses") }}
+        </Button>
       </div>
     </SettingsGroup>
   </div>

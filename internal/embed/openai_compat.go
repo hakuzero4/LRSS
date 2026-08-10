@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"lrss/internal/httpx"
 	"lrss/internal/settings"
 )
 
@@ -35,9 +36,9 @@ func NewOpenAICompat(cfg settings.EmbeddingConfig) (*OpenAICompatProvider, error
 		model:      cfg.Model,
 		dimensions: cfg.Dimensions,
 		batchSize:  cfg.BatchSize,
-		client: &http.Client{
+		client: httpx.Std(httpx.Options{
 			Timeout: 30 * time.Second,
-		},
+		}),
 	}, nil
 }
 

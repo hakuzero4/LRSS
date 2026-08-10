@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Star } from "@lucide/vue";
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { Article, Feed } from "@/types/rss";
-import { feedInitials, relativeTime } from "@/lib/format";
+import FeedIcon from "@/components/feed/FeedIcon.vue";
+import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const props = defineProps<{
@@ -15,8 +17,10 @@ const emit = defineEmits<{
   select: [];
 }>();
 
+const { t } = useI18n();
+
 const meta = computed(() => {
-  const source = props.feed?.title ?? "Feed";
+  const source = props.feed?.title ?? t("article.feedFallback");
   return `${source} · ${relativeTime(props.article.publishedAt)}`;
 });
 </script>
@@ -43,16 +47,19 @@ const meta = computed(() => {
       />
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
-          <span class="feed-glyph size-5 text-[9px]">
-            {{ feedInitials(feed?.title ?? article.feedId) }}
-          </span>
+          <FeedIcon
+            :src="feed?.favicon"
+            :title="feed?.title"
+            size="md"
+            class="mt-0"
+          />
           <p class="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
             {{ meta }}
           </p>
           <Star
             v-if="article.starred"
             class="size-3 shrink-0 fill-amber-500 text-amber-500"
-            aria-label="Starred"
+            :aria-label="t('article.starred')"
           />
         </div>
         <h3

@@ -13,6 +13,9 @@ export {
 };
 
 export type {
+    ClearAllResult,
+    OPMLImportResult,
+    PurgeResult,
     RefreshAllResult,
     RefreshResult
 } from "./models.js";

@@ -3,5 +3,7 @@
 
 export type {
     EmbeddingConfig,
-    SearchConfig
+    LibraryConfig,
+    SearchConfig,
+    UIPrefs
 } from "./models.js";

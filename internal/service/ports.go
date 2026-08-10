@@ -16,7 +16,12 @@ type FeedStore interface {
 	GetByURL(ctx context.Context, feedURL string) (model.Feed, error)
 	Insert(ctx context.Context, f *model.Feed) error
 	UpdateAfterFetch(ctx context.Context, feedID string, title string, etag, lastModified, lastError *string) error
+	SetFolder(ctx context.Context, feedID string, folderID *string) error
+	SetPaused(ctx context.Context, feedID string, paused bool) error
+	SetSiteURL(ctx context.Context, feedID, siteURL string) error
+	SetFaviconURL(ctx context.Context, feedID, faviconURL string) error
 	Delete(ctx context.Context, feedID string) error
+	DeleteAll(ctx context.Context) (int, error)
 }
 
 // ArticleStore is the article persistence port (satisfied by *repo.ArticleRepo).
@@ -27,11 +32,17 @@ type ArticleStore interface {
 	SetRead(ctx context.Context, articleID string, read bool) error
 	SetStarred(ctx context.Context, articleID string, starred bool) error
 	MarkAllRead(ctx context.Context, collection string) error
+	PurgeOlderThan(ctx context.Context, days int) (int, error)
 }
 
-// FolderStore lists folders (satisfied by *repo.FolderRepo).
+// FolderStore is the folder persistence port (satisfied by *repo.FolderRepo).
 type FolderStore interface {
 	List(ctx context.Context) ([]model.Folder, error)
+	Create(ctx context.Context, name string, parentID *string) (model.Folder, error)
+	Get(ctx context.Context, folderID string) (model.Folder, error)
+	Rename(ctx context.Context, folderID, name string) error
+	Delete(ctx context.Context, folderID string) error
+	DeleteAll(ctx context.Context) (int, error)
 }
 
 // RSSFetcher fetches feeds (satisfied by *rss.Client).

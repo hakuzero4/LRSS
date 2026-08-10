@@ -14,10 +14,75 @@ export interface EmbeddingConfig {
 }
 
 /**
+ * LibraryConfig controls background refresh behaviour.
+ */
+export interface LibraryConfig {
+    "autoRefresh": boolean;
+    "refreshIntervalMinutes": number;
+}
+
+/**
  * SearchConfig controls search mode defaults.
  */
 export interface SearchConfig {
     "mode": string;
     "vectorTopK": number;
     "ftsLimit": number;
+}
+
+/**
+ * UIPrefs holds frontend UI / reading / retention preferences.
+ * JSON keys match the frontend AppSettings fields (camelCase).
+ */
+export interface UIPrefs {
+    "markAsReadOnOpen": boolean;
+    "markAsReadOnScrollEnd": boolean;
+
+    /**
+     * unread|today|starred|all
+     */
+    "openOnStartup": string;
+    "hideReadOnStartup": boolean;
+
+    /**
+     * system|light|dark
+     */
+    "theme": string;
+
+    /**
+     * blue|purple|teal|orange
+     */
+    "accent": string;
+    "compactSidebar": boolean;
+
+    /**
+     * sm|md|lg
+     */
+    "fontSize": string;
+    "showUnreadOnly": boolean;
+    "openLinksInBrowser": boolean;
+
+    /**
+     * narrow|medium|wide
+     */
+    "readerWidth": string;
+
+    /**
+     * empty = none
+     */
+    "defaultFolderId": string;
+    "fetchFullContent": boolean;
+
+    /**
+     * 7–365, default 90
+     */
+    "keepArticlesDays": number;
+    "hideDuplicateTitles": boolean;
+    "blockKeywords": string;
+    "enableKeyboardShortcuts": boolean;
+    "notifyOnNewArticles": boolean;
+    "notifySound": boolean;
+    "hardwareAcceleration": boolean;
+    "clearCacheOnQuit": boolean;
+    "developerMode": boolean;
 }

@@ -270,6 +270,82 @@ func (r *ArticleRepo) Delete(ctx context.Context, articleID string) error {
 	return nil
 }
 
+// PurgeOlderThan deletes non-starred articles whose COALESCE(published_at, fetched_at)
+// is older than days days. Starred articles are always kept. FTS rows are cleared
+// before article rows; embeddings cascade via FK.
+//
+// days is clamped to [7, 365]. Returns the number of articles deleted.
+// Fully consumes the ID select before further Exec (MaxOpenConns=1).
+func (r *ArticleRepo) PurgeOlderThan(ctx context.Context, days int) (int, error) {
+	if days < 7 {
+		days = 7
+	}
+	if days > 365 {
+		days = 365
+	}
+	mod := fmt.Sprintf("-%d days", days)
+
+	// Collect IDs fully before any further DB ops on this connection.
+	rows, err := r.DB.QueryContext(ctx, `
+		SELECT id FROM articles
+		WHERE is_starred = 0
+		  AND date(COALESCE(published_at, fetched_at)) < date('now', ?)`, mod)
+	if err != nil {
+		return 0, fmt.Errorf("purge select: %w", err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("purge scan: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, fmt.Errorf("purge rows: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("purge close: %w", err)
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	// Bulk FTS clear, then articles (embeddings ON DELETE CASCADE).
+	// Chunk to avoid huge IN lists on very large purges.
+	const chunk = 200
+	deleted := 0
+	for i := 0; i < len(ids); i += chunk {
+		end := i + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		part := ids[i:end]
+		placeholders := make([]string, len(part))
+		args := make([]any, len(part))
+		for j, id := range part {
+			placeholders[j] = "?"
+			args[j] = id
+		}
+		inList := strings.Join(placeholders, ",")
+
+		if _, err := r.DB.ExecContext(ctx,
+			`DELETE FROM articles_fts WHERE article_id IN (`+inList+`)`, args...); err != nil {
+			return deleted, fmt.Errorf("purge fts: %w", err)
+		}
+		res, err := r.DB.ExecContext(ctx,
+			`DELETE FROM articles WHERE id IN (`+inList+`)`, args...)
+		if err != nil {
+			return deleted, fmt.Errorf("purge articles: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		deleted += int(n)
+	}
+	return deleted, nil
+}
+
 func collectionWhere(collection string) (where []string, args []any, err error) {
 	c := strings.TrimSpace(collection)
 	if c == "" {

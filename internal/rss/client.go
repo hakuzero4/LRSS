@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+
+	"lrss/internal/httpx"
 )
 
 const (
@@ -59,7 +61,7 @@ func (c *Client) Fetch(ctx context.Context, feedURL string, opts FetchOptions) (
 		ua = defaultUserAgent
 	}
 
-	httpClient := c.httpClient(timeout)
+	httpClient := c.httpClient(timeout, ua)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
 	if err != nil {
@@ -127,9 +129,12 @@ func (c *Client) FetchAndMap(ctx context.Context, feedURL string, opts FetchOpti
 	return res, ToParsedFeed(res.Parsed, feedURL), nil
 }
 
-func (c *Client) httpClient(timeout time.Duration) *http.Client {
+func (c *Client) httpClient(timeout time.Duration, ua string) *http.Client {
 	if c != nil && c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: timeout}
+	return httpx.Std(httpx.Options{
+		Timeout:   timeout,
+		UserAgent: ua,
+	})
 }

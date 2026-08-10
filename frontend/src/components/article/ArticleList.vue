@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { CheckCheck, RefreshCw, Search, X } from "@lucide/vue";
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import ArticleListItem from "@/components/article/ArticleListItem.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+const { t } = useI18n();
 
 const {
   feeds,
@@ -27,18 +29,22 @@ const {
 
 const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
 const empty = computed(() => filteredArticles.value.length === 0);
+
+const articleCountLabel = computed(() => {
+  const n = filteredArticles.value.length;
+  return n === 1 ? t("article.countOne") : t("article.count", { n });
+});
 </script>
 
 <template>
-  <section class="flex h-full w-[340px] shrink-0 flex-col border-r border-border/70 bg-background">
+  <section class="flex h-full min-h-0 w-[340px] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-background">
     <header class="pane-chrome flex h-12 items-center gap-2 px-3">
       <div class="min-w-0 flex-1">
         <h2 class="truncate text-[13px] font-semibold tracking-tight">
           {{ collectionTitle }}
         </h2>
         <p class="text-[11px] text-muted-foreground tabular-nums">
-          {{ filteredArticles.length }}
-          {{ filteredArticles.length === 1 ? "article" : "articles" }}
+          {{ articleCountLabel }}
         </p>
       </div>
 
@@ -50,13 +56,13 @@ const empty = computed(() => filteredArticles.value.length === 0);
               size="icon-sm"
               class="text-muted-foreground"
               :disabled="refreshing"
-              aria-label="Refresh feeds"
+              :aria-label="t('article.refreshFeeds')"
               @click="refreshFeeds"
             >
               <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Refresh</TooltipContent>
+          <TooltipContent>{{ t("common.refresh") }}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -66,13 +72,13 @@ const empty = computed(() => filteredArticles.value.length === 0);
               size="icon-sm"
               class="text-muted-foreground"
               :disabled="empty"
-              aria-label="Mark all as read"
+              :aria-label="t('article.markAllRead')"
               @click="markAllRead"
             >
               <CheckCheck class="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Mark all read</TooltipContent>
+          <TooltipContent>{{ t("article.markAllRead") }}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     </header>
@@ -85,15 +91,15 @@ const empty = computed(() => filteredArticles.value.length === 0);
         <Input
           v-model="searchQuery"
           type="search"
-          placeholder="Search articles"
+          :placeholder="t('article.searchPlaceholder')"
           class="h-8 bg-muted/50 pl-8 pr-8 text-[13px]"
-          aria-label="Search articles"
+          :aria-label="t('article.searchAria')"
         />
         <button
           v-if="searchQuery"
           type="button"
           class="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-          aria-label="Clear search"
+          :aria-label="t('article.clearSearch')"
           @click="searchQuery = ''"
         >
           <X class="size-3.5" />
@@ -101,11 +107,11 @@ const empty = computed(() => filteredArticles.value.length === 0);
       </div>
     </div>
 
-    <ScrollArea class="flex-1">
+    <div class="scroll-pane flex-1">
       <div v-if="empty" class="flex h-48 flex-col items-center justify-center px-6 text-center">
-        <p class="text-[13px] font-medium text-foreground/80">No articles here</p>
+        <p class="text-[13px] font-medium text-foreground/80">{{ t("article.emptyTitle") }}</p>
         <p class="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-          Try another list, clear search, or refresh your feeds.
+          {{ t("article.emptyHint") }}
         </p>
       </div>
 
@@ -117,6 +123,6 @@ const empty = computed(() => filteredArticles.value.length === 0);
         :active="article.id === selectedArticleId"
         @select="selectArticle(article.id)"
       />
-    </ScrollArea>
+    </div>
   </section>
 </template>

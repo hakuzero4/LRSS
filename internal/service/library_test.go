@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"lrss/internal/db"
+	"lrss/internal/model"
 	"lrss/internal/repo"
 	"lrss/internal/rss"
 	"lrss/internal/service"
@@ -137,5 +138,126 @@ func TestLibrary_AddFeedAndRefresh(t *testing.T) {
 	}
 	if len(starred) != 1 {
 		t.Fatalf("starred = %d", len(starred))
+	}
+}
+
+func TestLibrary_FolderCRUD_MoveFeed_SetPaused(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	// Create / rename / delete folder
+	f, err := lib.CreateFolder(ctx, "  News  ", nil)
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	if f.Name != "News" || f.ID == "" {
+		t.Fatalf("folder = %+v", f)
+	}
+
+	emptyParent := ""
+	_, err = lib.CreateFolder(ctx, "Root", &emptyParent)
+	if err != nil {
+		t.Fatalf("CreateFolder empty parent: %v", err)
+	}
+
+	if _, err := lib.CreateFolder(ctx, "   ", nil); err == nil {
+		t.Fatal("expected empty name error")
+	}
+
+	if err := lib.RenameFolder(ctx, f.ID, "  Tech  "); err != nil {
+		t.Fatalf("RenameFolder: %v", err)
+	}
+	folders, err := lib.ListFolders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var renamed bool
+	for _, folder := range folders {
+		if folder.ID == f.ID && folder.Name == "Tech" {
+			renamed = true
+		}
+	}
+	if !renamed {
+		t.Fatalf("rename not visible in ListFolders: %+v", folders)
+	}
+
+	if err := lib.RenameFolder(ctx, f.ID, "  "); err == nil {
+		t.Fatal("expected rename empty error")
+	}
+
+	// Move feed between folders / unfiled
+	feed := &model.Feed{Title: "Feed", FeedURL: "https://example.com/lib-move"}
+	if err := repos.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := lib.MoveFeed(ctx, feed.ID, &f.ID); err != nil {
+		t.Fatalf("MoveFeed: %v", err)
+	}
+	got, err := lib.ListFeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].FolderID == nil || *got[0].FolderID != f.ID {
+		t.Fatalf("after MoveFeed feeds=%+v", got)
+	}
+
+	other, err := lib.CreateFolder(ctx, "Other", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.MoveFeed(ctx, feed.ID, &other.ID); err != nil {
+		t.Fatalf("MoveFeed other: %v", err)
+	}
+	gotFeed, err := repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotFeed.FolderID == nil || *gotFeed.FolderID != other.ID {
+		t.Fatalf("folder = %v want %s", gotFeed.FolderID, other.ID)
+	}
+
+	emptyFolder := ""
+	if err := lib.MoveFeed(ctx, feed.ID, &emptyFolder); err != nil {
+		t.Fatalf("MoveFeed unfiled: %v", err)
+	}
+	gotFeed, err = repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotFeed.FolderID != nil {
+		t.Fatalf("expected unfiled, got %v", *gotFeed.FolderID)
+	}
+
+	// SetPaused
+	if err := lib.SetPaused(ctx, feed.ID, true); err != nil {
+		t.Fatalf("SetPaused: %v", err)
+	}
+	gotFeed, err = repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gotFeed.IsPaused {
+		t.Fatal("expected paused")
+	}
+	if err := lib.SetPaused(ctx, feed.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete folder unfiles feeds (via FK)
+	if err := lib.MoveFeed(ctx, feed.ID, &f.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.DeleteFolder(ctx, f.ID); err != nil {
+		t.Fatalf("DeleteFolder: %v", err)
+	}
+	gotFeed, err = repos.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotFeed.FolderID != nil {
+		t.Fatalf("after DeleteFolder expected unfiled, got %v", *gotFeed.FolderID)
 	}
 }

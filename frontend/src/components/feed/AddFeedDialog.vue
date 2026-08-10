@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const { t } = useI18n();
 const { addFeedOpen, closeAddFeed, addFeedFromURL } = useRssStore();
 
 const feedUrl = ref("");
@@ -35,14 +37,14 @@ async function onSubmit() {
   error.value = "";
   const url = feedUrl.value.trim();
   if (!url) {
-    error.value = "请粘贴订阅源 URL。";
+    error.value = t("feed.add.errorEmpty");
     return;
   }
   try {
     // eslint-disable-next-line no-new
     new URL(url);
   } catch {
-    error.value = "URL 格式不正确。";
+    error.value = t("feed.add.errorInvalid");
     return;
   }
 
@@ -61,43 +63,45 @@ async function onSubmit() {
   <Dialog :open="addFeedOpen" @update:open="(v) => !v && closeAddFeed()">
     <DialogContent class="sm:max-w-md">
       <DialogHeader>
-        <DialogTitle>添加订阅</DialogTitle>
+        <DialogTitle>{{ t("feed.add.title") }}</DialogTitle>
         <DialogDescription>
-          粘贴 RSS / Atom 地址。可选标题；留空则使用拉取到的源标题。
+          {{ t("feed.add.description") }}
         </DialogDescription>
       </DialogHeader>
 
       <form class="grid gap-4 py-1" @submit.prevent="onSubmit">
         <div class="grid gap-2">
-          <Label for="feed-url">Feed URL</Label>
+          <Label for="feed-url">{{ t("feed.add.urlLabel") }}</Label>
           <Input
             id="feed-url"
             v-model="feedUrl"
             type="url"
-            placeholder="https://example.com/feed.xml"
+            :placeholder="t('feed.add.urlPlaceholder')"
             autocomplete="off"
             autofocus
           />
         </div>
         <div class="grid gap-2">
           <Label for="feed-title">
-            标题
-            <span class="font-normal text-muted-foreground">（可选）</span>
+            {{ t("feed.add.titleLabel") }}
+            <span class="font-normal text-muted-foreground">{{ t("common.optional") }}</span>
           </Label>
           <Input
             id="feed-title"
             v-model="title"
             type="text"
-            placeholder="我的博客"
+            :placeholder="t('feed.add.titlePlaceholder')"
             autocomplete="off"
           />
         </div>
         <p v-if="error" class="text-[12.5px] text-destructive">{{ error }}</p>
 
         <DialogFooter class="gap-2 sm:gap-0">
-          <Button type="button" variant="ghost" @click="closeAddFeed">取消</Button>
+          <Button type="button" variant="ghost" @click="closeAddFeed">
+            {{ t("common.cancel") }}
+          </Button>
           <Button type="submit" :disabled="!canSubmit">
-            {{ submitting ? "拉取中…" : "添加并刷新" }}
+            {{ submitting ? t("feed.add.submitting") : t("feed.add.submit") }}
           </Button>
         </DialogFooter>
       </form>

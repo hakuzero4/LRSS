@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { Brain, Loader2 } from "@lucide/vue";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
@@ -8,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "vue-sonner";
+
+const { t } = useI18n();
 
 /** Bound at runtime when Wails services exist; UI stays usable in pure Vite. */
 type EmbeddingConfig = {
@@ -41,7 +44,7 @@ const caps = ref<Caps>({
   vectorExtension: false,
   embeddingConfigured: false,
   vectorSearch: false,
-  reason: "后端未连接时显示为设计预览",
+  reason: undefined,
 });
 const vectorStatus = ref("");
 const saving = ref(false);
@@ -65,6 +68,8 @@ async function load() {
       const cfg = await Settings.GetEmbeddingConfig();
       Object.assign(form, cfg);
       enabled.value = cfg.provider === "openai_compatible";
+    } else {
+      caps.value.reason = t("settings.searchAi.previewReason");
     }
     if (Settings?.GetSearchCapabilities) {
       caps.value = await Settings.GetSearchCapabilities();
@@ -72,8 +77,13 @@ async function load() {
     if (Settings?.GetVectorStatus) {
       const st = await Settings.GetVectorStatus();
       vectorStatus.value = st.loaded
-        ? `扩展已加载 · ${st.version || ""} · ${st.backend || ""}`
-        : `扩展未加载 · ${st.error || "进程内余弦可用"}`;
+        ? t("settings.searchAi.extLoaded", {
+            version: st.version || "",
+            backend: st.backend || "",
+          })
+        : t("settings.searchAi.extNotLoaded", {
+            error: st.error || t("settings.searchAi.extCosineFallback"),
+          });
     }
   } catch (e) {
     console.warn(e);
@@ -87,7 +97,9 @@ async function save() {
   try {
     const Settings = await loadSettingsModule();
     if (!Settings?.SetEmbeddingConfig) {
-      toast.message("设计预览", { description: "Go 服务未连接，配置未写入。" });
+      toast.message(t("settings.searchAi.previewMode"), {
+        description: t("settings.searchAi.backendDisconnected"),
+      });
       return;
     }
     const payload = {
@@ -97,14 +109,14 @@ async function save() {
       batchSize: Number(form.batchSize) || 16,
     };
     await Settings.SetEmbeddingConfig(payload);
-    toast.success("已保存", {
+    toast.success(t("settings.searchAi.saved"), {
       description: enabled.value
-        ? "向量搜索已启用（进程内余弦；扩展见 docs/embedding.md）"
-        : "已关闭向量，使用全文检索",
+        ? t("settings.searchAi.savedEnabled")
+        : t("settings.searchAi.savedDisabled"),
     });
     await load();
   } catch (e: any) {
-    toast.error("保存失败", { description: e?.message || String(e) });
+    toast.error(t("settings.searchAi.saveFailed"), { description: e?.message || String(e) });
   } finally {
     saving.value = false;
   }
@@ -114,13 +126,13 @@ async function runEmbed() {
   try {
     const Settings = await loadSettingsModule();
     if (!Settings?.RunEmbedOnce) {
-      toast.message("设计预览");
+      toast.message(t("settings.searchAi.previewMode"));
       return;
     }
     const n = await Settings.RunEmbedOnce(32);
-    toast.success(`已处理 ${n} 篇文章向量`);
+    toast.success(t("settings.searchAi.embedded", { n }));
   } catch (e: any) {
-    toast.error("回填失败", { description: e?.message || String(e) });
+    toast.error(t("settings.searchAi.embedFailed"), { description: e?.message || String(e) });
   }
 }
 
@@ -128,24 +140,26 @@ const rebuilding = ref(false);
 
 async function rebuildAll() {
   if (!enabled.value) {
-    toast.message("请先启用并保存向量模型");
+    toast.message(t("settings.searchAi.enableFirst"));
     return;
   }
   rebuilding.value = true;
   try {
     const Settings = await loadSettingsModule();
     if (!Settings?.RebuildAllEmbeddings) {
-      toast.message("设计预览", { description: "Go 服务未连接" });
+      toast.message(t("settings.searchAi.previewMode"), {
+        description: t("settings.searchAi.backendDisconnectedShort"),
+      });
       return;
     }
     const res = await Settings.RebuildAllEmbeddings();
     const processed = res?.processed ?? res?.Processed ?? 0;
-    toast.success("向量已重新生成", {
-      description: `共处理 ${processed} 篇文章`,
+    toast.success(t("settings.searchAi.rebuilt"), {
+      description: t("settings.searchAi.rebuiltDesc", { n: processed }),
     });
     await load();
   } catch (e: any) {
-    toast.error("重建失败", { description: e?.message || String(e) });
+    toast.error(t("settings.searchAi.rebuildFailed"), { description: e?.message || String(e) });
   } finally {
     rebuilding.value = false;
   }
@@ -161,25 +175,40 @@ onMounted(load);
     >
       <div class="mb-1 flex items-center gap-2 text-[13px] font-medium text-foreground">
         <Brain class="size-4 text-primary" />
-        搜索能力
+        {{ t("settings.searchAi.capabilities") }}
       </div>
       <p v-if="loading" class="flex items-center gap-2">
-        <Loader2 class="size-3.5 animate-spin" /> 加载中…
+        <Loader2 class="size-3.5 animate-spin" /> {{ t("settings.searchAi.loading") }}
       </p>
       <template v-else>
-        <p>全文检索：{{ caps.fts ? "可用" : "不可用" }}</p>
-        <p>向量搜索：{{ caps.vectorSearch ? "可用" : "未启用" }}</p>
+        <p>
+          {{
+            t("settings.searchAi.fts", {
+              status: caps.fts ? t("common.enabled") : t("common.disabled"),
+            })
+          }}
+        </p>
+        <p>
+          {{
+            t("settings.searchAi.vector", {
+              status: caps.vectorSearch ? t("common.enabled") : t("common.notEnabled"),
+            })
+          }}
+        </p>
         <p v-if="caps.reason">{{ caps.reason }}</p>
         <p class="mt-1 font-mono text-[11px] opacity-80">{{ vectorStatus }}</p>
       </template>
     </div>
 
     <SettingsGroup
-      title="向量模型"
-      description="配置 OpenAI 兼容的 Embedding API。未配置时仅使用全文检索。"
+      :title="t('settings.searchAi.vectorGroup')"
+      :description="t('settings.searchAi.vectorGroupDesc')"
     >
       <div class="py-2.5">
-        <SettingsRow title="启用语义搜索" description="关闭后始终使用 FTS 全文。">
+        <SettingsRow
+          :title="t('settings.searchAi.enableSemantic')"
+          :description="t('settings.searchAi.enableSemanticDesc')"
+        >
           <Switch
             :checked="enabled"
             @update:checked="(v: boolean) => (enabled = v)"
@@ -189,7 +218,7 @@ onMounted(load);
 
       <div class="space-y-3 py-3" :class="!enabled && 'opacity-50 pointer-events-none'">
         <div class="space-y-1.5">
-          <Label class="text-[12px] text-muted-foreground">Base URL</Label>
+          <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.baseUrl") }}</Label>
           <Input
             v-model="form.baseUrl"
             placeholder="https://api.openai.com/v1"
@@ -197,7 +226,7 @@ onMounted(load);
           />
         </div>
         <div class="space-y-1.5">
-          <Label class="text-[12px] text-muted-foreground">API Key</Label>
+          <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.apiKey") }}</Label>
           <Input
             v-model="form.apiKey"
             type="password"
@@ -207,7 +236,7 @@ onMounted(load);
           />
         </div>
         <div class="space-y-1.5">
-          <Label class="text-[12px] text-muted-foreground">Model</Label>
+          <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.model") }}</Label>
           <Input
             v-model="form.model"
             placeholder="text-embedding-3-small"
@@ -216,7 +245,7 @@ onMounted(load);
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[12px] text-muted-foreground">Dimensions</Label>
+            <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.dimensions") }}</Label>
             <Input
               v-model.number="form.dimensions"
               type="number"
@@ -226,7 +255,7 @@ onMounted(load);
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[12px] text-muted-foreground">Batch size</Label>
+            <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.batchSize") }}</Label>
             <Input
               v-model.number="form.batchSize"
               type="number"
@@ -240,10 +269,10 @@ onMounted(load);
 
       <div class="flex flex-wrap gap-2 py-3">
         <Button size="sm" :disabled="saving" @click="save">
-          {{ saving ? "保存中…" : "保存配置" }}
+          {{ saving ? t("settings.searchAi.saving") : t("settings.searchAi.saveConfig") }}
         </Button>
         <Button size="sm" variant="outline" :disabled="!enabled" @click="runEmbed">
-          回填一批
+          {{ t("settings.searchAi.embedBatch") }}
         </Button>
         <Button
           size="sm"
@@ -251,16 +280,16 @@ onMounted(load);
           :disabled="!enabled || rebuilding"
           @click="rebuildAll"
         >
-          {{ rebuilding ? "重建中…" : "重新生成全部向量" }}
+          {{ rebuilding ? t("settings.searchAi.rebuilding") : t("settings.searchAi.rebuildAll") }}
         </Button>
       </div>
     </SettingsGroup>
 
-    <SettingsGroup title="说明">
+    <SettingsGroup :title="t('settings.searchAi.notesTitle')">
       <div class="space-y-2 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
-        <p>· 兼容 OpenAI Embeddings API 与多数本地代理（含 Ollama 的 OpenAI 兼容层）。</p>
-        <p>· 扩展未加载时，将使用进程内余弦距离（适合小库）；加载 sqlite-vector 后走加速检索。</p>
-        <p>· 修改 model / dimensions 会清空旧向量并重新排队。</p>
+        <p>{{ t("settings.searchAi.noteCompat") }}</p>
+        <p>{{ t("settings.searchAi.noteExtension") }}</p>
+        <p>{{ t("settings.searchAi.noteModelChange") }}</p>
       </div>
     </SettingsGroup>
   </div>

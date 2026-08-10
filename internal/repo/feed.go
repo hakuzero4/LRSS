@@ -180,6 +180,81 @@ func (r *FeedRepo) UpdateAfterFetch(ctx context.Context, feedID string, title st
 	return nil
 }
 
+// SetFolder assigns a feed to a folder. nil or empty folderID means unfiled.
+// Non-empty folder IDs are verified to exist before update.
+func (r *FeedRepo) SetFolder(ctx context.Context, feedID string, folderID *string) error {
+	if folderID != nil {
+		id := strings.TrimSpace(*folderID)
+		if id == "" {
+			folderID = nil
+		} else {
+			folderID = &id
+			var n int
+			err := r.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM folders WHERE id = ?`, id).Scan(&n)
+			if err != nil {
+				return fmt.Errorf("set folder: %w", err)
+			}
+			if n == 0 {
+				return fmt.Errorf("folder not found: %s", id)
+			}
+		}
+	}
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE feeds SET folder_id = ?, updated_at = ? WHERE id = ?`,
+		nullStr(folderID), now, feedID)
+	if err != nil {
+		return fmt.Errorf("set folder: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feed not found: %s", feedID)
+	}
+	return nil
+}
+
+// SetSiteURL updates site_url when discovered from the feed document.
+func (r *FeedRepo) SetSiteURL(ctx context.Context, feedID, siteURL string) error {
+	siteURL = strings.TrimSpace(siteURL)
+	var site any
+	if siteURL != "" {
+		site = siteURL
+	}
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE feeds SET site_url = ?, updated_at = ? WHERE id = ?`,
+		site, now, feedID)
+	if err != nil {
+		return fmt.Errorf("set site_url: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feed not found: %s", feedID)
+	}
+	return nil
+}
+
+// SetFaviconURL stores the feed's favicon absolute URL (empty clears).
+func (r *FeedRepo) SetFaviconURL(ctx context.Context, feedID, faviconURL string) error {
+	faviconURL = strings.TrimSpace(faviconURL)
+	var fav any
+	if faviconURL != "" {
+		fav = faviconURL
+	}
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE feeds SET favicon_url = ?, updated_at = ? WHERE id = ?`,
+		fav, now, feedID)
+	if err != nil {
+		return fmt.Errorf("set favicon: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feed not found: %s", feedID)
+	}
+	return nil
+}
+
 // SetPaused sets is_paused on a feed.
 func (r *FeedRepo) SetPaused(ctx context.Context, feedID string, paused bool) error {
 	now := nowUTC()
@@ -194,6 +269,22 @@ func (r *FeedRepo) SetPaused(ctx context.Context, feedID string, paused bool) er
 		return fmt.Errorf("feed not found: %s", feedID)
 	}
 	return nil
+}
+
+// DeleteAll removes every feed (articles cascade via FK). Clears articles_fts first
+// because FTS is application-synced, not FK-linked. Returns the number of feeds removed.
+func (r *FeedRepo) DeleteAll(ctx context.Context) (int, error) {
+	var n int
+	if err := r.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM feeds`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count feeds: %w", err)
+	}
+	if _, err := r.DB.ExecContext(ctx, `DELETE FROM articles_fts`); err != nil {
+		return 0, fmt.Errorf("clear articles_fts: %w", err)
+	}
+	if _, err := r.DB.ExecContext(ctx, `DELETE FROM feeds`); err != nil {
+		return 0, fmt.Errorf("delete all feeds: %w", err)
+	}
+	return n, nil
 }
 
 // Delete removes a feed. Articles cascade via FK; FTS rows are deleted first

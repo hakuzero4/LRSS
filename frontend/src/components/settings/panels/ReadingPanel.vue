@@ -1,49 +1,83 @@
 <script setup lang="ts">
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { AppSettings } from "@/types/rss";
 
-const { settings } = useRssStore();
+const { t } = useI18n();
+const { settings, persistUIPrefs } = useRssStore();
+
+const fontSizeModel = computed({
+  get: () => settings.fontSize,
+  set: (v: string) => {
+    settings.fontSize = v as AppSettings["fontSize"];
+    persistUIPrefs();
+  },
+});
+
+const readerWidthModel = computed({
+  get: () => settings.readerWidth,
+  set: (v: string) => {
+    settings.readerWidth = v as AppSettings["readerWidth"];
+    persistUIPrefs();
+  },
+});
+
+function patchBool(key: "showUnreadOnly" | "openLinksInBrowser", v: boolean) {
+  settings[key] = v;
+  persistUIPrefs();
+}
 </script>
 
 <template>
   <div class="space-y-7">
-    <SettingsGroup title="阅读体验" description="正文排版与列表过滤。">
+    <SettingsGroup
+      :title="t('settings.reading.group')"
+      :description="t('settings.reading.groupDesc')"
+    >
       <div class="space-y-3 py-3">
-        <p class="text-[13px] font-medium">正文字号</p>
-        <Tabs v-model="settings.fontSize" class="w-full">
+        <p class="text-[13px] font-medium">{{ t("settings.reading.fontSize") }}</p>
+        <Tabs v-model="fontSizeModel" class="w-full">
           <TabsList class="grid w-full grid-cols-3">
-            <TabsTrigger value="sm">小</TabsTrigger>
-            <TabsTrigger value="md">中</TabsTrigger>
-            <TabsTrigger value="lg">大</TabsTrigger>
+            <TabsTrigger value="sm">{{ t("settings.reading.fontSm") }}</TabsTrigger>
+            <TabsTrigger value="md">{{ t("settings.reading.fontMd") }}</TabsTrigger>
+            <TabsTrigger value="lg">{{ t("settings.reading.fontLg") }}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
       <div class="space-y-3 py-3">
-        <p class="text-[13px] font-medium">阅读宽度</p>
-        <Tabs v-model="settings.readerWidth" class="w-full">
+        <p class="text-[13px] font-medium">{{ t("settings.reading.width") }}</p>
+        <Tabs v-model="readerWidthModel" class="w-full">
           <TabsList class="grid w-full grid-cols-3">
-            <TabsTrigger value="narrow">窄</TabsTrigger>
-            <TabsTrigger value="medium">适中</TabsTrigger>
-            <TabsTrigger value="wide">宽</TabsTrigger>
+            <TabsTrigger value="narrow">{{ t("settings.reading.widthNarrow") }}</TabsTrigger>
+            <TabsTrigger value="medium">{{ t("settings.reading.widthMedium") }}</TabsTrigger>
+            <TabsTrigger value="wide">{{ t("settings.reading.widthWide") }}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
       <div class="py-2.5">
-        <SettingsRow title="仅显示未读" description="列表中隐藏已读文章（收藏列表除外）。">
+        <SettingsRow
+          :title="t('settings.reading.unreadOnly')"
+          :description="t('settings.reading.unreadOnlyDesc')"
+        >
           <Switch
             :checked="settings.showUnreadOnly"
-            @update:checked="(v: boolean) => (settings.showUnreadOnly = v)"
+            @update:checked="(v: boolean) => patchBool('showUnreadOnly', v)"
           />
         </SettingsRow>
       </div>
       <div class="py-2.5">
-        <SettingsRow title="在浏览器中打开链接" description="原文与正文外链使用系统浏览器。">
+        <SettingsRow
+          :title="t('settings.reading.openInBrowser')"
+          :description="t('settings.reading.openInBrowserDesc')"
+        >
           <Switch
             :checked="settings.openLinksInBrowser"
-            @update:checked="(v: boolean) => (settings.openLinksInBrowser = v)"
+            @update:checked="(v: boolean) => patchBool('openLinksInBrowser', v)"
           />
         </SettingsRow>
       </div>

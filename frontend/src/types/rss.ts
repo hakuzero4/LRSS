@@ -51,8 +51,62 @@ export interface ReaderSelection {
   articleId: string | null;
 }
 
+/** Result of FeedService.ImportOPML */
+export interface OPMLImportResult {
+  foldersCreated: number;
+  feedsAdded: number;
+  feedsSkipped: number;
+  feedsFailed: number;
+  errors?: string[];
+  /** Newly inserted feed IDs (for progressive RefreshFeed) */
+  addedFeedIds?: string[];
+}
+
+/** Progress updates during OPML import + optional article fetch. */
+export type OPMLImportProgress = {
+  phase: "parse" | "write" | "fetch" | "done";
+  message: string;
+  current?: number;
+  total?: number;
+};
+
+export interface LibraryConfig {
+  autoRefresh: boolean;
+  refreshIntervalMinutes: number;
+}
+
+/**
+ * UI prefs persisted via SettingsService.GetUIPrefs / SetUIPrefs.
+ * autoRefresh / refreshIntervalMinutes stay on LibraryConfig and are merged on load.
+ * launchAtLogin is UI-only (system API out of scope for S6).
+ */
+export interface UIPrefs {
+  markAsReadOnOpen: boolean;
+  markAsReadOnScrollEnd: boolean;
+  openOnStartup: string; // unread|today|starred|all
+  hideReadOnStartup: boolean;
+  theme: string; // system|light|dark
+  accent: string;
+  compactSidebar: boolean;
+  fontSize: string; // sm|md|lg
+  showUnreadOnly: boolean;
+  openLinksInBrowser: boolean;
+  readerWidth: string; // narrow|medium|wide
+  defaultFolderId: string; // empty = null
+  fetchFullContent: boolean;
+  keepArticlesDays: number; // 7–365
+  hideDuplicateTitles: boolean;
+  blockKeywords: string;
+  enableKeyboardShortcuts: boolean;
+  notifyOnNewArticles: boolean;
+  notifySound: boolean;
+  hardwareAcceleration: boolean;
+  clearCacheOnQuit: boolean;
+  developerMode: boolean;
+}
+
 export interface AppSettings {
-  // 通用 · 刷新
+  // 通用 · 刷新 (LibraryConfig)
   autoRefresh: boolean;
   refreshIntervalMinutes: number;
 
@@ -85,7 +139,7 @@ export interface AppSettings {
   hideDuplicateTitles: boolean;
   blockKeywords: string;
 
-  // 同步
+  // 同步 (not in UIPrefs / S6 non-goal)
   syncEnabled: boolean;
   syncProvider: "none" | "icloud" | "webdav" | "custom";
 

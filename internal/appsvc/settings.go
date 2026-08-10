@@ -3,23 +3,29 @@ package appsvc
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"lrss/internal/db"
 	"lrss/internal/job"
+	"lrss/internal/notify"
 	"lrss/internal/search"
+	"lrss/internal/service"
 	"lrss/internal/settings"
 	"lrss/internal/vector"
 )
 
 // SettingsService is exposed to the Wails frontend.
 type SettingsService struct {
-	store  *settings.Store
-	search *search.Service
-	embed  *job.EmbedWorker
-	index  *vector.Index
+	store   *settings.Store
+	search  *search.Service
+	embed   *job.EmbedWorker
+	index   *vector.Index
+	library *service.Library // optional; required for PurgeOldArticles
+	notify  *notify.Sender   // optional; test + permission helpers
 }
 
 // NewSettings constructs the service from shared deps.
+// Call SetLibrary after constructing the library to enable article purge.
 func NewSettings(store *settings.Store, searchSvc *search.Service, worker *job.EmbedWorker) *SettingsService {
 	return &SettingsService{
 		store:  store,
@@ -27,6 +33,36 @@ func NewSettings(store *settings.Store, searchSvc *search.Service, worker *job.E
 		embed:  worker,
 		index:  vector.NewIndex(searchSvc.SQL),
 	}
+}
+
+// SetLibrary injects the library used for retention purge.
+//
+//wails:ignore
+func (s *SettingsService) SetLibrary(lib *service.Library) {
+	s.library = lib
+}
+
+// SetNotifier injects the desktop notification sender (test notification UI).
+//
+//wails:ignore
+func (s *SettingsService) SetNotifier(n *notify.Sender) {
+	s.notify = n
+}
+
+// EnsureNotificationPermission requests OS notification permission when needed.
+func (s *SettingsService) EnsureNotificationPermission() (bool, error) {
+	if s.notify == nil {
+		return false, fmt.Errorf("notifications unavailable")
+	}
+	return s.notify.EnsureAuthorized(context.Background())
+}
+
+// TestNotification sends a sample system notification (settings panel).
+func (s *SettingsService) TestNotification() error {
+	if s.notify == nil {
+		return fmt.Errorf("notifications unavailable")
+	}
+	return s.notify.Test(context.Background())
 }
 
 // GetEmbeddingConfig returns masked embedding settings.
@@ -82,6 +118,72 @@ func (s *SettingsService) GetSearchConfig() (settings.SearchConfig, error) {
 // SetSearchConfig saves search mode settings.
 func (s *SettingsService) SetSearchConfig(cfg settings.SearchConfig) error {
 	return s.store.SaveSearchConfig(context.Background(), cfg)
+}
+
+// GetLibraryConfig returns auto-refresh settings.
+func (s *SettingsService) GetLibraryConfig() (settings.LibraryConfig, error) {
+	return s.store.GetLibraryConfig(context.Background())
+}
+
+// SetLibraryConfig validates (clamps interval) and saves library settings.
+func (s *SettingsService) SetLibraryConfig(cfg settings.LibraryConfig) error {
+	return s.store.SetLibraryConfig(context.Background(), cfg)
+}
+
+// GetUIPrefs returns UI / reading / retention preferences (defaults when unset).
+func (s *SettingsService) GetUIPrefs() (settings.UIPrefs, error) {
+	return s.store.GetUIPrefs(context.Background())
+}
+
+// SetUIPrefs normalizes and persists UI preferences.
+// If keepArticlesDays changed, a background purge is scheduled.
+func (s *SettingsService) SetUIPrefs(cfg settings.UIPrefs) error {
+	ctx := context.Background()
+	old, err := s.store.GetUIPrefs(ctx)
+	if err != nil {
+		return err
+	}
+	cfg = cfg.Normalize()
+	if err := s.store.SetUIPrefs(ctx, cfg); err != nil {
+		return err
+	}
+	if s.library != nil && old.KeepArticlesDays != cfg.KeepArticlesDays {
+		days := cfg.KeepArticlesDays
+		lib := s.library
+		go func() {
+			n, err := lib.PurgeOldArticles(context.Background(), days)
+			if err != nil {
+				log.Printf("purge after SetUIPrefs: %v", err)
+				return
+			}
+			if n > 0 {
+				log.Printf("purge after SetUIPrefs: deleted %d articles (keep=%d days)", n, days)
+			}
+		}()
+	}
+	return nil
+}
+
+// PurgeResult is returned by PurgeOldArticles for the frontend.
+type PurgeResult struct {
+	Deleted int `json:"deleted"`
+}
+
+// PurgeOldArticles deletes non-starred articles older than the current keepArticlesDays.
+func (s *SettingsService) PurgeOldArticles() (PurgeResult, error) {
+	if s.library == nil {
+		return PurgeResult{}, fmt.Errorf("library not configured")
+	}
+	ctx := context.Background()
+	prefs, err := s.store.GetUIPrefs(ctx)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+	n, err := s.library.PurgeOldArticles(ctx, prefs.KeepArticlesDays)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+	return PurgeResult{Deleted: n}, nil
 }
 
 // GetSearchCapabilities reports FTS/vector availability.

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
+	"lrss/internal/favicon"
 	"lrss/internal/model"
 	"lrss/internal/repo"
 	"lrss/internal/rss"
@@ -24,6 +26,9 @@ type Library struct {
 
 	// Sanitizer for content_html (UGC policy). Lazily created if nil.
 	Sanitizer *bluemonday.Policy
+
+	// refreshMu serializes RefreshAll and ImportOPML fetch phase with auto-refresh.
+	refreshMu sync.Mutex
 }
 
 // NewLibrary constructs a Library with default HTML sanitizer.
@@ -125,6 +130,9 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 		return model.Feed{}, err
 	}
 
+	// Best-effort favicon; never fail AddFeed for icon discovery.
+	lib.ensureFavicon(ctx, feed.ID, siteURL, feedURL, nil)
+
 	out, err := lib.Feeds.Get(ctx, feed.ID)
 	if err != nil {
 		return *feed, nil
@@ -132,9 +140,52 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 	return out, nil
 }
 
+// ensureFavicon resolves and stores a favicon when missing.
+// existing is the current favicon pointer (skip when already set).
+func (lib *Library) ensureFavicon(ctx context.Context, feedID string, siteURL *string, feedURL string, existing *string) {
+	if existing != nil && strings.TrimSpace(*existing) != "" {
+		return
+	}
+	site := ""
+	if siteURL != nil {
+		site = *siteURL
+	}
+	icon := favicon.Resolve(ctx, site, feedURL)
+	if icon == "" {
+		return
+	}
+	_ = lib.Feeds.SetFaviconURL(ctx, feedID, icon)
+}
+
 // DeleteFeed removes a subscription (and FTS for its articles).
 func (lib *Library) DeleteFeed(ctx context.Context, feedID string) error {
 	return lib.Feeds.Delete(ctx, feedID)
+}
+
+// ClearAllResult summarizes wiping all subscriptions.
+type ClearAllResult struct {
+	FeedsDeleted   int `json:"feedsDeleted"`
+	FoldersDeleted int `json:"foldersDeleted"`
+}
+
+// ClearAllSubscriptions removes every feed (and cascaded articles/embeddings/FTS)
+// and every folder. Blocks concurrent refresh while running.
+func (lib *Library) ClearAllSubscriptions(ctx context.Context) (ClearAllResult, error) {
+	lib.refreshMu.Lock()
+	defer lib.refreshMu.Unlock()
+
+	feedsN, err := lib.Feeds.DeleteAll(ctx)
+	if err != nil {
+		return ClearAllResult{}, err
+	}
+	foldersN, err := lib.Folders.DeleteAll(ctx)
+	if err != nil {
+		return ClearAllResult{}, err
+	}
+	return ClearAllResult{
+		FeedsDeleted:   feedsN,
+		FoldersDeleted: foldersN,
+	}, nil
 }
 
 // RefreshFeed re-fetches one feed and upserts articles. Returns number of new articles.
@@ -157,7 +208,11 @@ type RefreshAllResult struct {
 }
 
 // RefreshAll refreshes non-paused feeds sequentially.
+// Concurrent callers block on refreshMu so only one full refresh runs at a time.
 func (lib *Library) RefreshAll(ctx context.Context) (RefreshAllResult, error) {
+	lib.refreshMu.Lock()
+	defer lib.refreshMu.Unlock()
+
 	feeds, err := lib.Feeds.ListActive(ctx)
 	if err != nil {
 		return RefreshAllResult{}, err
@@ -173,6 +228,30 @@ func (lib *Library) RefreshAll(ctx context.Context) (RefreshAllResult, error) {
 		res.ArticlesAdded += n
 	}
 	return res, nil
+}
+
+// TryRefreshAll is like RefreshAll but returns immediately if a refresh is already running.
+// ok is false when the lock could not be acquired.
+func (lib *Library) TryRefreshAll(ctx context.Context) (res RefreshAllResult, ok bool, err error) {
+	if !lib.refreshMu.TryLock() {
+		return RefreshAllResult{}, false, nil
+	}
+	defer lib.refreshMu.Unlock()
+
+	feeds, err := lib.Feeds.ListActive(ctx)
+	if err != nil {
+		return RefreshAllResult{}, true, err
+	}
+	for _, f := range feeds {
+		n, rerr := lib.refreshOne(ctx, f)
+		if rerr != nil {
+			res.FeedsErr++
+			continue
+		}
+		res.FeedsOK++
+		res.ArticlesAdded += n
+	}
+	return res, true, nil
 }
 
 func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error) {
@@ -209,18 +288,32 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 		if err := lib.Feeds.UpdateAfterFetch(ctx, feed.ID, "", etag, lastMod, nil); err != nil {
 			return 0, err
 		}
+		lib.ensureFavicon(ctx, feed.ID, feed.SiteURL, feed.FeedURL, feed.FaviconURL)
 		return 0, nil
 	}
 
 	title := ""
+	var siteURL *string
 	if parsed != nil {
 		title = strings.TrimSpace(parsed.Title)
+		if s := strings.TrimSpace(parsed.SiteURL); s != "" {
+			siteURL = &s
+			// Persist site URL when discovered (also helps favicon).
+			if feed.SiteURL == nil || strings.TrimSpace(*feed.SiteURL) == "" {
+				_ = lib.Feeds.SetSiteURL(ctx, feed.ID, s)
+				feed.SiteURL = siteURL
+			}
+		}
+	}
+	if siteURL == nil {
+		siteURL = feed.SiteURL
 	}
 	if err := lib.Feeds.UpdateAfterFetch(ctx, feed.ID, title, etag, lastMod, nil); err != nil {
 		return 0, err
 	}
 
 	if parsed == nil {
+		lib.ensureFavicon(ctx, feed.ID, siteURL, feed.FeedURL, feed.FaviconURL)
 		return 0, nil
 	}
 	items := mapParsedItems(parsed.Items, lib)
@@ -230,6 +323,7 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 		_ = lib.Feeds.UpdateAfterFetch(ctx, feed.ID, title, etag, lastMod, &msg)
 		return 0, err
 	}
+	lib.ensureFavicon(ctx, feed.ID, siteURL, feed.FeedURL, feed.FaviconURL)
 	return up.Inserted, nil
 }
 
@@ -264,6 +358,12 @@ func (lib *Library) SetStarred(ctx context.Context, articleID string, starred bo
 // MarkAllRead marks all articles in a collection as read.
 func (lib *Library) MarkAllRead(ctx context.Context, collection string) error {
 	return lib.Articles.MarkAllRead(ctx, collection)
+}
+
+// PurgeOldArticles deletes non-starred articles older than days days.
+// days is clamped by the repo layer to [7, 365]. Returns deleted count.
+func (lib *Library) PurgeOldArticles(ctx context.Context, days int) (int, error) {
+	return lib.Articles.PurgeOlderThan(ctx, days)
 }
 
 func (lib *Library) fetchAndMap(ctx context.Context, feedURL string, opts rss.FetchOptions) (*rss.FetchResult, *rss.ParsedFeed, error) {

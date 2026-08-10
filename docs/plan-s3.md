@@ -83,8 +83,8 @@ internal/
 - [x] 配置 embedding 后可 **重新生成全部向量**（`RebuildAllEmbeddings` + UI）  
 - [x] 未配置 embedding 时刷新不入队 embed  
 - [x] 解析缺口：GUID/相对 URL/HTML 文本/ETag/消毒（bluemonday）  
-- [ ] 定时自动刷新（可用手动 RefreshAll；ticker 可后续）  
-- [ ] OPML（S4）
+- [ ] 定时自动刷新 → **S4**（`docs/plan-s4.md`）  
+- [ ] OPML → **S4**
 
 ## 并行分工
 

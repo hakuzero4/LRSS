@@ -234,6 +234,112 @@ func TestUpsert_EmbeddingPending(t *testing.T) {
 	}
 }
 
+func TestPurgeOlderThan_KeepsStarredDeletesOld(t *testing.T) {
+	r, database := openTestRepos(t, false)
+	ctx := context.Background()
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://ex.com/purge"}
+	if err := r.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+
+	oldPub := time.Now().UTC().Add(-120 * 24 * time.Hour).Format(time.RFC3339)
+	recentPub := time.Now().UTC().Add(-2 * 24 * time.Hour).Format(time.RFC3339)
+	body := "purge body text"
+
+	_, err := r.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{
+		{GUID: "old-plain", URL: "https://ex.com/old", Title: "Old Plain", ContentText: &body, PublishedAt: &oldPub},
+		{GUID: "old-star", URL: "https://ex.com/old-star", Title: "Old Starred", ContentText: &body, PublishedAt: &oldPub},
+		{GUID: "recent", URL: "https://ex.com/recent", Title: "Recent", ContentText: &body, PublishedAt: &recentPub},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 20})
+	if err != nil || len(all) != 3 {
+		t.Fatalf("list before: n=%d err=%v", len(all), err)
+	}
+
+	var starID, oldID string
+	for _, a := range all {
+		switch a.Title {
+		case "Old Starred":
+			starID = a.ID
+		case "Old Plain":
+			oldID = a.ID
+		}
+	}
+	if starID == "" || oldID == "" {
+		t.Fatal("missing seeded articles")
+	}
+	if err := r.Articles.SetStarred(ctx, starID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// FTS rows should exist for all three before purge.
+	var ftsBefore int
+	if err := database.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles_fts`).Scan(&ftsBefore); err != nil {
+		t.Fatal(err)
+	}
+	if ftsBefore != 3 {
+		t.Fatalf("fts before = %d want 3", ftsBefore)
+	}
+
+	deleted, err := r.Articles.PurgeOlderThan(ctx, 90)
+	if err != nil {
+		t.Fatalf("PurgeOlderThan: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d want 1 (only non-starred old)", deleted)
+	}
+
+	remaining, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 2 {
+		t.Fatalf("remaining = %d want 2", len(remaining))
+	}
+	titles := map[string]bool{}
+	for _, a := range remaining {
+		titles[a.Title] = true
+	}
+	if !titles["Old Starred"] || !titles["Recent"] {
+		t.Fatalf("remaining titles = %v", titles)
+	}
+	if titles["Old Plain"] {
+		t.Fatal("Old Plain should have been purged")
+	}
+
+	// FTS should no longer index the purged article.
+	var ftsAfter int
+	if err := database.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles_fts`).Scan(&ftsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if ftsAfter != 2 {
+		t.Fatalf("fts after = %d want 2", ftsAfter)
+	}
+	var ftsOld int
+	if err := database.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM articles_fts WHERE article_id = ?`, oldID,
+	).Scan(&ftsOld); err != nil {
+		t.Fatal(err)
+	}
+	if ftsOld != 0 {
+		t.Fatalf("purged article still in FTS")
+	}
+
+	// Idempotent second purge.
+	deleted2, err := r.Articles.PurgeOlderThan(ctx, 90)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted2 != 0 {
+		t.Fatalf("second purge deleted = %d want 0", deleted2)
+	}
+}
+
 func TestFolders_CRUD(t *testing.T) {
 	r, _ := openTestRepos(t, false)
 	ctx := context.Background()
@@ -246,11 +352,150 @@ func TestFolders_CRUD(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].Name != "News" {
 		t.Fatalf("list=%+v err=%v", list, err)
 	}
+
+	got, err := r.Folders.Get(ctx, f.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Name != "News" || got.ID != f.ID {
+		t.Fatalf("Get = %+v", got)
+	}
+
+	if err := r.Folders.Rename(ctx, f.ID, "  Tech  "); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	got, err = r.Folders.Get(ctx, f.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Tech" {
+		t.Fatalf("after rename name=%q want Tech", got.Name)
+	}
+
+	if err := r.Folders.Rename(ctx, f.ID, "   "); err == nil {
+		t.Fatal("expected error for empty rename")
+	}
+	if _, err := r.Folders.Get(ctx, "missing"); err == nil {
+		t.Fatal("expected get missing error")
+	}
+
 	if err := r.Folders.Delete(ctx, f.ID); err != nil {
 		t.Fatal(err)
 	}
 	list, err = r.Folders.List(ctx)
 	if err != nil || len(list) != 0 {
 		t.Fatalf("after delete list=%+v err=%v", list, err)
+	}
+}
+
+func TestFeed_SetFolderAndSetPaused(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+
+	folder, err := r.Folders.Create(ctx, "News", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder2, err := r.Folders.Create(ctx, "Tech", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://ex.com/move"}
+	if err := r.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	if feed.FolderID != nil {
+		t.Fatalf("expected unfiled, got %v", feed.FolderID)
+	}
+
+	if err := r.Feeds.SetFolder(ctx, feed.ID, &folder.ID); err != nil {
+		t.Fatalf("SetFolder: %v", err)
+	}
+	got, err := r.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FolderID == nil || *got.FolderID != folder.ID {
+		t.Fatalf("folder after move = %v want %s", got.FolderID, folder.ID)
+	}
+
+	if err := r.Feeds.SetFolder(ctx, feed.ID, &folder2.ID); err != nil {
+		t.Fatalf("SetFolder move: %v", err)
+	}
+	got, err = r.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FolderID == nil || *got.FolderID != folder2.ID {
+		t.Fatalf("folder after second move = %v want %s", got.FolderID, folder2.ID)
+	}
+
+	empty := "  "
+	if err := r.Feeds.SetFolder(ctx, feed.ID, &empty); err != nil {
+		t.Fatalf("SetFolder unfiled empty: %v", err)
+	}
+	got, err = r.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FolderID != nil {
+		t.Fatalf("expected unfiled after empty folder id, got %v", *got.FolderID)
+	}
+
+	// re-file then unfile with nil
+	if err := r.Feeds.SetFolder(ctx, feed.ID, &folder.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Feeds.SetFolder(ctx, feed.ID, nil); err != nil {
+		t.Fatalf("SetFolder nil: %v", err)
+	}
+	got, err = r.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FolderID != nil {
+		t.Fatalf("expected unfiled after nil, got %v", *got.FolderID)
+	}
+
+	missing := "no-such-folder"
+	if err := r.Feeds.SetFolder(ctx, feed.ID, &missing); err == nil {
+		t.Fatal("expected error for missing folder")
+	}
+
+	if err := r.Feeds.SetPaused(ctx, feed.ID, true); err != nil {
+		t.Fatalf("SetPaused: %v", err)
+	}
+	got, err = r.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsPaused {
+		t.Fatal("expected is_paused true")
+	}
+	if err := r.Feeds.SetPaused(ctx, feed.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	got, err = r.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsPaused {
+		t.Fatal("expected is_paused false")
+	}
+
+	// delete folder unfiles feeds via FK
+	if err := r.Feeds.SetFolder(ctx, feed.ID, &folder.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Folders.Delete(ctx, folder.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = r.Feeds.Get(ctx, feed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FolderID != nil {
+		t.Fatalf("after folder delete expected unfiled, got %v", *got.FolderID)
 	}
 }

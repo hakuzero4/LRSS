@@ -20,11 +20,29 @@ import * as search$0 from "../search/models.js";
 // @ts-ignore: Unused imports
 import * as settings$0 from "../settings/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
+/**
+ * EnsureNotificationPermission requests OS notification permission when needed.
+ */
+export function EnsureNotificationPermission(): $CancellablePromise<boolean> {
+    return $Call.ByID(2837513543);
+}
+
 /**
  * GetEmbeddingConfig returns masked embedding settings.
  */
 export function GetEmbeddingConfig(): $CancellablePromise<settings$0.EmbeddingConfig> {
     return $Call.ByID(1948392802);
+}
+
+/**
+ * GetLibraryConfig returns auto-refresh settings.
+ */
+export function GetLibraryConfig(): $CancellablePromise<settings$0.LibraryConfig> {
+    return $Call.ByID(422396684);
 }
 
 /**
@@ -42,10 +60,24 @@ export function GetSearchConfig(): $CancellablePromise<settings$0.SearchConfig> 
 }
 
 /**
+ * GetUIPrefs returns UI / reading / retention preferences (defaults when unset).
+ */
+export function GetUIPrefs(): $CancellablePromise<settings$0.UIPrefs> {
+    return $Call.ByID(3360190745);
+}
+
+/**
  * GetVectorStatus returns sqlite-vector load status.
  */
 export function GetVectorStatus(): $CancellablePromise<db$0.VectorStatus> {
     return $Call.ByID(3325615142);
+}
+
+/**
+ * PurgeOldArticles deletes non-starred articles older than the current keepArticlesDays.
+ */
+export function PurgeOldArticles(): $CancellablePromise<$models.PurgeResult> {
+    return $Call.ByID(752356818);
 }
 
 /**
@@ -73,8 +105,30 @@ export function SetEmbeddingConfig(cfg: settings$0.EmbeddingConfig): $Cancellabl
 }
 
 /**
+ * SetLibraryConfig validates (clamps interval) and saves library settings.
+ */
+export function SetLibraryConfig(cfg: settings$0.LibraryConfig): $CancellablePromise<void> {
+    return $Call.ByID(2009951272, cfg);
+}
+
+/**
  * SetSearchConfig saves search mode settings.
  */
 export function SetSearchConfig(cfg: settings$0.SearchConfig): $CancellablePromise<void> {
     return $Call.ByID(2127070257, cfg);
+}
+
+/**
+ * SetUIPrefs normalizes and persists UI preferences.
+ * If keepArticlesDays changed, a background purge is scheduled.
+ */
+export function SetUIPrefs(cfg: settings$0.UIPrefs): $CancellablePromise<void> {
+    return $Call.ByID(3151085653, cfg);
+}
+
+/**
+ * TestNotification sends a sample system notification (settings panel).
+ */
+export function TestNotification(): $CancellablePromise<void> {
+    return $Call.ByID(1990489998);
 }

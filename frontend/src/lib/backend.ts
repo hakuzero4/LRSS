@@ -28,11 +28,13 @@ export function mapArticle(a: any) {
 
 export function mapFeed(f: any) {
   if (!f) return f;
+  const fav = f.faviconUrl ?? f.favicon ?? undefined;
   return {
     id: f.id,
     title: f.title ?? "",
     siteUrl: f.siteUrl ?? f.feedUrl ?? "",
     feedUrl: f.feedUrl ?? "",
+    favicon: typeof fav === "string" && fav.trim() ? fav.trim() : undefined,
     folderId: f.folderId ?? undefined,
     unreadCount: f.unreadCount ?? 0,
     lastFetchedAt: f.lastFetchedAt ?? new Date().toISOString(),
