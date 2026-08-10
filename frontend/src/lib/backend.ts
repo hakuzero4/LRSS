@@ -1,5 +1,7 @@
 /** Lazy load Wails-generated appsvc bindings. */
 
+import { plainText } from "./format";
+
 export async function loadAppsvc(): Promise<any | null> {
   try {
     const mod = await import("../../bindings/lrss/internal/appsvc/index.js");
@@ -11,18 +13,30 @@ export async function loadAppsvc(): Promise<any | null> {
 
 export function mapArticle(a: any) {
   if (!a) return a;
+  const rawSummary = a.summary ?? a.Summary ?? "";
+  const contentHtml = a.contentHtml ?? a.ContentHTML ?? "";
+  // Always expose plain summary (legacy rows may still store HTML).
+  let summary = plainText(rawSummary, 320);
+  // Drop lead-in that duplicates the article body.
+  const bodyText = plainText(contentHtml, 400);
+  if (summary && bodyText && (bodyText === summary || bodyText.startsWith(summary.slice(0, Math.min(80, summary.length))))) {
+    // Keep a short teaser only when much shorter than body; else hide in list via empty.
+    if (summary.length > bodyText.length * 0.85) {
+      summary = bodyText.slice(0, 200).replace(/\s+\S*$/, "") + (bodyText.length > 200 ? "…" : "");
+    }
+  }
   return {
     id: a.id,
     feedId: a.feedId,
-    title: a.title ?? "",
-    author: a.author ?? undefined,
-    summary: a.summary ?? "",
-    contentHtml: a.contentHtml ?? "",
-    url: a.url ?? "",
-    publishedAt: a.publishedAt ?? a.fetchedAt ?? new Date().toISOString(),
+    title: plainText(a.title ?? a.Title ?? ""),
+    author: a.author ?? a.Author ?? undefined,
+    summary,
+    contentHtml,
+    url: a.url ?? a.URL ?? "",
+    publishedAt: a.publishedAt ?? a.PublishedAt ?? a.fetchedAt ?? a.FetchedAt ?? new Date().toISOString(),
     read: !!(a.isRead ?? a.read),
     starred: !!(a.isStarred ?? a.starred),
-    imageUrl: a.imageUrl ?? undefined,
+    imageUrl: a.imageUrl ?? a.ImageURL ?? undefined,
   };
 }
 

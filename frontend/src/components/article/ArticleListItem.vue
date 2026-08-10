@@ -4,7 +4,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { Article, Feed } from "@/types/rss";
 import FeedIcon from "@/components/feed/FeedIcon.vue";
-import { relativeTime } from "@/lib/format";
+import { plainText, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const props = defineProps<{
@@ -23,6 +23,8 @@ const meta = computed(() => {
   const source = props.feed?.title ?? t("article.feedFallback");
   return `${source} · ${relativeTime(props.article.publishedAt)}`;
 });
+
+const teaser = computed(() => plainText(props.article.summary, 160));
 </script>
 
 <template>
@@ -68,8 +70,8 @@ const meta = computed(() => {
         >
           {{ article.title }}
         </h3>
-        <p class="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-muted-foreground">
-          {{ article.summary }}
+        <p v-if="teaser" class="article-teaser">
+          {{ teaser }}
         </p>
       </div>
     </div>

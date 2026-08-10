@@ -30,3 +30,32 @@ export function feedInitials(title: string): string {
   const parts = title.trim().split(/\s+/).slice(0, 2);
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "F";
 }
+
+/** Strip tags / decode entities for safe plain-text display (list/reader summary). */
+export function plainText(htmlOrText: string | null | undefined, maxLen = 0): string {
+  if (!htmlOrText) return "";
+  let s = String(htmlOrText);
+  // If it looks like HTML, strip tags first.
+  if (/[<>]/.test(s)) {
+    s = s
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, " ")
+      .replace(/<[^>]+>/g, " ");
+  }
+  s = s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/\s+/g, " ")
+    .trim();
+  if (maxLen > 0 && s.length > maxLen) {
+    return s.slice(0, maxLen).replace(/\s+\S*$/, "") + "…";
+  }
+  return s;
+}

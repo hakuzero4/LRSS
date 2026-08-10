@@ -75,7 +75,7 @@ const smartItems = computed(() => [
 </script>
 
 <template>
-  <aside class="app-sidebar flex h-full min-h-0 w-[248px] shrink-0 flex-col overflow-hidden">
+  <aside class="app-sidebar flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
     <div class="flex h-13 items-center justify-between gap-2 px-3 pt-2 pb-1">
       <div class="flex min-w-0 items-center gap-2.5 pl-0.5">
         <span class="brand-mark" aria-hidden="true">

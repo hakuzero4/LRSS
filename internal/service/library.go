@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"lrss/internal/favicon"
+	"lrss/internal/htmltext"
 	"lrss/internal/model"
 	"lrss/internal/repo"
 	"lrss/internal/rss"
@@ -329,7 +330,14 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 
 // ListArticles returns a page of articles for a collection.
 func (lib *Library) ListArticles(ctx context.Context, collection string, limit, offset int) ([]model.Article, error) {
-	return lib.Articles.List(ctx, collection, repo.ListOpts{Limit: limit, Offset: offset})
+	list, err := lib.Articles.List(ctx, collection, repo.ListOpts{Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		lib.normalizeArticleForUI(&list[i], false)
+	}
+	return list, nil
 }
 
 // GetArticle returns one article with sanitized ContentHTML for UI.
@@ -338,11 +346,36 @@ func (lib *Library) GetArticle(ctx context.Context, articleID string) (model.Art
 	if err != nil {
 		return model.Article{}, err
 	}
-	if a.ContentHTML != nil && *a.ContentHTML != "" {
+	lib.normalizeArticleForUI(&a, true)
+	return a, nil
+}
+
+// normalizeArticleForUI strips HTML from summary (legacy rows) and sanitizes body.
+// full=true also prepares content for the reader.
+func (lib *Library) normalizeArticleForUI(a *model.Article, full bool) {
+	if a == nil {
+		return
+	}
+	if a.Summary != nil && *a.Summary != "" {
+		plain := htmltext.ToText(*a.Summary)
+		// Drop summary when it is only a dump of the full HTML body lead-in.
+		if plain == "" {
+			a.Summary = nil
+		} else {
+			a.Summary = &plain
+		}
+	}
+	if full && a.ContentHTML != nil && *a.ContentHTML != "" {
 		san := lib.sanitizeHTML(*a.ContentHTML)
 		a.ContentHTML = &san
 	}
-	return a, nil
+	// Hide redundant summary when body text starts with the same plain text.
+	if a.Summary != nil && a.ContentText != nil {
+		s, c := *a.Summary, *a.ContentText
+		if s != "" && c != "" && (s == c || strings.HasPrefix(c, s)) {
+			a.Summary = nil
+		}
+	}
 }
 
 // SetRead marks an article read/unread.

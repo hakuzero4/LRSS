@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/mmcdole/gofeed"
 
@@ -58,10 +59,12 @@ func mapItem(item *gofeed.Item, baseURL, feedURL string) ParsedItem {
 
 	contentHTML := bestContentHTML(item)
 	desc := strings.TrimSpace(item.Description)
-	summary := desc
+	// Always plain text for summary (RSS Description is often HTML).
+	summary := htmltext.ToText(desc)
 	if summary == "" && contentHTML != "" {
 		summary = htmltext.ToText(contentHTML)
 	}
+	summary = truncateRunes(summary, 320)
 
 	textSrc := contentHTML
 	if textSrc == "" {
@@ -118,6 +121,25 @@ func bestContentHTML(item *gofeed.Item) string {
 		return c
 	}
 	return strings.TrimSpace(item.Description)
+}
+
+func truncateRunes(s string, max int) string {
+	if max <= 0 || s == "" {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	// Prefer break at word boundary near the cut.
+	cut := max
+	for i := max; i > max*3/4; i-- {
+		if unicode.IsSpace(r[i-1]) {
+			cut = i
+			break
+		}
+	}
+	return strings.TrimSpace(string(r[:cut])) + "…"
 }
 
 func stableHash(title string, item *gofeed.Item) string {

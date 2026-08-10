@@ -8,7 +8,7 @@ import {
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
-import { formatAbsolute } from "@/lib/format";
+import { formatAbsolute, plainText } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,18 +34,46 @@ const fontClass = computed(() => {
   return "text-[16.5px] leading-[1.7]";
 });
 
+/**
+ * Deck / standfirst under the title.
+ * Hidden only when it is essentially the same as the full body text.
+ */
+const readerSummary = computed(() => {
+  const a = selectedArticle.value;
+  if (!a?.summary) return "";
+  const s = plainText(a.summary, 480);
+  if (!s || s.length < 12) return "";
+  const body = plainText(a.contentHtml, 800);
+  if (!body) return s;
+  // Exact or near-full duplicate of the article body → no deck.
+  if (s === body) return "";
+  if (body.startsWith(s) && s.length > body.length * 0.72) return "";
+  if (s.startsWith(body) && body.length > s.length * 0.72) return "";
+  return s;
+});
+
+const hasBody = computed(() => {
+  const html = selectedArticle.value?.contentHtml?.trim() ?? "";
+  return html.length > 0 && plainText(html).length > 0;
+});
+
+const readerWidthClass = computed(() => {
+  if (settings.readerWidth === "narrow") return "max-w-[34rem]";
+  if (settings.readerWidth === "wide") return "max-w-[52rem]";
+  return "max-w-[42rem]";
+});
+
 function openOriginal() {
   if (!selectedArticle.value) return;
-  // Wails will wire this later; design uses a normal link affordance.
   window.open(selectedArticle.value.url, "_blank", "noopener,noreferrer");
 }
 </script>
 
 <template>
-  <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+  <section class="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-background">
     <template v-if="selectedArticle">
       <header class="pane-chrome flex h-12 shrink-0 items-center justify-between gap-2 px-4">
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1 pr-2">
           <p class="truncate text-[12px] text-muted-foreground">
             {{ selectedFeed?.title ?? t("article.feedFallback") }}
             <span v-if="selectedArticle.author"> · {{ selectedArticle.author }}</span>
@@ -53,7 +81,7 @@ function openOriginal() {
         </div>
 
         <TooltipProvider :delay-duration="300">
-          <div class="flex items-center gap-0.5">
+          <div class="flex shrink-0 items-center gap-0.5">
             <Tooltip>
               <TooltipTrigger as-child>
                 <Button
@@ -110,26 +138,55 @@ function openOriginal() {
       </header>
 
       <div class="scroll-pane flex-1">
-        <article class="mx-auto max-w-[42rem] px-6 py-8 sm:px-10 sm:py-10">
-          <p class="text-[12px] font-medium tracking-[0.01em] text-muted-foreground">
-            {{ formatAbsolute(selectedArticle.publishedAt) }}
-          </p>
-          <h1
-            class="mt-2 text-[1.75rem] font-semibold tracking-[-0.025em] text-balance leading-[1.15] sm:text-[2rem]"
-          >
-            {{ selectedArticle.title }}
-          </h1>
-          <p
-            v-if="selectedArticle.summary"
-            class="mt-3 text-[15px] leading-relaxed text-muted-foreground"
-          >
-            {{ selectedArticle.summary }}
-          </p>
+        <article :class="cn('mx-auto px-6 py-8 sm:px-10 sm:py-10', readerWidthClass)">
+          <header class="reader-header-block">
+            <p class="text-[12px] font-medium tracking-[0.01em] text-muted-foreground">
+              {{ formatAbsolute(selectedArticle.publishedAt) }}
+            </p>
+            <h1
+              class="mt-2 text-[1.75rem] font-semibold tracking-[-0.025em] text-balance leading-[1.2] sm:text-[2rem]"
+            >
+              {{ selectedArticle.title }}
+            </h1>
 
-          <div
-            :class="cn('reader-body mt-8 text-foreground/90', fontClass)"
-            v-html="selectedArticle.contentHtml"
-          />
+            <!-- Summary deck: visually separate from body -->
+            <aside
+              v-if="readerSummary"
+              class="reader-summary"
+              :aria-label="t('article.summaryLabel')"
+            >
+              <div class="reader-summary-inner">
+                <p class="reader-summary-label">
+                  <span class="reader-summary-label-dot" aria-hidden="true" />
+                  {{ t("article.summaryLabel") }}
+                </p>
+                <p class="reader-summary-text">
+                  {{ readerSummary }}
+                </p>
+              </div>
+            </aside>
+          </header>
+
+          <template v-if="hasBody">
+            <div
+              v-if="readerSummary"
+              class="reader-body-rule"
+              role="separator"
+              :aria-label="t('article.bodyLabel')"
+            >
+              {{ t("article.bodyLabel") }}
+            </div>
+            <div
+              :class="
+                cn(
+                  'reader-body text-foreground/90',
+                  fontClass,
+                  readerSummary ? 'mt-4' : 'mt-8',
+                )
+              "
+              v-html="selectedArticle.contentHtml"
+            />
+          </template>
         </article>
       </div>
     </template>

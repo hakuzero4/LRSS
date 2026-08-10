@@ -60,6 +60,8 @@ export default {
     openOriginal: "Open original",
     starred: "Starred",
     feedFallback: "Feed",
+    summaryLabel: "Summary",
+    bodyLabel: "Article",
   },
 
   feed: {

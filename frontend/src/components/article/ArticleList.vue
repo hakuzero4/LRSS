@@ -37,7 +37,7 @@ const articleCountLabel = computed(() => {
 </script>
 
 <template>
-  <section class="flex h-full min-h-0 w-[340px] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-background">
+  <section class="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
     <header class="pane-chrome flex h-12 items-center gap-2 px-3">
       <div class="min-w-0 flex-1">
         <h2 class="truncate text-[13px] font-semibold tracking-tight">

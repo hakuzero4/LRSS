@@ -59,6 +59,8 @@ export default {
     openOriginal: "打开原文",
     starred: "已收藏",
     feedFallback: "订阅源",
+    summaryLabel: "摘要",
+    bodyLabel: "正文",
   },
 
   feed: {
