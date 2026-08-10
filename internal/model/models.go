@@ -6,8 +6,11 @@ type Folder struct {
 	Name      string  `json:"name"`
 	ParentID  *string `json:"parentId,omitempty"`
 	SortOrder int     `json:"sortOrder"`
-	CreatedAt string  `json:"createdAt"`
-	UpdatedAt string  `json:"updatedAt"`
+	// IsNsfw marks a sensitive folder. When UIPrefs.nsfwMode is false, UI hides
+	// this folder and its feeds; article lists/search also exclude them.
+	IsNsfw    bool   `json:"isNsfw"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // Feed is an RSS/Atom subscription.
@@ -28,9 +31,11 @@ type Feed struct {
 	RefreshIntervalMinutes int `json:"refreshIntervalMinutes"`
 	// TitleUserSet is true when the user renamed the feed; refresh must not overwrite title.
 	TitleUserSet bool `json:"titleUserSet"`
-	UnreadCount  int  `json:"unreadCount"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
+	// IsNsfw marks a sensitive feed. When UIPrefs.nsfwMode is false, UI hides this feed.
+	IsNsfw      bool `json:"isNsfw"`
+	UnreadCount int  `json:"unreadCount"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 // Article is a single feed item.

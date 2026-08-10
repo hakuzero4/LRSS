@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -36,9 +37,10 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { parseFeedUrlsFromText } from "@/lib/feedUrls";
 import { relativeTime } from "@/lib/format";
 import type { Feed } from "@/types/rss";
-import { Pencil, TriangleAlert } from "@lucide/vue";
+import { Pencil, Plus, Search, TriangleAlert } from "@lucide/vue";
 
 const { t } = useI18n();
 
@@ -54,6 +56,11 @@ const {
   renameFeed,
   setFeedRefreshInterval,
   setFeedPaused,
+  moveFeedToFolder,
+  refreshOneFeed,
+  deleteFeed,
+  setFeedNsfw,
+  addFeedsFromURLs,
 } = useRssStore();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -71,13 +78,25 @@ const purging = ref(false);
 /** Interval presets (minutes). 0 = follow global default. */
 const INTERVAL_OPTIONS = [0, 5, 15, 30, 60, 120, 180] as const;
 
+const feedFilter = ref("");
+
 const subscriptionCount = computed(() => feeds.value.length);
 
-const sortedFeeds = computed(() =>
-  [...feeds.value].sort((a, b) =>
+const sortedFeeds = computed(() => {
+  const q = feedFilter.value.trim().toLowerCase();
+  let list = [...feeds.value];
+  if (q) {
+    list = list.filter(
+      (f) =>
+        f.title.toLowerCase().includes(q) ||
+        f.feedUrl.toLowerCase().includes(q) ||
+        (f.siteUrl?.toLowerCase().includes(q) ?? false),
+    );
+  }
+  return list.sort((a, b) =>
     a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
-  ),
-);
+  );
+});
 
 const globalIntervalLabel = computed(() => formatIntervalMinutes(settings.refreshIntervalMinutes));
 
@@ -95,12 +114,6 @@ function intervalOptionLabel(minutes: number): string {
   return t("settings.feeds.intervalCustom", { n: formatIntervalMinutes(minutes) });
 }
 
-function intervalValue(feed: Feed): string {
-  const n = feed.refreshIntervalMinutes ?? 0;
-  // If user somehow has a non-preset value, still show it via select string.
-  return String(n);
-}
-
 function lastUpdatedLabel(feed: Feed): string {
   const iso = feed.lastFetchedAt?.trim();
   if (!iso) return t("settings.feeds.neverUpdated");
@@ -114,57 +127,180 @@ function folderName(feed: Feed): string {
   return folders.value.find((f) => f.id === feed.folderId)?.name ?? t("settings.feeds.unfiled");
 }
 
-const busy = computed(() => importing.value || exporting.value || clearing.value || purging.value);
+const busy = computed(
+  () => importing.value || exporting.value || clearing.value || purging.value || addingFeeds.value,
+);
 
-async function onIntervalChange(feed: Feed, raw: string) {
-  const minutes = Math.max(0, Math.floor(Number(raw) || 0));
+// ── Add feed(s) dialog (multi-line) ────────────────────────────
+const addOpen = ref(false);
+const addUrlsText = ref("");
+const addFolderId = ref("none");
+const addNsfw = ref(false);
+const addingFeeds = ref(false);
+const addProgress = ref({ current: 0, total: 0 });
+
+const parsedAddUrls = computed(() => parseFeedUrlsFromText(addUrlsText.value));
+
+function openAddFeeds() {
+  addUrlsText.value = "";
+  addFolderId.value = settings.defaultFolderId?.trim() || "none";
+  addNsfw.value = false;
+  addingFeeds.value = false;
+  addProgress.value = { current: 0, total: 0 };
+  addOpen.value = true;
+}
+
+async function confirmAddFeeds() {
+  if (addingFeeds.value) return;
+  const urls = parsedAddUrls.value;
+  if (urls.length === 0) {
+    toast.error(t("settings.feeds.addEmpty"));
+    return;
+  }
+  addingFeeds.value = true;
+  addProgress.value = { current: 0, total: urls.length };
   try {
-    await setFeedRefreshInterval(feed.id, minutes);
-    toast.success(t("settings.feeds.intervalSaved"));
+    // Sequential with progress: call one-by-one via batch helper is all-or-reload;
+    // use batch API which is sequential and reports result.
+    const folder = addFolderId.value === "none" ? null : addFolderId.value;
+    // Progress: reimplement loop here for UI, or enhance store — simple toast after batch is OK.
+    // For live progress, loop with addFeedsFromURLs is one-shot; show indeterminate then result.
+    const result = await addFeedsFromURLs(urls, {
+      folderId: folder,
+      isNsfw: addNsfw.value,
+      selectLast: true,
+      onProgress: (current, total) => {
+        addProgress.value = { current, total };
+      },
+    });
+
+    if (result.added > 0 && result.failed.length === 0) {
+      toast.success(t("settings.feeds.addDone", { n: result.added }));
+      addOpen.value = false;
+    } else if (result.added > 0 && result.failed.length > 0) {
+      toast.success(t("settings.feeds.addPartial", { ok: result.added, fail: result.failed.length }), {
+        description: result.failed
+          .slice(0, 3)
+          .map((f) => `${f.url}: ${f.message}`)
+          .join("\n"),
+      });
+      addOpen.value = false;
+    } else {
+      toast.error(t("settings.feeds.addAllFailed"), {
+        description: result.failed[0]?.message,
+      });
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("settings.feeds.intervalFailed"), { description: msg });
+    toast.error(t("settings.feeds.addFailed"), { description: msg });
+  } finally {
+    addingFeeds.value = false;
   }
 }
 
-async function onPauseChange(feed: Feed, paused: boolean) {
-  try {
-    await setFeedPaused(feed.id, paused);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("settings.feeds.pauseFailed"), { description: msg });
-  }
+// ── Edit subscription dialog ───────────────────────────────────
+const editOpen = ref(false);
+const editFeedId = ref<string | null>(null);
+const editTitle = ref("");
+const editInterval = ref("0");
+const editFolderId = ref("none");
+const editPaused = ref(false);
+const editNsfw = ref(false);
+const editSaving = ref(false);
+const editRefreshing = ref(false);
+const editFeedUrl = ref("");
+const deleteFeedOpen = ref(false);
+const deleteFeedBusy = ref(false);
+
+const editFeed = computed(() =>
+  editFeedId.value ? feeds.value.find((f) => f.id === editFeedId.value) ?? null : null,
+);
+
+function openEdit(feed: Feed) {
+  editFeedId.value = feed.id;
+  editTitle.value = feed.title;
+  editInterval.value = String(feed.refreshIntervalMinutes ?? 0);
+  editFolderId.value = feed.folderId ?? "none";
+  editPaused.value = !!feed.isPaused;
+  editNsfw.value = !!feed.isNsfw;
+  editFeedUrl.value = feed.feedUrl;
+  editOpen.value = true;
 }
 
-// ── Rename dialog ──────────────────────────────────────────────
-const renameOpen = ref(false);
-const renameFeedId = ref<string | null>(null);
-const renameDraft = ref("");
-const renameSaving = ref(false);
-
-function openRename(feed: Feed) {
-  renameFeedId.value = feed.id;
-  renameDraft.value = feed.title;
-  renameOpen.value = true;
-}
-
-async function confirmRename() {
-  if (!renameFeedId.value || renameSaving.value) return;
-  const title = renameDraft.value.trim();
+async function confirmEdit() {
+  if (!editFeedId.value || editSaving.value) return;
+  const title = editTitle.value.trim();
   if (!title) {
     toast.error(t("settings.feeds.renameEmpty"));
     return;
   }
-  renameSaving.value = true;
+  editSaving.value = true;
+  const id = editFeedId.value;
   try {
-    await renameFeed(renameFeedId.value, title);
-    renameOpen.value = false;
-    toast.success(t("settings.feeds.renameSaved"));
+    const current = feeds.value.find((f) => f.id === id);
+    if (!current) throw new Error("feed missing");
+
+    if (title !== current.title) {
+      await renameFeed(id, title);
+    }
+    const minutes = Math.max(0, Math.floor(Number(editInterval.value) || 0));
+    if (minutes !== (current.refreshIntervalMinutes ?? 0)) {
+      await setFeedRefreshInterval(id, minutes);
+    }
+    const folder = editFolderId.value === "none" ? null : editFolderId.value;
+    const curFolder = current.folderId ?? null;
+    if ((folder ?? null) !== (curFolder ?? null)) {
+      await moveFeedToFolder(id, folder);
+    }
+    if (editPaused.value !== !!current.isPaused) {
+      await setFeedPaused(id, editPaused.value);
+    }
+    if (editNsfw.value !== !!current.isNsfw) {
+      await setFeedNsfw(id, editNsfw.value);
+    }
+    editOpen.value = false;
+    toast.success(t("settings.feeds.saved"));
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("settings.feeds.renameFailed"), { description: msg });
+    toast.error(t("settings.feeds.saveFailed"), { description: msg });
   } finally {
-    renameSaving.value = false;
+    editSaving.value = false;
+  }
+}
+
+async function onEditRefresh() {
+  if (!editFeedId.value || editRefreshing.value) return;
+  editRefreshing.value = true;
+  try {
+    const n = await refreshOneFeed(editFeedId.value);
+    toast.success(t("settings.feeds.refreshDone", { n }));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.feeds.refreshFailed"), { description: msg });
+  } finally {
+    editRefreshing.value = false;
+  }
+}
+
+function openDeleteFeed() {
+  if (!editFeedId.value) return;
+  deleteFeedOpen.value = true;
+}
+
+async function confirmDeleteFeed(ev: Event) {
+  ev.preventDefault();
+  if (!editFeedId.value || deleteFeedBusy.value) return;
+  deleteFeedBusy.value = true;
+  try {
+    await deleteFeed(editFeedId.value);
+    deleteFeedOpen.value = false;
+    editOpen.value = false;
+    toast.success(t("settings.feeds.deleteFeedDone"));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.feeds.deleteFeedFailed"), { description: msg });
+  } finally {
+    deleteFeedBusy.value = false;
   }
 }
 
@@ -315,117 +451,139 @@ async function confirmClearAll(ev: Event) {
 
 <template>
   <div class="space-y-7">
-    <!-- All subscriptions -->
+    <!-- All subscriptions: fixed max height so settings panel does not balloon -->
     <SettingsGroup
       :title="t('settings.feeds.listGroup')"
       :description="t('settings.feeds.listGroupDesc')"
     >
-      <p
-        v-if="subscriptionCount === 0"
-        class="py-4 text-center text-[12.5px] text-muted-foreground"
-      >
-        {{ t("settings.feeds.listEmpty") }}
-      </p>
-      <template v-else>
-        <p class="pb-2 pt-1 text-[11.5px] tabular-nums text-muted-foreground">
-          {{ t("settings.feeds.listCount", { n: subscriptionCount }) }}
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 pt-1">
+        <p class="text-[11.5px] tabular-nums text-muted-foreground">
+          <template v-if="subscriptionCount === 0">
+            {{ t("settings.feeds.listEmpty") }}
+          </template>
+          <template v-else-if="feedFilter.trim()">
+            {{
+              t("settings.feeds.listFiltered", {
+                shown: sortedFeeds.length,
+                n: subscriptionCount,
+              })
+            }}
+          </template>
+          <template v-else>
+            {{ t("settings.feeds.listCount", { n: subscriptionCount }) }}
+          </template>
         </p>
-        <ul class="divide-y divide-border/70 rounded-lg border border-border/70">
-          <li
-            v-for="feed in sortedFeeds"
-            :key="feed.id"
-            class="flex flex-col gap-2.5 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+        <div class="flex flex-wrap items-center gap-2">
+          <div v-if="subscriptionCount > 0" class="relative w-full max-w-[200px] sm:w-[200px]">
+            <Search
+              class="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              v-model="feedFilter"
+              type="search"
+              class="h-8 pl-7 text-[12px]"
+              :placeholder="t('settings.feeds.listSearchPlaceholder')"
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            class="h-8 shrink-0 gap-1 px-2.5 text-[12px]"
+            :disabled="busy"
+            @click="openAddFeeds"
           >
-            <div class="min-w-0 flex-1">
-              <div class="flex items-start gap-2.5">
-                <FeedIcon
-                  :src="feed.favicon"
-                  :title="feed.title"
-                  size="md"
-                  class="mt-0.5"
-                />
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-1.5">
-                    <p class="truncate text-[13px] font-medium leading-snug">
-                      {{ feed.title }}
-                    </p>
-                    <span
-                      v-if="feed.isPaused"
-                      class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-                    >
-                      {{ t("settings.feeds.paused") }}
-                    </span>
-                  </div>
-                  <p
-                    class="mt-0.5 truncate text-[11.5px] text-muted-foreground"
-                    :title="feed.feedUrl"
-                  >
-                    {{ feed.feedUrl }}
-                  </p>
-                  <p class="mt-1 text-[11.5px] text-muted-foreground">
-                    <span class="text-foreground/70">{{ t("settings.feeds.lastUpdated") }}</span>
-                    ·
-                    <span class="tabular-nums">{{ lastUpdatedLabel(feed) }}</span>
-                    ·
-                    <span>{{ folderName(feed) }}</span>
-                  </p>
-                  <p
-                    v-if="feed.lastError"
-                    class="mt-1 line-clamp-2 text-[11px] text-destructive/90"
-                    :title="feed.lastError"
-                  >
-                    {{ feed.lastError }}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Plus class="size-3.5" />
+            {{ t("settings.feeds.addFeeds") }}
+          </Button>
+        </div>
+      </div>
 
-            <div class="flex shrink-0 flex-col gap-2 sm:items-end">
-              <div class="flex flex-wrap items-center gap-2 sm:justify-end">
-                <Select
-                  :model-value="intervalValue(feed)"
-                  :disabled="busy || feed.isPaused"
-                  @update:model-value="(v) => onIntervalChange(feed, String(v))"
+      <template v-if="subscriptionCount === 0">
+        <div
+          class="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border/80 px-4 py-8 text-center"
+        >
+          <p class="text-[12.5px] text-muted-foreground">
+            {{ t("settings.feeds.listEmptyHint") }}
+          </p>
+          <Button type="button" size="sm" class="gap-1" :disabled="busy" @click="openAddFeeds">
+            <Plus class="size-3.5" />
+            {{ t("settings.feeds.addFeeds") }}
+          </Button>
+        </div>
+      </template>
+      <template v-else>
+        <!-- Cap height (~5–6 rows); scroll inside so OPML / retention stay reachable -->
+        <div
+          class="max-h-[min(280px,42vh)] overflow-y-auto overscroll-contain rounded-lg border border-border/70"
+          role="region"
+          :aria-label="t('settings.feeds.listGroup')"
+        >
+          <ul class="divide-y divide-border/70">
+            <li
+              v-for="feed in sortedFeeds"
+              :key="feed.id"
+              class="flex items-center gap-2.5 px-3 py-2.5"
+            >
+              <FeedIcon
+                :src="feed.favicon"
+                :title="feed.title"
+                size="md"
+                class="shrink-0"
+              />
+              <div class="min-w-0 flex-1">
+                <div class="flex min-w-0 items-center gap-1.5">
+                  <p class="truncate text-[13px] font-medium leading-snug">
+                    {{ feed.title }}
+                  </p>
+                  <span
+                    v-if="feed.isPaused"
+                    class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                  >
+                    {{ t("settings.feeds.paused") }}
+                  </span>
+                  <span
+                    v-if="feed.isNsfw"
+                    class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive"
+                  >
+                    {{ t("settings.feeds.nsfwBadge") }}
+                  </span>
+                </div>
+                <p
+                  class="mt-0.5 truncate text-[11px] text-muted-foreground"
+                  :title="feed.feedUrl"
                 >
-                  <SelectTrigger class="h-8 w-[168px] text-[12px]">
-                    <SelectValue :placeholder="t('settings.feeds.refreshInterval')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="opt in INTERVAL_OPTIONS"
-                      :key="opt"
-                      :value="String(opt)"
-                      class="text-[12.5px]"
-                    >
-                      {{ intervalOptionLabel(opt) }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  class="h-8 gap-1 px-2.5 text-[12px]"
-                  :disabled="busy"
-                  @click="openRename(feed)"
+                  {{ folderName(feed) }}
+                  ·
+                  <span class="tabular-nums">{{ lastUpdatedLabel(feed) }}</span>
+                </p>
+                <p
+                  v-if="feed.lastError"
+                  class="mt-0.5 line-clamp-1 text-[11px] text-destructive/90"
+                  :title="feed.lastError"
                 >
-                  <Pencil class="size-3.5 opacity-70" />
-                  {{ t("settings.feeds.editName") }}
-                </Button>
+                  {{ feed.lastError }}
+                </p>
               </div>
-              <label
-                class="flex cursor-pointer items-center gap-2 text-[11.5px] text-muted-foreground"
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                class="h-8 shrink-0 gap-1 px-2.5 text-[12px]"
+                :disabled="busy"
+                @click="openEdit(feed)"
               >
-                <Switch
-                  :checked="!!feed.isPaused"
-                  :disabled="busy"
-                  @update:checked="(v) => onPauseChange(feed, v)"
-                />
-                {{ t("settings.feeds.pause") }}
-              </label>
-            </div>
-          </li>
-        </ul>
+                <Pencil class="size-3.5 opacity-70" />
+                {{ t("settings.feeds.edit") }}
+              </Button>
+            </li>
+            <li
+              v-if="sortedFeeds.length === 0"
+              class="px-3 py-6 text-center text-[12px] text-muted-foreground"
+            >
+              {{ t("settings.feeds.listEmpty") }}
+            </li>
+          </ul>
+        </div>
       </template>
     </SettingsGroup>
 
@@ -590,47 +748,257 @@ async function confirmClearAll(ev: Event) {
       </p>
     </SettingsGroup>
 
-    <!-- Rename dialog -->
-    <Dialog :open="renameOpen" @update:open="(v) => (renameOpen = v)">
-      <DialogContent class="sm:max-w-sm">
+    <!-- Add one or many feed URLs -->
+    <Dialog :open="addOpen" @update:open="(v) => !addingFeeds && (addOpen = v)">
+      <DialogContent class="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{{ t("settings.feeds.renameTitle") }}</DialogTitle>
-          <DialogDescription>{{ t("settings.feeds.renameDesc") }}</DialogDescription>
+          <DialogTitle>{{ t("settings.feeds.addTitle") }}</DialogTitle>
+          <DialogDescription>{{ t("settings.feeds.addDesc") }}</DialogDescription>
         </DialogHeader>
-        <div class="space-y-2 py-1">
-          <label class="text-[12.5px] font-medium" for="feed-rename-input">
-            {{ t("settings.feeds.renameLabel") }}
-          </label>
-          <Input
-            id="feed-rename-input"
-            v-model="renameDraft"
-            :placeholder="t('settings.feeds.renamePlaceholder')"
-            class="h-9"
-            :disabled="renameSaving"
-            @keydown.enter.prevent="confirmRename"
-          />
+        <form class="grid gap-3.5 py-1" @submit.prevent="confirmAddFeeds">
+          <div class="grid gap-1.5">
+            <Label for="settings-add-urls">{{ t("settings.feeds.addUrlsLabel") }}</Label>
+            <textarea
+              id="settings-add-urls"
+              v-model="addUrlsText"
+              rows="7"
+              class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 placeholder:text-muted-foreground w-full min-w-0 resize-y rounded-lg border bg-transparent px-2.5 py-2 font-mono text-[12.5px] leading-relaxed outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+              :placeholder="t('settings.feeds.addUrlsPlaceholder')"
+              :disabled="addingFeeds"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <p class="text-[11.5px] leading-snug text-muted-foreground">
+              {{
+                parsedAddUrls.length > 0
+                  ? t("settings.feeds.addUrlsCount", { n: parsedAddUrls.length })
+                  : t("settings.feeds.addUrlsHint")
+              }}
+            </p>
+          </div>
+          <div class="grid gap-1.5">
+            <Label>{{ t("settings.feeds.folderLabel") }}</Label>
+            <Select v-model="addFolderId" :disabled="addingFeeds">
+              <SelectTrigger class="h-9 w-full text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+                <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
+                <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
+                  {{ f.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div
+            class="flex items-start justify-between gap-3 rounded-md border border-border/60 px-3 py-2.5"
+          >
+            <div class="min-w-0">
+              <p class="text-[13px] font-medium">{{ t("settings.feeds.nsfw") }}</p>
+              <p class="mt-0.5 text-[11.5px] text-muted-foreground">
+                {{ t("settings.feeds.addNsfwDesc") }}
+              </p>
+            </div>
+            <Switch v-model:checked="addNsfw" :disabled="addingFeeds" class="mt-0.5" />
+          </div>
+          <p
+            v-if="addingFeeds && addProgress.total > 0"
+            class="text-[12px] tabular-nums text-muted-foreground"
+            role="status"
+          >
+            {{
+              t("settings.feeds.addProgress", {
+                current: addProgress.current,
+                total: addProgress.total,
+              })
+            }}
+          </p>
+          <DialogFooter class="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="ghost"
+              :disabled="addingFeeds"
+              @click="addOpen = false"
+            >
+              {{ t("common.cancel") }}
+            </Button>
+            <Button type="submit" :disabled="addingFeeds || parsedAddUrls.length === 0">
+              {{
+                addingFeeds
+                  ? t("settings.feeds.adding")
+                  : parsedAddUrls.length > 1
+                    ? t("settings.feeds.addSubmitMany", { n: parsedAddUrls.length })
+                    : t("settings.feeds.addSubmit")
+              }}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Edit subscription (name / interval / folder / pause / refresh / delete) -->
+    <Dialog :open="editOpen" @update:open="(v) => (editOpen = v)">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t("settings.feeds.editTitle") }}</DialogTitle>
+          <DialogDescription>{{ t("settings.feeds.editDesc") }}</DialogDescription>
+        </DialogHeader>
+        <div class="grid gap-3.5 py-1">
+          <div class="grid gap-1.5">
+            <Label for="feed-edit-title">{{ t("settings.feeds.renameLabel") }}</Label>
+            <Input
+              id="feed-edit-title"
+              v-model="editTitle"
+              :placeholder="t('settings.feeds.renamePlaceholder')"
+              class="h-9"
+              :disabled="editSaving"
+            />
+          </div>
+          <div class="grid gap-1.5">
+            <Label>{{ t("settings.feeds.feedUrlLabel") }}</Label>
+            <p
+              class="truncate rounded-md border border-border/60 bg-muted/40 px-2.5 py-2 text-[12px] text-muted-foreground"
+              :title="editFeedUrl"
+            >
+              {{ editFeedUrl }}
+            </p>
+          </div>
+          <div class="grid gap-1.5">
+            <Label>{{ t("settings.feeds.refreshInterval") }}</Label>
+            <Select v-model="editInterval" :disabled="editSaving || editPaused">
+              <SelectTrigger class="h-9 w-full text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+                <SelectItem
+                  v-for="opt in INTERVAL_OPTIONS"
+                  :key="opt"
+                  :value="String(opt)"
+                >
+                  {{ intervalOptionLabel(opt) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="grid gap-1.5">
+            <Label>{{ t("settings.feeds.folderLabel") }}</Label>
+            <Select v-model="editFolderId" :disabled="editSaving">
+              <SelectTrigger class="h-9 w-full text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+                <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
+                <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
+                  {{ f.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2.5">
+            <div>
+              <p class="text-[13px] font-medium">{{ t("settings.feeds.pause") }}</p>
+              <p
+                v-if="editFeed?.lastError"
+                class="mt-0.5 line-clamp-2 text-[11px] text-destructive/90"
+              >
+                {{ editFeed.lastError }}
+              </p>
+            </div>
+            <Switch v-model:checked="editPaused" :disabled="editSaving" />
+          </div>
+          <div class="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2.5">
+            <div class="min-w-0">
+              <p class="text-[13px] font-medium">{{ t("settings.feeds.nsfw") }}</p>
+              <p class="mt-0.5 text-[11.5px] text-muted-foreground">
+                {{ t("settings.feeds.nsfwDesc") }}
+              </p>
+            </div>
+            <Switch v-model:checked="editNsfw" :disabled="editSaving" />
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              :disabled="editSaving || editRefreshing || !editFeedId"
+              @click="onEditRefresh"
+            >
+              {{
+                editRefreshing
+                  ? t("settings.feeds.refreshing")
+                  : t("settings.feeds.refreshNow")
+              }}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              :disabled="editSaving || deleteFeedBusy"
+              @click="openDeleteFeed"
+            >
+              {{ t("settings.feeds.deleteFeed") }}
+            </Button>
+          </div>
         </div>
         <DialogFooter>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            :disabled="renameSaving"
-            @click="renameOpen = false"
+            :disabled="editSaving"
+            @click="editOpen = false"
           >
             {{ t("common.cancel") }}
           </Button>
           <Button
             type="button"
             size="sm"
-            :disabled="renameSaving || !renameDraft.trim()"
-            @click="confirmRename"
+            :disabled="editSaving || !editTitle.trim()"
+            @click="confirmEdit"
           >
-            {{ renameSaving ? t("common.saving") : t("settings.feeds.saveName") }}
+            {{ editSaving ? t("common.saving") : t("common.save") }}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      :open="deleteFeedOpen"
+      @update:open="(v) => !deleteFeedBusy && (deleteFeedOpen = v)"
+    >
+      <AlertDialogContent class="sm:max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogMedia class="bg-destructive/10 text-destructive">
+            <TriangleAlert />
+          </AlertDialogMedia>
+          <AlertDialogTitle>{{ t("settings.feeds.deleteFeedConfirmTitle") }}</AlertDialogTitle>
+          <AlertDialogDescription class="text-[13px] leading-relaxed">
+            {{
+              t("settings.feeds.deleteFeedConfirmBody", {
+                name: editTitle || editFeed?.title || "",
+              })
+            }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel size="sm" :disabled="deleteFeedBusy">
+            {{ t("common.cancel") }}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            size="sm"
+            :disabled="deleteFeedBusy"
+            @click="confirmDeleteFeed"
+          >
+            {{
+              deleteFeedBusy
+                ? t("common.loading")
+                : t("settings.feeds.deleteFeed")
+            }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <AlertDialog :open="confirmClearOpen" @update:open="onConfirmOpenChange">
       <AlertDialogContent class="sm:max-w-sm">

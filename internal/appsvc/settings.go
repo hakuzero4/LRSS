@@ -239,7 +239,7 @@ func (s *SettingsService) RebuildAllEmbeddings() (map[string]int, error) {
 	return map[string]int{"processed": total, "rounds": rounds}, nil
 }
 
-// SearchService is exposed to the frontend.
+// SearchService is the Wails-facing search API.
 type SearchService struct {
 	inner *search.Service
 }
@@ -249,7 +249,16 @@ func NewSearch(inner *search.Service) *SearchService {
 	return &SearchService{inner: inner}
 }
 
-// Search runs library search.
+// Search runs library search. Respects UIPrefs.nsfwMode (office hide).
 func (s *SearchService) Search(query string, mode string, limit int) (search.Result, error) {
-	return s.inner.Search(context.Background(), query, search.Options{Mode: mode, Limit: limit})
+	exclude := false
+	if s != nil && s.inner != nil && s.inner.Settings != nil {
+		prefs, err := s.inner.Settings.LoadUIPrefs(context.Background())
+		if err == nil {
+			exclude = !prefs.NsfwMode
+		}
+	}
+	return s.inner.Search(context.Background(), query, search.Options{
+		Mode: mode, Limit: limit, ExcludeNsfw: exclude,
+	})
 }

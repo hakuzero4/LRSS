@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import {
   BookOpenText,
+  Briefcase,
   CalendarDays,
   ChevronRight,
+  Eye,
   Folder,
   FolderPlus,
   Inbox,
@@ -11,15 +13,26 @@ import {
   Sparkles,
   Star,
 } from "@lucide/vue";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
+import {
+  loadCollapsedFolders,
+  pruneCollapsedFolders,
+  saveCollapsedFolders,
+} from "@/lib/folderCollapse";
 import { folderCollectionId } from "@/lib/folderMenu";
 import { compactSidebarClass } from "@/lib/uiGaps";
 import { cn } from "@/lib/utils";
 import type { CollectionId, Feed, FeedFolder } from "@/types/rss";
 import FeedIcon from "@/components/feed/FeedIcon.vue";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +69,8 @@ const { t } = useI18n();
 const {
   folders,
   feeds,
+  sidebarFolders,
+  sidebarFeeds,
   smartCounts,
   collectionId,
   settings,
@@ -72,14 +87,76 @@ const {
   markFeedRead,
   renameFeed,
   setFeedPaused,
+  setFeedNsfw,
+  setFolderNsfw,
+  setNsfwMode,
   moveFeedToFolder,
   deleteFeed,
 } = useRssStore();
 
-const collapsedFolders = ref<Record<string, boolean>>({});
+const nsfwToggling = ref(false);
+
+/** Office mode = hide NSFW (nsfwMode false). Button shows current office state. */
+const officeMode = computed(() => !settings.nsfwMode);
+
+const hasNsfwFeeds = computed(
+  () => feeds.value.some((f) => f.isNsfw) || folders.value.some((f) => f.isNsfw),
+);
+
+async function onToggleOfficeMode() {
+  if (nsfwToggling.value) return;
+  nsfwToggling.value = true;
+  try {
+    // Toggle: office on → nsfwMode false; office off → nsfwMode true
+    await setNsfwMode(officeMode.value);
+    // After toggle, officeMode reflects the new state.
+    if (officeMode.value) {
+      toast.success(t("nav.officeModeOnTitle"), {
+        description: t("nav.officeModeOnDesc"),
+        duration: 2800,
+      });
+    } else {
+      toast.success(t("nav.officeModeOffTitle"), {
+        description: t("nav.officeModeOffDesc"),
+        duration: 2800,
+      });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("nav.officeModeFailed"), { description: msg });
+  } finally {
+    nsfwToggling.value = false;
+  }
+}
+
+/** true = folder children hidden; persisted in localStorage (`lrss.folderCollapsed`). */
+const collapsedFolders = ref<Record<string, boolean>>(loadCollapsedFolders());
 const creatingFolder = ref(false);
 const folderBusyId = ref<string | null>(null);
 const feedBusyId = ref<string | null>(null);
+
+watch(
+  collapsedFolders,
+  (map) => {
+    saveCollapsedFolders(map);
+  },
+  { deep: true },
+);
+
+// Drop deleted folder ids from the map (and storage via the watch above).
+watch(
+  folders,
+  (list) => {
+    const next = pruneCollapsedFolders(
+      collapsedFolders.value,
+      list.map((f) => f.id),
+    );
+    if (next !== collapsedFolders.value) {
+      collapsedFolders.value = next;
+    }
+  },
+  { deep: true },
+);
 
 const sidebarDensityClass = computed(() => compactSidebarClass(settings.compactSidebar));
 
@@ -98,12 +175,16 @@ const deleteTarget = ref<FeedFolder | null>(null);
 const deleteFeedTarget = ref<Feed | null>(null);
 const deleteBusy = ref(false);
 
-const unfiledFeeds = computed(() => feeds.value.filter((f) => !f.folderId));
+/** Sidebar-only feeds (office mode hides isNsfw). */
+const unfiledFeeds = computed(() => sidebarFeeds.value.filter((f) => !f.folderId));
 
-/** Sum of unread articles for feeds inside each folder (for red-dot badge). */
+const feedsInFolder = (folderId: string) =>
+  sidebarFeeds.value.filter((f) => f.folderId === folderId);
+
+/** Sum of unread for visible feeds inside each folder (respects nsfwMode). */
 const folderUnreadMap = computed(() => {
   const map: Record<string, number> = {};
-  for (const f of feeds.value) {
+  for (const f of sidebarFeeds.value) {
     if (!f.folderId) continue;
     const n = f.unreadCount || 0;
     if (n <= 0) continue;
@@ -125,7 +206,13 @@ function goCollection(id: CollectionId) {
 }
 
 function toggleFolder(id: string) {
-  collapsedFolders.value[id] = !collapsedFolders.value[id];
+  const next = { ...collapsedFolders.value };
+  if (next[id]) {
+    delete next[id];
+  } else {
+    next[id] = true;
+  }
+  collapsedFolders.value = next;
 }
 
 function isFolderCollapsed(id: string): boolean {
@@ -341,6 +428,24 @@ async function onFeedPauseToggle(feed: Feed) {
   }
 }
 
+async function onFeedNsfwToggle(feed: Feed) {
+  try {
+    await setFeedNsfw(feed.id, !feed.isNsfw);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("feedMenu.nsfwFailed"), { description: msg });
+  }
+}
+
+async function onFolderNsfwToggle(folder: FeedFolder) {
+  try {
+    await setFolderNsfw(folder.id, !folder.isNsfw);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("folderMenu.nsfwFailed"), { description: msg });
+  }
+}
+
 async function onFeedMove(feed: Feed, folderId: string | null) {
   try {
     await moveFeedToFolder(feed.id, folderId);
@@ -451,8 +556,8 @@ const smartItems = computed(() => [
               <FolderPlus class="size-3.5" />
             </Button>
           </div>
-          <ul v-if="folders.length" class="mt-1.5 space-y-0.5">
-            <li v-for="folder in folders" :key="folder.id">
+          <ul v-if="sidebarFolders.length" class="mt-1.5 space-y-0.5">
+            <li v-for="folder in sidebarFolders" :key="folder.id">
               <ContextMenu>
                 <ContextMenuTrigger as-child>
                   <div class="flex items-center gap-0.5">
@@ -475,7 +580,13 @@ const smartItems = computed(() => [
                           aria-hidden="true"
                         />
                       </span>
-                      <span class="min-w-0 flex-1 truncate text-left">{{ folder.name }}</span>
+                      <span class="min-w-0 flex-1 truncate text-left">
+                        {{ folder.name }}
+                        <span
+                          v-if="folder.isNsfw"
+                          class="ml-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                        >NSFW</span>
+                      </span>
                       <span
                         v-if="folderUnread(folder.id) > 0"
                         class="tabular-nums text-[11px] font-medium text-foreground/70"
@@ -522,6 +633,11 @@ const smartItems = computed(() => [
                     {{ t("folderMenu.addFeed") }}
                   </ContextMenuItem>
                   <ContextMenuSeparator />
+                  <ContextMenuItem @select="onFolderNsfwToggle(folder)">
+                    {{
+                      folder.isNsfw ? t("folderMenu.unmarkNsfw") : t("folderMenu.markNsfw")
+                    }}
+                  </ContextMenuItem>
                   <ContextMenuItem @select="openRename(folder)">
                     {{ t("folderMenu.rename") }}
                   </ContextMenuItem>
@@ -536,7 +652,7 @@ const smartItems = computed(() => [
                 class="mt-0.5 ml-3 space-y-0.5 border-l border-border pl-1.5"
               >
                 <li
-                  v-for="feed in feeds.filter((f) => f.folderId === folder.id)"
+                  v-for="feed in feedsInFolder(folder.id)"
                   :key="feed.id"
                 >
                   <ContextMenu>
@@ -584,6 +700,9 @@ const smartItems = computed(() => [
                       </ContextMenuItem>
                       <ContextMenuItem @select="onFeedPauseToggle(feed)">
                         {{ feed.isPaused ? t("feedMenu.unpause") : t("feedMenu.pause") }}
+                      </ContextMenuItem>
+                      <ContextMenuItem @select="onFeedNsfwToggle(feed)">
+                        {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
                       </ContextMenuItem>
                       <ContextMenuItem @select="onFeedMove(feed, null)">
                         {{ t("feedMenu.moveTo") }} → {{ t("feedMenu.unfiled") }}
@@ -657,6 +776,9 @@ const smartItems = computed(() => [
                   <ContextMenuItem @select="onFeedPauseToggle(feed)">
                     {{ feed.isPaused ? t("feedMenu.unpause") : t("feedMenu.pause") }}
                   </ContextMenuItem>
+                  <ContextMenuItem @select="onFeedNsfwToggle(feed)">
+                    {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
+                  </ContextMenuItem>
                   <ContextMenuItem
                     v-for="f in folders"
                     :key="f.id"
@@ -677,7 +799,39 @@ const smartItems = computed(() => [
     </div>
 
     <Separator class="opacity-70" />
-    <div class="p-2.5">
+    <div class="space-y-0.5 p-2.5">
+      <TooltipProvider :delay-duration="400">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="nav-row w-full"
+              :class="officeMode && 'nav-row-active'"
+              :disabled="nsfwToggling"
+              :aria-pressed="officeMode"
+              :aria-label="
+                officeMode ? t('nav.officeModeOnAria') : t('nav.officeModeOffAria')
+              "
+              @click="onToggleOfficeMode"
+            >
+              <Briefcase v-if="officeMode" class="nav-icon" />
+              <Eye v-else class="nav-icon" />
+              <span class="min-w-0 flex-1 truncate text-left">
+                {{ officeMode ? t("nav.officeMode") : t("nav.nsfwVisible") }}
+              </span>
+              <span
+                v-if="hasNsfwFeeds && officeMode"
+                class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground"
+              >
+                {{ t("nav.nsfwHidden") }}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" class="max-w-[220px] text-[12px]">
+            {{ t("nav.officeModeTooltip") }}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <button type="button" class="nav-row w-full" @click="openSettings">
         <Settings class="nav-icon" />
         <span class="flex-1 text-left">{{ t("nav.settings") }}</span>

@@ -76,8 +76,35 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 		return model.Feed{}, err
 	}
 
+	if folderID != nil && strings.TrimSpace(*folderID) == "" {
+		folderID = nil
+	}
+
+	// Serialize with refresh/purge-adjacent work so insert+upsert is not interleaved
+	// with RefreshAll on the single SQLite connection.
+	lib.refreshMu.Lock()
+	defer lib.refreshMu.Unlock()
+
+	// Already subscribed: re-sync articles when local store is empty (zombie feed
+	// with ETag but 0 items used to stick forever on 304 refreshes).
 	if existing, err := lib.Feeds.GetByURL(ctx, feedURL); err == nil {
-		return existing, nil
+		if folderID != nil {
+			_ = lib.Feeds.SetFolder(ctx, existing.ID, folderID)
+		}
+		n, cerr := lib.Articles.CountByFeed(ctx, existing.ID)
+		if cerr == nil && n == 0 {
+			// Drop validators so refresh re-downloads the body.
+			existing.ETag = nil
+			existing.LastModified = nil
+			if _, rerr := lib.refreshOne(ctx, existing); rerr != nil {
+				return model.Feed{}, rerr
+			}
+		}
+		out, gerr := lib.Feeds.Get(ctx, existing.ID)
+		if gerr != nil {
+			return existing, nil
+		}
+		return out, nil
 	} else if err != nil && err != sql.ErrNoRows {
 		return model.Feed{}, err
 	}
@@ -108,9 +135,6 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 		m := result.LastModified
 		lastMod = &m
 	}
-	if folderID != nil && strings.TrimSpace(*folderID) == "" {
-		folderID = nil
-	}
 
 	feed := &model.Feed{
 		FolderID:      folderID,
@@ -128,6 +152,9 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 
 	items := mapParsedItems(parsed.Items, lib)
 	if _, err := lib.Articles.UpsertFromParsed(ctx, feed.ID, items); err != nil {
+		// Leave the feed row (user can refresh) but clear validators so a retry
+		// cannot 304-loop with an empty article table.
+		_ = lib.Feeds.UpdateAfterFetch(ctx, feed.ID, "", nil, nil, ptrString(err.Error()))
 		return model.Feed{}, err
 	}
 
@@ -140,6 +167,8 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 	}
 	return out, nil
 }
+
+func ptrString(s string) *string { return &s }
 
 // ensureFavicon resolves and stores a favicon when missing.
 // existing is the current favicon pointer (skip when already set).
@@ -190,7 +219,12 @@ func (lib *Library) ClearAllSubscriptions(ctx context.Context) (ClearAllResult, 
 }
 
 // RefreshFeed re-fetches one feed and upserts articles. Returns number of new articles.
+// Serialized with RefreshAll / TryRefreshDue via refreshMu so concurrent manual +
+// auto refresh cannot interleave upserts on MaxOpenConns=1.
 func (lib *Library) RefreshFeed(ctx context.Context, feedID string) (int, error) {
+	lib.refreshMu.Lock()
+	defer lib.refreshMu.Unlock()
+
 	feed, err := lib.Feeds.Get(ctx, feedID)
 	if err != nil {
 		return 0, err
@@ -335,6 +369,14 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 		opts.LastModified = *feed.LastModified
 	}
 
+	// Local empty + remote validators: conditional GET would 304 forever and never
+	// repopulate articles. Skip If-None-Match / If-Modified-Since in that case.
+	localCount, _ := lib.Articles.CountByFeed(ctx, feed.ID)
+	if localCount == 0 {
+		opts.ETag = ""
+		opts.LastModified = ""
+	}
+
 	result, parsed, err := lib.fetchAndMap(ctx, feed.FeedURL, opts)
 	if err != nil {
 		msg := err.Error()
@@ -395,7 +437,8 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 	up, err := lib.Articles.UpsertFromParsed(ctx, feed.ID, items)
 	if err != nil {
 		msg := err.Error()
-		_ = lib.Feeds.UpdateAfterFetch(ctx, feed.ID, title, etag, lastMod, &msg)
+		// Clear validators so the next refresh re-downloads instead of 304-looping.
+		_ = lib.Feeds.UpdateAfterFetch(ctx, feed.ID, title, nil, nil, &msg)
 		return 0, err
 	}
 	lib.ensureFavicon(ctx, feed.ID, siteURL, feed.FeedURL, feed.FaviconURL)
@@ -403,8 +446,11 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 }
 
 // ListArticles returns a page of articles for a collection.
-func (lib *Library) ListArticles(ctx context.Context, collection string, limit, offset int) ([]model.Article, error) {
-	list, err := lib.Articles.List(ctx, collection, repo.ListOpts{Limit: limit, Offset: offset})
+// excludeNsfw hides articles from is_nsfw feeds (office mode).
+func (lib *Library) ListArticles(ctx context.Context, collection string, limit, offset int, excludeNsfw bool) ([]model.Article, error) {
+	list, err := lib.Articles.List(ctx, collection, repo.ListOpts{
+		Limit: limit, Offset: offset, ExcludeNsfw: excludeNsfw,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -415,8 +461,9 @@ func (lib *Library) ListArticles(ctx context.Context, collection string, limit, 
 }
 
 // SmartCounts returns sidebar smart-list totals (full DB counts, not list page size).
-func (lib *Library) SmartCounts(ctx context.Context) (repo.SmartCounts, error) {
-	return lib.Articles.CountSmart(ctx)
+// excludeNsfw omits NSFW-feed articles when true.
+func (lib *Library) SmartCounts(ctx context.Context, excludeNsfw bool) (repo.SmartCounts, error) {
+	return lib.Articles.CountSmart(ctx, excludeNsfw)
 }
 
 // GetArticle returns one article with sanitized ContentHTML for UI.
@@ -468,13 +515,25 @@ func (lib *Library) SetStarred(ctx context.Context, articleID string, starred bo
 }
 
 // MarkAllRead marks all articles in a collection as read.
-func (lib *Library) MarkAllRead(ctx context.Context, collection string) error {
-	return lib.Articles.MarkAllRead(ctx, collection)
+// excludeNsfw skips NSFW-feed articles (office mode).
+func (lib *Library) MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error {
+	return lib.Articles.MarkAllRead(ctx, collection, excludeNsfw)
+}
+
+// SetFeedNsfw marks or unmarks a feed as sensitive.
+func (lib *Library) SetFeedNsfw(ctx context.Context, feedID string, nsfw bool) error {
+	if strings.TrimSpace(feedID) == "" {
+		return fmt.Errorf("feed id is required")
+	}
+	return lib.Feeds.SetNsfw(ctx, feedID, nsfw)
 }
 
 // PurgeOldArticles deletes non-starred articles older than days days.
 // days is clamped by the repo layer to [7, 365]. Returns deleted count.
+// Holds refreshMu so purge cannot race with AddFeed / RefreshFeed upserts.
 func (lib *Library) PurgeOldArticles(ctx context.Context, days int) (int, error) {
+	lib.refreshMu.Lock()
+	defer lib.refreshMu.Unlock()
 	return lib.Articles.PurgeOlderThan(ctx, days)
 }
 

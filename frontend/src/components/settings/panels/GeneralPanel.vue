@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import type { SmartCollectionId } from "@/types/rss";
 
 const { t } = useI18n();
-const { settings, persistLibraryConfig, persistUIPrefs } = useRssStore();
+const { settings, persistLibraryConfig, persistUIPrefs, reloadLibrary } = useRssStore();
 
 const intervalLabel = computed(() => {
   const m = settings.refreshIntervalMinutes;
@@ -52,12 +52,21 @@ function patchBool(
     | "markAsReadOnOpen"
     | "markAsReadOnScrollEnd"
     | "launchAtLogin"
-    | "hideReadOnStartup",
+    | "hideReadOnStartup"
+    | "nsfwMode",
   v: boolean,
 ) {
   settings[key] = v;
   // launchAtLogin is UI-only (no system API / not in UIPrefs)
-  if (key !== "launchAtLogin") persistUIPrefs();
+  if (key !== "launchAtLogin") {
+    void (async () => {
+      await persistUIPrefs(true);
+      // Office/NSFW mode changes which articles/feeds are visible.
+      if (key === "nsfwMode") {
+        await reloadLibrary();
+      }
+    })();
+  }
 }
 </script>
 
@@ -105,6 +114,26 @@ function patchBool(
           <span>{{ t("settings.general.intervalMax") }}</span>
         </div>
       </div>
+    </SettingsGroup>
+
+    <SettingsGroup
+      :title="t('settings.general.nsfwGroup')"
+      :description="t('settings.general.nsfwGroupDesc')"
+    >
+      <div class="py-2.5">
+        <SettingsRow
+          :title="t('settings.general.nsfwMode')"
+          :description="t('settings.general.nsfwModeDesc')"
+        >
+          <Switch
+            :checked="settings.nsfwMode"
+            @update:checked="(v: boolean) => patchBool('nsfwMode', v)"
+          />
+        </SettingsRow>
+      </div>
+      <p class="pb-2 text-[11.5px] leading-relaxed text-muted-foreground">
+        {{ t("settings.general.nsfwModeHint") }}
+      </p>
     </SettingsGroup>
 
     <SettingsGroup

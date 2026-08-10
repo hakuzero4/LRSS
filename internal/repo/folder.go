@@ -23,7 +23,7 @@ func NewFolderRepo(db *sql.DB) *FolderRepo {
 // List returns all folders ordered by sort_order, name.
 func (r *FolderRepo) List(ctx context.Context) ([]model.Folder, error) {
 	rows, err := r.DB.QueryContext(ctx, `
-		SELECT id, name, parent_id, sort_order, created_at, updated_at
+		SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
 		FROM folders
 		ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
 	if err != nil {
@@ -35,10 +35,12 @@ func (r *FolderRepo) List(ctx context.Context) ([]model.Folder, error) {
 	for rows.Next() {
 		var f model.Folder
 		var parent sql.NullString
-		if err := rows.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		var nsfw int
+		if err := rows.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &nsfw, &f.CreatedAt, &f.UpdatedAt); err != nil {
 			return nil, err
 		}
 		f.ParentID = strPtr(parent)
+		f.IsNsfw = nsfw != 0
 		out = append(out, f)
 	}
 	if out == nil {
@@ -50,17 +52,19 @@ func (r *FolderRepo) List(ctx context.Context) ([]model.Folder, error) {
 // Get loads one folder by id.
 func (r *FolderRepo) Get(ctx context.Context, folderID string) (model.Folder, error) {
 	row := r.DB.QueryRowContext(ctx, `
-		SELECT id, name, parent_id, sort_order, created_at, updated_at
+		SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
 		FROM folders WHERE id = ?`, folderID)
 	var f model.Folder
 	var parent sql.NullString
-	if err := row.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &f.CreatedAt, &f.UpdatedAt); err != nil {
+	var nsfw int
+	if err := row.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &nsfw, &f.CreatedAt, &f.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return model.Folder{}, fmt.Errorf("folder not found: %s", folderID)
 		}
 		return model.Folder{}, fmt.Errorf("get folder: %w", err)
 	}
 	f.ParentID = strPtr(parent)
+	f.IsNsfw = nsfw != 0
 	return f, nil
 }
 
@@ -76,14 +80,30 @@ func (r *FolderRepo) Create(ctx context.Context, name string, parentID *string) 
 		UpdatedAt: now,
 	}
 	_, err := r.DB.ExecContext(ctx, `
-		INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		f.ID, f.Name, nullStr(f.ParentID), f.SortOrder, f.CreatedAt, f.UpdatedAt,
+		INSERT INTO folders (id, name, parent_id, sort_order, is_nsfw, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		f.ID, f.Name, nullStr(f.ParentID), f.SortOrder, boolToInt(f.IsNsfw), f.CreatedAt, f.UpdatedAt,
 	)
 	if err != nil {
 		return model.Folder{}, fmt.Errorf("create folder: %w", err)
 	}
 	return f, nil
+}
+
+// SetNsfw marks or unmarks a folder as sensitive (NSFW).
+func (r *FolderRepo) SetNsfw(ctx context.Context, folderID string, nsfw bool) error {
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE folders SET is_nsfw = ?, updated_at = ? WHERE id = ?`,
+		boolToInt(nsfw), now, folderID)
+	if err != nil {
+		return fmt.Errorf("set folder nsfw: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("folder not found: %s", folderID)
+	}
+	return nil
 }
 
 // Rename updates a folder's name. Name is trimmed; empty after trim is rejected.

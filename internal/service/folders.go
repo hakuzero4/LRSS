@@ -40,6 +40,14 @@ func (lib *Library) DeleteFolder(ctx context.Context, id string) error {
 	return lib.Folders.Delete(ctx, id)
 }
 
+// SetFolderNsfw marks or unmarks a folder as sensitive.
+func (lib *Library) SetFolderNsfw(ctx context.Context, folderID string, nsfw bool) error {
+	if strings.TrimSpace(folderID) == "" {
+		return fmt.Errorf("folder id is required")
+	}
+	return lib.Folders.SetNsfw(ctx, folderID, nsfw)
+}
+
 // MoveFeed assigns a feed to a folder. Empty folderID string means unfiled.
 func (lib *Library) MoveFeed(ctx context.Context, feedID string, folderID *string) error {
 	if strings.TrimSpace(feedID) == "" {

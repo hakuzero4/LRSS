@@ -83,7 +83,7 @@ func TestLibrary_AddFeedAndRefresh(t *testing.T) {
 		t.Fatalf("unread = %d want 2", feed.UnreadCount)
 	}
 
-	articles, err := lib.ListArticles(ctx, "all", 10, 0)
+	articles, err := lib.ListArticles(ctx, "all", 10, 0, false)
 	if err != nil {
 		t.Fatalf("ListArticles: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestLibrary_AddFeedAndRefresh(t *testing.T) {
 	if err := lib.SetRead(ctx, articles[0].ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.MarkAllRead(ctx, "feed:"+feed.ID); err != nil {
+	if err := lib.MarkAllRead(ctx, "feed:"+feed.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	feeds, err := lib.ListFeeds(ctx)
@@ -142,7 +142,7 @@ func TestLibrary_AddFeedAndRefresh(t *testing.T) {
 	if err := lib.SetRead(ctx, articles[0].ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.MarkAllRead(ctx, "folder:"+folder.ID); err != nil {
+	if err := lib.MarkAllRead(ctx, "folder:"+folder.ID, false); err != nil {
 		t.Fatalf("MarkAllRead folder: %v", err)
 	}
 	feeds, err = lib.ListFeeds(ctx)
@@ -163,7 +163,7 @@ func TestLibrary_AddFeedAndRefresh(t *testing.T) {
 	if len(feeds) != 1 || feeds[0].FolderID != nil {
 		t.Fatalf("after DeleteFolder want unfiled feed, got %+v", feeds)
 	}
-	still, err := lib.ListArticles(ctx, "all", 10, 0)
+	still, err := lib.ListArticles(ctx, "all", 10, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestLibrary_AddFeedAndRefresh(t *testing.T) {
 	if err := lib.SetStarred(ctx, articles[1].ID, true); err != nil {
 		t.Fatal(err)
 	}
-	starred, err := lib.ListArticles(ctx, "starred", 10, 0)
+	starred, err := lib.ListArticles(ctx, "starred", 10, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,6 +371,208 @@ func TestLibrary_RenameFeedAndRefreshInterval(t *testing.T) {
 
 	if err := lib.RenameFeed(ctx, feed.ID, "   "); err == nil {
 		t.Fatal("expected empty rename to fail")
+	}
+}
+
+func TestLibrary_NSFWOfficeModeFiltersListAndCounts(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	safe := &model.Feed{Title: "Safe", FeedURL: "https://example.com/safe.xml"}
+	nsfw := &model.Feed{Title: "NSFW", FeedURL: "https://example.com/nsfw.xml", IsNsfw: true}
+	if err := repos.Feeds.Insert(ctx, safe); err != nil {
+		t.Fatal(err)
+	}
+	if err := repos.Feeds.Insert(ctx, nsfw); err != nil {
+		t.Fatal(err)
+	}
+	// Insert articles via raw SQL (minimal)
+	now := "2026-06-01T12:00:00Z"
+	for _, row := range []struct {
+		id, feed, title string
+	}{
+		{"a-safe", safe.ID, "Safe Article"},
+		{"a-nsfw", nsfw.ID, "NSFW Article"},
+	} {
+		_, err := database.SQL.ExecContext(ctx, `
+			INSERT INTO articles (id, feed_id, url, title, fetched_at, is_read, is_starred)
+			VALUES (?, ?, ?, ?, ?, 0, 0)`,
+			row.id, row.feed, "https://example.com/"+row.id, row.title, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Show all
+	all, err := lib.ListArticles(ctx, "all", 20, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("show all = %d want 2", len(all))
+	}
+	// Office hide
+	office, err := lib.ListArticles(ctx, "all", 20, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(office) != 1 || office[0].Title != "Safe Article" {
+		t.Fatalf("office list = %+v", office)
+	}
+	counts, err := lib.SmartCounts(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.All != 1 || counts.Unread != 1 {
+		t.Fatalf("office counts = %+v", counts)
+	}
+	// SetNsfw toggle
+	if err := lib.SetFeedNsfw(ctx, nsfw.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repos.Feeds.Get(ctx, nsfw.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsNsfw {
+		t.Fatal("expected is_nsfw cleared")
+	}
+}
+
+// Empty local article table + stored ETag used to 304 forever and stay empty.
+func TestLibrary_RefreshRepopulatesEmptyFeedIgnoringETag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("If-None-Match") == `"stuck"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"stuck"`)
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(sampleRSS))
+	}))
+	t.Cleanup(srv.Close)
+
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	// Insert feed as if AddFeed left it empty but with an ETag (zombie state).
+	etag := `"stuck"`
+	now := time.Now().UTC().Format(time.RFC3339)
+	feed := &model.Feed{
+		Title:         "Zombie",
+		FeedURL:       srv.URL + "/rss.xml",
+		ETag:          &etag,
+		LastFetchedAt: &now,
+	}
+	if err := repos.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	n, err := repos.Articles.CountByFeed(ctx, feed.ID)
+	if err != nil || n != 0 {
+		t.Fatalf("setup count = %d err=%v", n, err)
+	}
+
+	added, err := lib.RefreshFeed(ctx, feed.ID)
+	if err != nil {
+		t.Fatalf("RefreshFeed: %v", err)
+	}
+	if added != 2 {
+		t.Fatalf("added = %d want 2 (must ignore ETag when local empty)", added)
+	}
+	n, err = repos.Articles.CountByFeed(ctx, feed.ID)
+	if err != nil || n != 2 {
+		t.Fatalf("after count = %d err=%v", n, err)
+	}
+
+	// Re-adding same URL with empty would have returned existing; with fix it repopulates.
+	// After we already have articles, AddFeed should just return existing.
+	again, err := lib.AddFeed(ctx, srv.URL+"/rss.xml", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ID != feed.ID {
+		t.Fatalf("expected same feed id")
+	}
+}
+
+func TestLibrary_FolderNSFWOfficeMode(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	folder, err := lib.CreateFolder(ctx, "Adult", nil)
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	if folder.IsNsfw {
+		t.Fatal("new folder should not be nsfw")
+	}
+	if err := lib.SetFolderNsfw(ctx, folder.ID, true); err != nil {
+		t.Fatalf("SetFolderNsfw: %v", err)
+	}
+	gotFolder, err := repos.Folders.Get(ctx, folder.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gotFolder.IsNsfw {
+		t.Fatal("folder should be nsfw")
+	}
+
+	safe := &model.Feed{Title: "Safe", FeedURL: "https://example.com/safe2.xml"}
+	inFolder := &model.Feed{
+		Title: "In NSFW folder", FeedURL: "https://example.com/in-folder.xml", FolderID: &folder.ID,
+	}
+	if err := repos.Feeds.Insert(ctx, safe); err != nil {
+		t.Fatal(err)
+	}
+	if err := repos.Feeds.Insert(ctx, inFolder); err != nil {
+		t.Fatal(err)
+	}
+	now := "2026-06-01T12:00:00Z"
+	for _, row := range []struct {
+		id, feed, title string
+	}{
+		{"fa-safe", safe.ID, "Safe Article"},
+		{"fa-folder", inFolder.ID, "Folder Article"},
+	} {
+		_, err := database.SQL.ExecContext(ctx, `
+			INSERT INTO articles (id, feed_id, url, title, fetched_at, is_read, is_starred)
+			VALUES (?, ?, ?, ?, ?, 0, 0)`,
+			row.id, row.feed, "https://example.com/"+row.id, row.title, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	office, err := lib.ListArticles(ctx, "all", 20, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(office) != 1 || office[0].Title != "Safe Article" {
+		t.Fatalf("office list = %+v", office)
+	}
+	counts, err := lib.SmartCounts(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.All != 1 {
+		t.Fatalf("office counts.All = %d want 1", counts.All)
+	}
+
+	if err := lib.SetFolderNsfw(ctx, folder.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	all, err := lib.ListArticles(ctx, "all", 20, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("after unmark folder = %d want 2", len(all))
 	}
 }
 

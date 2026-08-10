@@ -34,6 +34,8 @@ type UIPrefs struct {
 	HardwareAcceleration    bool   `json:"hardwareAcceleration"`
 	ClearCacheOnQuit        bool   `json:"clearCacheOnQuit"`
 	DeveloperMode           bool   `json:"developerMode"`
+	// NsfwMode: true = show NSFW feeds (default); false = office mode hide isNsfw feeds.
+	NsfwMode bool `json:"nsfwMode"`
 }
 
 // DefaultUIPrefs matches frontend default settings in useRssStore.
@@ -61,6 +63,7 @@ func DefaultUIPrefs() UIPrefs {
 		HardwareAcceleration:    true,
 		ClearCacheOnQuit:        false,
 		DeveloperMode:           false,
+		NsfwMode:                true, // show all until user enables office hide
 	}
 }
 

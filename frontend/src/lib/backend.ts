@@ -61,6 +61,7 @@ export function mapFeed(f: any) {
     isPaused: !!(f.isPaused ?? f.IsPaused),
     refreshIntervalMinutes: interval,
     lastError: typeof lastErr === "string" && lastErr.trim() ? lastErr.trim() : undefined,
+    isNsfw: !!(f.isNsfw ?? f.IsNsfw),
   };
 }
 
@@ -70,5 +71,6 @@ export function mapFolder(f: any, feeds: { id: string; folderId?: string }[]) {
     id: f.id,
     name: f.name ?? "",
     feedIds,
+    isNsfw: !!(f.isNsfw ?? f.IsNsfw),
   };
 }

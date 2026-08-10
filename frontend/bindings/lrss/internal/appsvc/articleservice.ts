@@ -26,6 +26,9 @@ export function Get(id: string): $CancellablePromise<model$0.Article> {
 
 /**
  * List returns articles for a collection (unread|today|starred|all|feed:ID|folder:ID).
+ * Office-mode NSFW filtering applies only to smart lists. Explicit feed:/folder:
+ * collections always return their articles so a just-subscribed sensitive feed is
+ * still readable after add (sidebar may still hide it).
  */
 export function List(collection: string, limit: number, offset: number): $CancellablePromise<model$0.Article[] | null> {
     return $Call.ByID(3903554996, collection, limit, offset);

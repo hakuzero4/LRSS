@@ -68,12 +68,24 @@ func TestSettingsService_UIPrefsAndPurge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var oldID, starID string
 	for _, a := range all {
-		if a.Title == "Star" {
+		switch a.Title {
+		case "Star":
+			starID = a.ID
 			if err := repos.Articles.SetStarred(ctx, a.ID, true); err != nil {
 				t.Fatal(err)
 			}
+		case "Old":
+			oldID = a.ID
 		}
+	}
+	// Retention requires BOTH publish and fetch age; backdate fetch for truly-old rows.
+	oldFetch := time.Now().UTC().Add(-120 * 24 * time.Hour).Format(time.RFC3339)
+	if _, err := database.SQL.ExecContext(ctx,
+		`UPDATE articles SET fetched_at = ? WHERE id IN (?, ?)`, oldFetch, oldID, starID,
+	); err != nil {
+		t.Fatal(err)
 	}
 
 	// Save keep days = 90, then purge via API.

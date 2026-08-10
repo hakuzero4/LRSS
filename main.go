@@ -62,7 +62,7 @@ func main() {
 	settingsAPI.SetLibrary(library)
 	feedAPI := appsvc.NewFeedService(library)
 	feedAPI.SetNotifier(notifier)
-	articleAPI := appsvc.NewArticleService(library)
+	articleAPI := appsvc.NewArticleService(library, store)
 
 	// Background auto-refresh (reads LibraryConfig each tick).
 	go runAutoRefresh(ctx, library, store, notifier)

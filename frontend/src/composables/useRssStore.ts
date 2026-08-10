@@ -4,6 +4,7 @@ import { applyArticleFilters } from "@/lib/articleFilters";
 import { loadAppsvc, mapArticle, mapFeed, mapFolder } from "@/lib/backend";
 import { feedIdsInFolder, folderCollectionId } from "@/lib/folderMenu";
 import { applyShowUnreadOnly } from "@/lib/readingSettings";
+import { filterArticlesByNsfwMode, filterFeedsForSidebar } from "@/lib/nsfw";
 import {
   mergeArticleIntoPools,
   resolveAddFeedFolderId,
@@ -81,6 +82,7 @@ const settings = reactive<AppSettings>({
   hardwareAcceleration: true,
   clearCacheOnQuit: false,
   developerMode: false,
+  nsfwMode: true,
 });
 
 function isToday(iso: string): boolean {
@@ -224,6 +226,16 @@ const filteredArticles = computed(() => {
   list.sort(
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
   );
+  // Office mode: hide NSFW only on smart lists. Explicit feed:/folder: keeps content
+  // visible (e.g. just-added sensitive feed after subscribe).
+  {
+    const col = collectionId.value;
+    const smart =
+      col === "unread" || col === "today" || col === "starred" || col === "all";
+    if (smart) {
+      list = filterArticlesByNsfwMode(list, feeds.value, settings.nsfwMode, folders.value);
+    }
+  }
   // Settings → Filters: block keywords + optional duplicate titles.
   list = applyArticleFilters(list, {
     hideDuplicateTitles: settings.hideDuplicateTitles,
@@ -231,6 +243,16 @@ const filteredArticles = computed(() => {
   });
   return list;
 });
+
+/** Folders visible in the sidebar (office mode hides isNsfw folders). */
+const sidebarFolders = computed(() =>
+  settings.nsfwMode ? folders.value : folders.value.filter((f) => !f.isNsfw),
+);
+
+/** Feeds visible in the sidebar (respects feed + folder nsfw). Settings list uses raw `feeds`. */
+const sidebarFeeds = computed(() =>
+  filterFeedsForSidebar(feeds.value, settings.nsfwMode, folders.value),
+);
 
 const emptyListReason = computed(() =>
   resolveEmptyListReason({
@@ -358,6 +380,7 @@ function buildUIPrefs(): UIPrefs {
     hardwareAcceleration: settings.hardwareAcceleration,
     clearCacheOnQuit: settings.clearCacheOnQuit,
     developerMode: settings.developerMode,
+    nsfwMode: settings.nsfwMode,
   };
 }
 
@@ -479,6 +502,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const dev = pickBool(p, "developerMode", "DeveloperMode");
   if (dev !== undefined) settings.developerMode = dev;
+
+  const nsfw = pickBool(p, "nsfwMode", "NsfwMode");
+  if (nsfw !== undefined) settings.nsfwMode = nsfw;
 }
 
 async function loadUIPrefs() {
@@ -800,9 +826,10 @@ async function clearAllSubscriptions(): Promise<{ feedsDeleted: number; foldersD
   };
 }
 
-async function createFolder(name: string): Promise<void> {
+/** Create a folder; returns its id (empty if name blank). */
+async function createFolder(name: string): Promise<string> {
   const trimmed = name.trim();
-  if (!trimmed) return;
+  if (!trimmed) return "";
   const api = await loadAppsvc();
   const createFn = api?.FeedService?.CreateFolder;
   if (typeof createFn !== "function") {
@@ -812,10 +839,15 @@ async function createFolder(name: string): Promise<void> {
       ...folders.value,
       { id, name: trimmed, feedIds: [] },
     ];
-    return;
+    return id;
   }
-  await createFn(trimmed, "");
+  const created = await createFn(trimmed, "");
   await reloadLibrary();
+  const id =
+    (created && typeof created === "object" && (created as { id?: string }).id) ||
+    folders.value.find((f) => f.name === trimmed)?.id ||
+    "";
+  return String(id || "");
 }
 
 async function bootstrap() {
@@ -1100,14 +1132,43 @@ function closeSettings() {
   settingsOpen.value = false;
 }
 
+/** Options for Add Feed advanced settings (applied after subscribe). */
+export type AddFeedOptions = {
+  title?: string;
+  isNsfw?: boolean;
+  /** 0 = follow global default. */
+  refreshIntervalMinutes?: number;
+  /**
+   * Folder for this add. `undefined` → resolve from dialog target / default.
+   * `null` or `""` → unfiled.
+   */
+  folderId?: string | null;
+  /** Jump to the new feed after add (default true). */
+  selectAfter?: boolean;
+  /** Close the chrome add-feed dialog (default true). */
+  closeDialog?: boolean;
+  /** Reload library + articles after add (default true). Batch uses false until end. */
+  reload?: boolean;
+};
+
+export type AddFeedsBatchResult = {
+  added: number;
+  failed: { url: string; message: string }[];
+  lastFeedId?: string;
+};
+
 /** Mock-only local add (fallback). Prefer addFeedFromURL with backend. */
 function addFeed(input: {
   title: string;
   feedUrl: string;
   siteUrl?: string;
   folderId?: string | null;
-}) {
-  const id = `feed-${Date.now()}`;
+  isNsfw?: boolean;
+  refreshIntervalMinutes?: number;
+  selectAfter?: boolean;
+  closeDialog?: boolean;
+}): string {
+  const id = `feed-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const folderId = input.folderId?.trim() || undefined;
   const feed: Feed = {
     id,
@@ -1118,7 +1179,8 @@ function addFeed(input: {
     unreadCount: 0,
     lastFetchedAt: new Date().toISOString(),
     isPaused: false,
-    refreshIntervalMinutes: 0,
+    refreshIntervalMinutes: input.refreshIntervalMinutes ?? 0,
+    isNsfw: !!input.isNsfw,
   };
   feeds.value = [feed, ...feeds.value];
   if (folderId) {
@@ -1127,34 +1189,147 @@ function addFeed(input: {
       folder.feedIds = [...folder.feedIds, id];
     }
   }
-  collectionId.value = `feed:${id}`;
-  selectedArticleId.value = null;
-  closeAddFeed();
+  if (input.selectAfter !== false) {
+    collectionId.value = `feed:${id}`;
+    selectedArticleId.value = null;
+  }
+  if (input.closeDialog !== false) {
+    closeAddFeed();
+  }
+  return id;
 }
 
-async function addFeedFromURL(url: string, _title?: string): Promise<void> {
-  const folderId = resolveAddFeedFolderId(
-    addFeedTargetFolderId.value,
-    settings.defaultFolderId,
-  );
+/**
+ * Subscribe to one feed URL. Returns the feed id.
+ * Does a single backend fetch (no extra Refresh) unless batch opts disable reloads.
+ */
+async function addFeedFromURL(url: string, opts?: string | AddFeedOptions): Promise<string> {
+  // Back-compat: second arg may be a plain title string.
+  const options: AddFeedOptions =
+    typeof opts === "string" ? { title: opts } : opts ?? {};
+  const customTitle = options.title?.trim() || "";
+  const isNsfw = !!options.isNsfw;
+  let interval = Math.max(0, Math.floor(Number(options.refreshIntervalMinutes) || 0));
+  if (interval > 0 && interval < 5) interval = 5;
+  if (interval > 180) interval = 180;
+  const selectAfter = options.selectAfter !== false;
+  const closeDialog = options.closeDialog !== false;
+  const doReload = options.reload !== false;
+
+  const folderId =
+    options.folderId !== undefined
+      ? (options.folderId?.trim() || "")
+      : resolveAddFeedFolderId(addFeedTargetFolderId.value, settings.defaultFolderId);
+
   const api = await loadAppsvc();
   if (!api?.FeedService?.AddFeed) {
-    addFeed({
-      title: _title || new URL(url).hostname,
+    return addFeed({
+      title: customTitle || new URL(url).hostname,
       feedUrl: url,
       siteUrl: url,
       folderId: folderId || null,
+      isNsfw,
+      refreshIntervalMinutes: interval,
+      selectAfter,
+      closeDialog,
     });
-    return;
   }
   // Empty folderId → unfiled (backend contract).
   const feed = await api.FeedService.AddFeed(url, folderId);
-  await api.FeedService.RefreshFeed(feed.id);
+  const feedId = String(feed.id);
+
+  // Apply advanced options after the feed exists (best-effort; subscribe already succeeded).
+  if (customTitle && typeof api.FeedService.RenameFeed === "function") {
+    try {
+      await api.FeedService.RenameFeed(feedId, customTitle);
+    } catch (e) {
+      console.warn("[lrss] RenameFeed after add failed", e);
+    }
+  }
+  if (isNsfw && typeof api.FeedService.SetFeedNsfw === "function") {
+    try {
+      await api.FeedService.SetFeedNsfw(feedId, true);
+    } catch (e) {
+      console.warn("[lrss] SetFeedNsfw after add failed", e);
+    }
+  }
+  if (interval > 0 && typeof api.FeedService.SetFeedRefreshInterval === "function") {
+    try {
+      await api.FeedService.SetFeedRefreshInterval(feedId, interval);
+    } catch (e) {
+      console.warn("[lrss] SetFeedRefreshInterval after add failed", e);
+    }
+  }
+
+  if (doReload) {
+    await reloadLibrary();
+  }
+  if (selectAfter) {
+    collectionId.value = `feed:${feedId}`;
+    selectedArticleId.value = null;
+  }
+  if (closeDialog) {
+    closeAddFeed();
+  }
+  if (doReload) {
+    await reloadArticles();
+    if (isNsfw && !settings.nsfwMode) {
+      await reloadSmartCounts();
+    }
+  }
+  return feedId;
+}
+
+/**
+ * Subscribe to many feed URLs sequentially (one network fetch each).
+ * Reloads the library once at the end. Does not close the chrome add dialog.
+ */
+async function addFeedsFromURLs(
+  urls: string[],
+  opts?: Omit<AddFeedOptions, "title" | "selectAfter" | "closeDialog" | "reload"> & {
+    selectLast?: boolean;
+    /** 1-based progress after each URL attempt. */
+    onProgress?: (current: number, total: number, url: string) => void;
+  },
+): Promise<AddFeedsBatchResult> {
+  const list = urls.map((u) => u.trim()).filter(Boolean);
+  const result: AddFeedsBatchResult = { added: 0, failed: [] };
+  if (list.length === 0) return result;
+
+  for (let i = 0; i < list.length; i++) {
+    const url = list[i]!;
+    opts?.onProgress?.(i + 1, list.length, url);
+    try {
+      // eslint-disable-next-line no-new
+      new URL(url);
+      const id = await addFeedFromURL(url, {
+        isNsfw: opts?.isNsfw,
+        refreshIntervalMinutes: opts?.refreshIntervalMinutes,
+        folderId: opts?.folderId,
+        selectAfter: false,
+        closeDialog: false,
+        reload: false,
+      });
+      result.added++;
+      result.lastFeedId = id;
+    } catch (e: unknown) {
+      result.failed.push({
+        url,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   await reloadLibrary();
-  collectionId.value = `feed:${feed.id}`;
-  selectedArticleId.value = null;
-  closeAddFeed();
+  if (opts?.selectLast !== false && result.lastFeedId) {
+    collectionId.value = `feed:${result.lastFeedId}`;
+    selectedArticleId.value = null;
+  }
   await reloadArticles();
+  if (opts?.isNsfw && !settings.nsfwMode) {
+    await reloadSmartCounts();
+  }
+  return result;
 }
 
 async function refreshOneFeed(feedId: string): Promise<number> {
@@ -1349,7 +1524,7 @@ async function refreshFeeds() {
 /** Patch one feed in place so sidebar badges / list keys do not thrash. */
 function patchFeedLocal(
   id: string,
-  patch: Partial<Pick<Feed, "title" | "refreshIntervalMinutes" | "isPaused">>,
+  patch: Partial<Pick<Feed, "title" | "refreshIntervalMinutes" | "isPaused" | "isNsfw">>,
 ) {
   const feed = feeds.value.find((f) => f.id === id);
   if (!feed) return;
@@ -1358,6 +1533,7 @@ function patchFeedLocal(
     feed.refreshIntervalMinutes = patch.refreshIntervalMinutes;
   }
   if (patch.isPaused !== undefined) feed.isPaused = patch.isPaused;
+  if (patch.isNsfw !== undefined) feed.isNsfw = patch.isNsfw;
 }
 
 /** Rename a subscription (locks title against remote overwrites). */
@@ -1405,6 +1581,46 @@ async function setFeedPaused(id: string, paused: boolean): Promise<void> {
   patchFeedLocal(id, { isPaused: paused });
 }
 
+async function setFeedNsfw(id: string, nsfw: boolean): Promise<void> {
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.SetFeedNsfw;
+  if (typeof fn === "function") {
+    await fn(id, nsfw);
+  }
+  const feed = feeds.value.find((f) => f.id === id);
+  if (feed) feed.isNsfw = nsfw;
+  // Smart lists/counts depend on office mode — refresh after mark.
+  if (!settings.nsfwMode) {
+    await Promise.all([reloadArticles(), reloadSmartCounts()]);
+  }
+}
+
+async function setFolderNsfw(id: string, nsfw: boolean): Promise<void> {
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.SetFolderNsfw;
+  if (typeof fn === "function") {
+    await fn(id, nsfw);
+  }
+  const folder = folders.value.find((f) => f.id === id);
+  if (folder) folder.isNsfw = nsfw;
+  if (!settings.nsfwMode) {
+    // Leaving a NSFW folder while office is on — jump away if it disappears.
+    if (nsfw && collectionId.value === `folder:${id}`) {
+      collectionId.value = "unread";
+      selectedArticleId.value = null;
+    }
+    await Promise.all([reloadArticles(), reloadSmartCounts()]);
+  }
+}
+
+/** Toggle show-sensitive / office hide; persists UIPrefs and reloads lists. */
+async function setNsfwMode(enabled: boolean): Promise<void> {
+  if (settings.nsfwMode === enabled) return;
+  settings.nsfwMode = enabled;
+  await persistUIPrefs(true);
+  await reloadLibrary();
+}
+
 /** Reset UI prefs to defaults (does not delete feeds/articles). */
 async function resetUIPrefsToDefaults(): Promise<void> {
   const defaults: UIPrefs = {
@@ -1430,6 +1646,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     hardwareAcceleration: true,
     clearCacheOnQuit: false,
     developerMode: false,
+    nsfwMode: true,
   };
   applyUIPrefs(defaults);
   settings.autoRefresh = true;
@@ -1476,6 +1693,8 @@ export function useRssStore() {
   return {
     folders,
     feeds,
+    sidebarFolders,
+    sidebarFeeds,
     articles,
     collectionId,
     selectedArticleId,
@@ -1509,6 +1728,7 @@ export function useRssStore() {
     closeSettings,
     addFeed,
     addFeedFromURL,
+    addFeedsFromURLs,
     refreshFeeds,
     refreshOneFeed,
     markFeedRead,
@@ -1532,5 +1752,8 @@ export function useRssStore() {
     renameFeed,
     setFeedRefreshInterval,
     setFeedPaused,
+    setFeedNsfw,
+    setFolderNsfw,
+    setNsfwMode,
   };
 }

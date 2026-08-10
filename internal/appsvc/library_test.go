@@ -40,7 +40,7 @@ func TestFeedService_AddAndList(t *testing.T) {
 	}))
 	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
 	feeds := appsvc.NewFeedService(lib)
-	articles := appsvc.NewArticleService(lib)
+	articles := appsvc.NewArticleService(lib, nil)
 
 	f, err := feeds.AddFeed(srv.URL, "")
 	if err != nil {

@@ -19,6 +19,8 @@ export interface FeedFolder {
   id: string;
   name: string;
   feedIds: string[];
+  /** Sensitive folder; hidden (with its feeds) when nsfwMode is false. */
+  isNsfw?: boolean;
 }
 
 export interface Feed {
@@ -38,6 +40,8 @@ export interface Feed {
    */
   refreshIntervalMinutes?: number;
   lastError?: string;
+  /** Sensitive feed; hidden from smart lists/sidebar when nsfwMode is false. */
+  isNsfw?: boolean;
 }
 
 export interface Article {
@@ -111,6 +115,8 @@ export interface UIPrefs {
   hardwareAcceleration: boolean;
   clearCacheOnQuit: boolean;
   developerMode: boolean;
+  /** true = show NSFW feeds; false = office mode hide isNsfw feeds */
+  nsfwMode: boolean;
 }
 
 export interface AppSettings {
@@ -163,4 +169,10 @@ export interface AppSettings {
   hardwareAcceleration: boolean;
   clearCacheOnQuit: boolean;
   developerMode: boolean;
+
+  /**
+   * NSFW mode: true shows sensitive feeds; false (office) hides them
+   * from smart lists and the sidebar (settings feed list still shows all).
+   */
+  nsfwMode: boolean;
 }

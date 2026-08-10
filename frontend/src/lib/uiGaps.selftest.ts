@@ -153,8 +153,13 @@ assert(general.includes("launchAtLogin") && general.includes("disabled"), "launc
 assert(feedsPanel.includes("fetchFullContent") && feedsPanel.includes("disabled"), "full content disabled");
 assert(about.includes("smartCounts"), "about uses smartCounts");
 
-// add feed folder
+// add feed folder + advanced options
 assert(addFeed.includes("setAddFeedFolderId") || addFeed.includes("folderModel"), "folder picker");
+assert(addFeed.includes("w-full"), "folder select full width");
+assert(addFeed.includes("createFolder") || addFeed.includes("newFolder"), "add feed new folder");
+assert(addFeed.includes("feed.add.advanced") || addFeed.includes("advancedOpen"), "add feed advanced");
+assert(addFeed.includes("isNsfw") && addFeed.includes("refreshInterval"), "add feed nsfw/interval");
+assert(store.includes("AddFeedOptions") || store.includes("isNsfw"), "addFeedFromURL options");
 assert(layout.includes("bootstrapError"), "bootstrap error UI");
 
 console.log("uiGaps.selftest: OK");

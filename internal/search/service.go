@@ -16,6 +16,8 @@ import (
 type Options struct {
 	Mode  string
 	Limit int
+	// ExcludeNsfw drops hits from feeds with is_nsfw=1 (office mode).
+	ExcludeNsfw bool
 }
 
 // Hit is a unified search result.
@@ -123,42 +125,71 @@ func (s *Service) Search(ctx context.Context, query string, opts Options) (Resul
 	switch mode {
 	case settings.SearchModeFTS:
 		hits, err := s.searchFTS(ctx, query, limit)
+		hits = s.filterNsfwHits(ctx, hits, opts.ExcludeNsfw)
 		return Result{Hits: hits, ModeUsed: settings.SearchModeFTS, Warnings: warnings}, err
 
 	case settings.SearchModeVector:
 		if !caps.VectorSearch {
 			warnings = append(warnings, "vector_unavailable")
 			hits, err := s.searchFTS(ctx, query, limit)
+			hits = s.filterNsfwHits(ctx, hits, opts.ExcludeNsfw)
 			return Result{Hits: hits, ModeUsed: settings.SearchModeFTS, Warnings: warnings}, err
 		}
 		hits, err := s.searchVector(ctx, query, embCfg, searchCfg.VectorTopK)
 		if err != nil {
 			warnings = append(warnings, err.Error())
 			fhits, ferr := s.searchFTS(ctx, query, limit)
+			fhits = s.filterNsfwHits(ctx, fhits, opts.ExcludeNsfw)
 			return Result{Hits: fhits, ModeUsed: settings.SearchModeFTS, Warnings: warnings}, ferr
 		}
 		if len(hits) > limit {
 			hits = hits[:limit]
 		}
+		hits = s.filterNsfwHits(ctx, hits, opts.ExcludeNsfw)
 		return Result{Hits: hits, ModeUsed: settings.SearchModeVector, Warnings: warnings}, nil
 
 	case settings.SearchModeHybrid:
 		if !caps.VectorSearch {
 			warnings = append(warnings, "vector_unavailable")
 			hits, err := s.searchFTS(ctx, query, limit)
+			hits = s.filterNsfwHits(ctx, hits, opts.ExcludeNsfw)
 			return Result{Hits: hits, ModeUsed: settings.SearchModeFTS, Warnings: warnings}, err
 		}
 		hits, err := s.searchHybrid(ctx, query, embCfg, searchCfg, limit)
 		if err != nil {
 			warnings = append(warnings, err.Error())
 			fhits, ferr := s.searchFTS(ctx, query, limit)
+			fhits = s.filterNsfwHits(ctx, fhits, opts.ExcludeNsfw)
 			return Result{Hits: fhits, ModeUsed: settings.SearchModeFTS, Warnings: warnings}, ferr
 		}
+		hits = s.filterNsfwHits(ctx, hits, opts.ExcludeNsfw)
 		return Result{Hits: hits, ModeUsed: settings.SearchModeHybrid, Warnings: warnings}, nil
 
 	default:
 		return Result{}, fmt.Errorf("unknown search mode %q", mode)
 	}
+}
+
+// filterNsfwHits removes hits whose article belongs to an is_nsfw feed
+// or a feed inside an is_nsfw folder (office mode).
+func (s *Service) filterNsfwHits(ctx context.Context, hits []Hit, exclude bool) []Hit {
+	if !exclude || len(hits) == 0 || s.SQL == nil {
+		return hits
+	}
+	out := make([]Hit, 0, len(hits))
+	for _, h := range hits {
+		var n int
+		err := s.SQL.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM articles a
+			JOIN feeds f ON f.id = a.feed_id
+			LEFT JOIN folders fo ON fo.id = f.folder_id
+			WHERE a.id = ? AND (f.is_nsfw = 1 OR IFNULL(fo.is_nsfw, 0) = 1)`, h.ArticleID).Scan(&n)
+		if err != nil || n > 0 {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
 }
 
 func (s *Service) searchFTS(ctx context.Context, query string, limit int) ([]Hit, error) {

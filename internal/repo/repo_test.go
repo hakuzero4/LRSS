@@ -251,13 +251,15 @@ func TestPurgeOlderThan_KeepsStarredDeletesOld(t *testing.T) {
 		{GUID: "old-plain", URL: "https://ex.com/old", Title: "Old Plain", ContentText: &body, PublishedAt: &oldPub},
 		{GUID: "old-star", URL: "https://ex.com/old-star", Title: "Old Starred", ContentText: &body, PublishedAt: &oldPub},
 		{GUID: "recent", URL: "https://ex.com/recent", Title: "Recent", ContentText: &body, PublishedAt: &recentPub},
+		// Published long ago but just fetched — must NOT purge (just-subscribed archive feeds).
+		{GUID: "old-pub-new-fetch", URL: "https://ex.com/archive", Title: "Archive Fresh", ContentText: &body, PublishedAt: &oldPub},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	all, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 20})
-	if err != nil || len(all) != 3 {
+	if err != nil || len(all) != 4 {
 		t.Fatalf("list before: n=%d err=%v", len(all), err)
 	}
 
@@ -276,14 +278,21 @@ func TestPurgeOlderThan_KeepsStarredDeletesOld(t *testing.T) {
 	if err := r.Articles.SetStarred(ctx, starID, true); err != nil {
 		t.Fatal(err)
 	}
+	// Backdate fetched_at for truly-old rows so both publish and fetch are past retention.
+	oldFetch := time.Now().UTC().Add(-100 * 24 * time.Hour).Format(time.RFC3339)
+	if _, err := database.SQL.ExecContext(ctx,
+		`UPDATE articles SET fetched_at = ? WHERE id IN (?, ?)`, oldFetch, oldID, starID,
+	); err != nil {
+		t.Fatal(err)
+	}
 
-	// FTS rows should exist for all three before purge.
+	// FTS rows should exist for all four before purge.
 	var ftsBefore int
 	if err := database.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles_fts`).Scan(&ftsBefore); err != nil {
 		t.Fatal(err)
 	}
-	if ftsBefore != 3 {
-		t.Fatalf("fts before = %d want 3", ftsBefore)
+	if ftsBefore != 4 {
+		t.Fatalf("fts before = %d want 4", ftsBefore)
 	}
 
 	deleted, err := r.Articles.PurgeOlderThan(ctx, 90)
@@ -291,21 +300,21 @@ func TestPurgeOlderThan_KeepsStarredDeletesOld(t *testing.T) {
 		t.Fatalf("PurgeOlderThan: %v", err)
 	}
 	if deleted != 1 {
-		t.Fatalf("deleted = %d want 1 (only non-starred old)", deleted)
+		t.Fatalf("deleted = %d want 1 (only non-starred old-by-pub-and-fetch)", deleted)
 	}
 
 	remaining, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remaining) != 2 {
-		t.Fatalf("remaining = %d want 2", len(remaining))
+	if len(remaining) != 3 {
+		t.Fatalf("remaining = %d want 3", len(remaining))
 	}
 	titles := map[string]bool{}
 	for _, a := range remaining {
 		titles[a.Title] = true
 	}
-	if !titles["Old Starred"] || !titles["Recent"] {
+	if !titles["Old Starred"] || !titles["Recent"] || !titles["Archive Fresh"] {
 		t.Fatalf("remaining titles = %v", titles)
 	}
 	if titles["Old Plain"] {
@@ -317,8 +326,8 @@ func TestPurgeOlderThan_KeepsStarredDeletesOld(t *testing.T) {
 	if err := database.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles_fts`).Scan(&ftsAfter); err != nil {
 		t.Fatal(err)
 	}
-	if ftsAfter != 2 {
-		t.Fatalf("fts after = %d want 2", ftsAfter)
+	if ftsAfter != 3 {
+		t.Fatalf("fts after = %d want 3", ftsAfter)
 	}
 	var ftsOld int
 	if err := database.SQL.QueryRowContext(ctx,

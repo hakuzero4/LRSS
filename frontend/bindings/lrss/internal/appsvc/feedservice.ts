@@ -120,6 +120,13 @@ export function RenameFolder(id: string, name: string): $CancellablePromise<void
 }
 
 /**
+ * SetFeedNsfw marks or unmarks a feed as sensitive (NSFW).
+ */
+export function SetFeedNsfw(id: string, nsfw: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2554505244, id, nsfw);
+}
+
+/**
  * SetFeedPaused pauses or unpauses a feed.
  */
 export function SetFeedPaused(id: string, paused: boolean): $CancellablePromise<void> {
@@ -132,4 +139,12 @@ export function SetFeedPaused(id: string, paused: boolean): $CancellablePromise<
  */
 export function SetFeedRefreshInterval(id: string, minutes: number): $CancellablePromise<void> {
     return $Call.ByID(1949052462, id, minutes);
+}
+
+/**
+ * SetFolderNsfw marks or unmarks a folder as sensitive (NSFW).
+ * In office mode the folder and its feeds are hidden from the sidebar and lists.
+ */
+export function SetFolderNsfw(id: string, nsfw: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2232540948, id, nsfw);
 }

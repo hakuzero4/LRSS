@@ -85,4 +85,9 @@ export interface UIPrefs {
     "hardwareAcceleration": boolean;
     "clearCacheOnQuit": boolean;
     "developerMode": boolean;
+
+    /**
+     * NsfwMode: true = show NSFW feeds (default); false = office mode hide isNsfw feeds.
+     */
+    "nsfwMode": boolean;
 }

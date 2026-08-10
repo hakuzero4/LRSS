@@ -24,7 +24,7 @@ func NewFeedRepo(db *sql.DB) *FeedRepo {
 const feedSelect = `
 	SELECT f.id, f.folder_id, f.title, f.site_url, f.feed_url, f.favicon_url,
 	       f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.is_paused,
-	       f.refresh_interval_minutes, f.title_user_set,
+	       f.refresh_interval_minutes, f.title_user_set, f.is_nsfw,
 	       f.created_at, f.updated_at,
 	       (SELECT COUNT(*) FROM articles a WHERE a.feed_id = f.id AND a.is_read = 0) AS unread
 	FROM feeds f`
@@ -136,12 +136,12 @@ func (r *FeedRepo) Insert(ctx context.Context, f *model.Feed) error {
 		INSERT INTO feeds (
 			id, folder_id, title, site_url, feed_url, favicon_url,
 			etag, last_modified, last_fetched_at, last_error, is_paused,
-			refresh_interval_minutes, title_user_set,
+			refresh_interval_minutes, title_user_set, is_nsfw,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		f.ID, nullStr(f.FolderID), f.Title, nullStr(f.SiteURL), f.FeedURL, nullStr(f.FaviconURL),
 		nullStr(f.ETag), nullStr(f.LastModified), nullStr(f.LastFetchedAt), nullStr(f.LastError),
-		boolToInt(f.IsPaused), f.RefreshIntervalMinutes, boolToInt(f.TitleUserSet),
+		boolToInt(f.IsPaused), f.RefreshIntervalMinutes, boolToInt(f.TitleUserSet), boolToInt(f.IsNsfw),
 		f.CreatedAt, f.UpdatedAt,
 	)
 	if err != nil {
@@ -277,6 +277,22 @@ func (r *FeedRepo) SetPaused(ctx context.Context, feedID string, paused bool) er
 	return nil
 }
 
+// SetNsfw marks or unmarks a feed as sensitive (NSFW).
+func (r *FeedRepo) SetNsfw(ctx context.Context, feedID string, nsfw bool) error {
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE feeds SET is_nsfw = ?, updated_at = ? WHERE id = ?`,
+		boolToInt(nsfw), now, feedID)
+	if err != nil {
+		return fmt.Errorf("set nsfw: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feed not found: %s", feedID)
+	}
+	return nil
+}
+
 // SetTitle renames a feed and locks the title so refresh will not overwrite it.
 func (r *FeedRepo) SetTitle(ctx context.Context, feedID, title string) error {
 	title = strings.TrimSpace(title)
@@ -389,11 +405,11 @@ func (r *FeedRepo) Delete(ctx context.Context, feedID string) error {
 func scanFeed(row scannable) (model.Feed, error) {
 	var f model.Feed
 	var folder, site, fav, etag, lastMod, lastFetch, lastErr sql.NullString
-	var paused, titleUserSet int
+	var paused, titleUserSet, nsfw int
 	if err := row.Scan(
 		&f.ID, &folder, &f.Title, &site, &f.FeedURL, &fav,
 		&etag, &lastMod, &lastFetch, &lastErr, &paused,
-		&f.RefreshIntervalMinutes, &titleUserSet,
+		&f.RefreshIntervalMinutes, &titleUserSet, &nsfw,
 		&f.CreatedAt, &f.UpdatedAt, &f.UnreadCount,
 	); err != nil {
 		return model.Feed{}, err
@@ -407,5 +423,6 @@ func scanFeed(row scannable) (model.Feed, error) {
 	f.LastError = strPtr(lastErr)
 	f.IsPaused = paused != 0
 	f.TitleUserSet = titleUserSet != 0
+	f.IsNsfw = nsfw != 0
 	return f, nil
 }

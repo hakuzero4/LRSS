@@ -20,6 +20,7 @@ type FeedStore interface {
 	SetPaused(ctx context.Context, feedID string, paused bool) error
 	SetTitle(ctx context.Context, feedID, title string) error
 	SetRefreshInterval(ctx context.Context, feedID string, minutes int) error
+	SetNsfw(ctx context.Context, feedID string, nsfw bool) error
 	SetSiteURL(ctx context.Context, feedID, siteURL string) error
 	SetFaviconURL(ctx context.Context, feedID, faviconURL string) error
 	Delete(ctx context.Context, feedID string) error
@@ -30,12 +31,13 @@ type FeedStore interface {
 type ArticleStore interface {
 	List(ctx context.Context, collection string, opts repo.ListOpts) ([]model.Article, error)
 	Get(ctx context.Context, articleID string) (model.Article, error)
+	CountByFeed(ctx context.Context, feedID string) (int, error)
 	UpsertFromParsed(ctx context.Context, feedID string, items []repo.ParsedItem) (repo.UpsertResult, error)
 	SetRead(ctx context.Context, articleID string, read bool) error
 	SetStarred(ctx context.Context, articleID string, starred bool) error
-	MarkAllRead(ctx context.Context, collection string) error
+	MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error
 	PurgeOlderThan(ctx context.Context, days int) (int, error)
-	CountSmart(ctx context.Context) (repo.SmartCounts, error)
+	CountSmart(ctx context.Context, excludeNsfw bool) (repo.SmartCounts, error)
 }
 
 // FolderStore is the folder persistence port (satisfied by *repo.FolderRepo).
@@ -44,6 +46,7 @@ type FolderStore interface {
 	Create(ctx context.Context, name string, parentID *string) (model.Folder, error)
 	Get(ctx context.Context, folderID string) (model.Folder, error)
 	Rename(ctx context.Context, folderID, name string) error
+	SetNsfw(ctx context.Context, folderID string, nsfw bool) error
 	Delete(ctx context.Context, folderID string) error
 	DeleteAll(ctx context.Context) (int, error)
 }

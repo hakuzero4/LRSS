@@ -7,6 +7,7 @@ import (
 	"lrss/internal/model"
 	"lrss/internal/repo"
 	"lrss/internal/service"
+	"lrss/internal/settings"
 )
 
 // FeedService is the Wails-facing feed API.
@@ -154,6 +155,17 @@ func (s *FeedService) SetFeedPaused(id string, paused bool) error {
 	return s.lib.SetPaused(context.Background(), id, paused)
 }
 
+// SetFeedNsfw marks or unmarks a feed as sensitive (NSFW).
+func (s *FeedService) SetFeedNsfw(id string, nsfw bool) error {
+	return s.lib.SetFeedNsfw(context.Background(), id, nsfw)
+}
+
+// SetFolderNsfw marks or unmarks a folder as sensitive (NSFW).
+// In office mode the folder and its feeds are hidden from the sidebar and lists.
+func (s *FeedService) SetFolderNsfw(id string, nsfw bool) error {
+	return s.lib.SetFolderNsfw(context.Background(), id, nsfw)
+}
+
 // RenameFeed sets a custom display title (will not be overwritten by refresh).
 func (s *FeedService) RenameFeed(id, title string) error {
 	return s.lib.RenameFeed(context.Background(), id, title)
@@ -205,22 +217,49 @@ func (s *FeedService) ExportOPML() (string, error) {
 
 // ArticleService is the Wails-facing article API.
 type ArticleService struct {
-	lib *service.Library
+	lib   *service.Library
+	store *settings.Store
 }
 
 // NewArticleService wraps the library orchestrator.
-func NewArticleService(lib *service.Library) *ArticleService {
-	return &ArticleService{lib: lib}
+// store may be nil (tests); nsfwMode defaults to show-all when missing.
+func NewArticleService(lib *service.Library, store *settings.Store) *ArticleService {
+	return &ArticleService{lib: lib, store: store}
+}
+
+// excludeNsfw is true when UIPrefs.nsfwMode is false (office mode).
+func (s *ArticleService) excludeNsfw() bool {
+	if s == nil || s.store == nil {
+		return false
+	}
+	prefs, err := s.store.LoadUIPrefs(context.Background())
+	if err != nil {
+		return false
+	}
+	return !prefs.NsfwMode
 }
 
 // List returns articles for a collection (unread|today|starred|all|feed:ID|folder:ID).
+// Office-mode NSFW filtering applies only to smart lists. Explicit feed:/folder:
+// collections always return their articles so a just-subscribed sensitive feed is
+// still readable after add (sidebar may still hide it).
 func (s *ArticleService) List(collection string, limit, offset int) ([]model.Article, error) {
-	return s.lib.ListArticles(context.Background(), collection, limit, offset)
+	exclude := s.excludeNsfw() && isSmartCollection(collection)
+	return s.lib.ListArticles(context.Background(), collection, limit, offset, exclude)
+}
+
+func isSmartCollection(collection string) bool {
+	switch strings.TrimSpace(collection) {
+	case "", "unread", "today", "starred", "all":
+		return true
+	default:
+		return false
+	}
 }
 
 // SmartCounts returns full library totals for sidebar badges (not capped by list limit).
 func (s *ArticleService) SmartCounts() (repo.SmartCounts, error) {
-	return s.lib.SmartCounts(context.Background())
+	return s.lib.SmartCounts(context.Background(), s.excludeNsfw())
 }
 
 // Get returns one article with sanitized HTML.
@@ -240,5 +279,5 @@ func (s *ArticleService) SetStarred(id string, starred bool) error {
 
 // MarkAllRead marks a collection as read.
 func (s *ArticleService) MarkAllRead(collection string) error {
-	return s.lib.MarkAllRead(context.Background(), collection)
+	return s.lib.MarkAllRead(context.Background(), collection, s.excludeNsfw())
 }

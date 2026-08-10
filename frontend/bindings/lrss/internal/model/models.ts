@@ -47,6 +47,11 @@ export interface Feed {
      * TitleUserSet is true when the user renamed the feed; refresh must not overwrite title.
      */
     "titleUserSet": boolean;
+
+    /**
+     * IsNsfw marks a sensitive feed. When UIPrefs.nsfwMode is false, UI hides this feed.
+     */
+    "isNsfw": boolean;
     "unreadCount": number;
     "createdAt": string;
     "updatedAt": string;
@@ -60,6 +65,12 @@ export interface Folder {
     "name": string;
     "parentId"?: string | null;
     "sortOrder": number;
+
+    /**
+     * IsNsfw marks a sensitive folder. When UIPrefs.nsfwMode is false, UI hides
+     * this folder and its feeds; article lists/search also exclude them.
+     */
+    "isNsfw": boolean;
     "createdAt": string;
     "updatedAt": string;
 }

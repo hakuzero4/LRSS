@@ -45,6 +45,8 @@ type ListOpts struct {
 	Offset     int
 	Query      string // optional title/summary/content LIKE; empty skips
 	UnreadOnly bool
+	// ExcludeNsfw hides articles from feeds with is_nsfw=1 (office mode).
+	ExcludeNsfw bool
 }
 
 // ParsedItem is a feed item ready for upsert (from the RSS parse layer).
@@ -74,20 +76,33 @@ type SmartCounts struct {
 	All     int `json:"all"`
 }
 
+// nsfwFeedExcludeSQL is AND-ed when ExcludeNsfw / CountSmart hideNsfw.
+// Hides articles from feeds marked is_nsfw OR feeds in folders marked is_nsfw.
+const nsfwFeedExcludeSQL = `feed_id NOT IN (
+	SELECT f.id FROM feeds f
+	LEFT JOIN folders fo ON fo.id = f.folder_id
+	WHERE f.is_nsfw = 1 OR IFNULL(fo.is_nsfw, 0) = 1
+)`
+
 // CountSmart returns true totals for smart lists (not capped by list limit).
 // "today" uses the same UTC day window as collectionWhere("today").
-func (r *ArticleRepo) CountSmart(ctx context.Context) (SmartCounts, error) {
+// excludeNsfw=true omits articles belonging to is_nsfw feeds (office mode).
+func (r *ArticleRepo) CountSmart(ctx context.Context, excludeNsfw bool) (SmartCounts, error) {
 	start := time.Now().UTC().Truncate(24 * time.Hour)
 	end := start.Add(24 * time.Hour)
+	nsfw := ""
+	if excludeNsfw {
+		nsfw = " AND " + nsfwFeedExcludeSQL
+	}
 	var c SmartCounts
 	err := r.DB.QueryRowContext(ctx, `
 		SELECT
-			(SELECT COUNT(*) FROM articles WHERE is_read = 0),
+			(SELECT COUNT(*) FROM articles WHERE is_read = 0`+nsfw+`),
 			(SELECT COUNT(*) FROM articles
 			  WHERE COALESCE(published_at, fetched_at) >= ?
-			    AND COALESCE(published_at, fetched_at) < ?),
-			(SELECT COUNT(*) FROM articles WHERE is_starred = 1),
-			(SELECT COUNT(*) FROM articles)`,
+			    AND COALESCE(published_at, fetched_at) < ?`+nsfw+`),
+			(SELECT COUNT(*) FROM articles WHERE is_starred = 1`+nsfw+`),
+			(SELECT COUNT(*) FROM articles WHERE 1=1`+nsfw+`)`,
 		start.Format(time.RFC3339), end.Format(time.RFC3339),
 	).Scan(&c.Unread, &c.Today, &c.Starred, &c.All)
 	if err != nil {
@@ -112,6 +127,9 @@ func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts
 	}
 	if opts.UnreadOnly {
 		where = append(where, `is_read = 0`)
+	}
+	if opts.ExcludeNsfw {
+		where = append(where, nsfwFeedExcludeSQL)
 	}
 	q := strings.TrimSpace(opts.Query)
 	if q != "" {
@@ -169,6 +187,16 @@ func (r *ArticleRepo) Get(ctx context.Context, articleID string) (model.Article,
 		return model.Article{}, err
 	}
 	return a, nil
+}
+
+// CountByFeed returns how many articles belong to feedID.
+func (r *ArticleRepo) CountByFeed(ctx context.Context, feedID string) (int, error) {
+	var n int
+	err := r.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles WHERE feed_id = ?`, feedID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count articles by feed: %w", err)
+	}
+	return n, nil
 }
 
 // UpsertFromParsed batch-inserts new articles by (feed_id, guid).
@@ -270,12 +298,16 @@ func (r *ArticleRepo) SetStarred(ctx context.Context, articleID string, starred 
 }
 
 // MarkAllRead marks matching collection articles as read.
-func (r *ArticleRepo) MarkAllRead(ctx context.Context, collection string) error {
+// excludeNsfw skips articles from is_nsfw feeds (office mode smart lists).
+func (r *ArticleRepo) MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error {
 	where, args, err := collectionWhere(collection)
 	if err != nil {
 		return err
 	}
 	where = append(where, `is_read = 0`)
+	if excludeNsfw {
+		where = append(where, nsfwFeedExcludeSQL)
+	}
 	sqlStr := `UPDATE articles SET is_read = 1 WHERE ` + strings.Join(where, ` AND `)
 	_, err = r.DB.ExecContext(ctx, sqlStr, args...)
 	if err != nil {
@@ -300,9 +332,12 @@ func (r *ArticleRepo) Delete(ctx context.Context, articleID string) error {
 	return nil
 }
 
-// PurgeOlderThan deletes non-starred articles whose COALESCE(published_at, fetched_at)
-// is older than days days. Starred articles are always kept. FTS rows are cleared
-// before article rows; embeddings cascade via FK.
+// PurgeOlderThan deletes non-starred articles that are old by BOTH publish time and
+// local fetch time (each older than days days). Starred articles are always kept.
+//
+// Using both timestamps avoids wiping a just-subscribed feed whose items are all
+// older than the retention window by published_at alone (common for static RSS
+// archives). After purge, empty feeds re-download on refresh (no ETag when empty).
 //
 // days is clamped to [7, 365]. Returns the number of articles deleted.
 // Fully consumes the ID select before further Exec (MaxOpenConns=1).
@@ -316,10 +351,12 @@ func (r *ArticleRepo) PurgeOlderThan(ctx context.Context, days int) (int, error)
 	mod := fmt.Sprintf("-%d days", days)
 
 	// Collect IDs fully before any further DB ops on this connection.
+	// Require publish-old AND fetch-old so newly imported historical items survive.
 	rows, err := r.DB.QueryContext(ctx, `
 		SELECT id FROM articles
 		WHERE is_starred = 0
-		  AND date(COALESCE(published_at, fetched_at)) < date('now', ?)`, mod)
+		  AND date(COALESCE(published_at, fetched_at)) < date('now', ?)
+		  AND date(fetched_at) < date('now', ?)`, mod, mod)
 	if err != nil {
 		return 0, fmt.Errorf("purge select: %w", err)
 	}
@@ -372,6 +409,16 @@ func (r *ArticleRepo) PurgeOlderThan(ctx context.Context, days int) (int, error)
 		}
 		n, _ := res.RowsAffected()
 		deleted += int(n)
+	}
+	// Feeds left with zero articles must not keep ETags — otherwise the next
+	// refresh 304s and never re-imports (archive RSS + retention race).
+	if deleted > 0 {
+		_, _ = r.DB.ExecContext(ctx, `
+			UPDATE feeds SET etag = NULL, last_modified = NULL, updated_at = ?
+			WHERE id IN (
+				SELECT f.id FROM feeds f
+				WHERE NOT EXISTS (SELECT 1 FROM articles a WHERE a.feed_id = f.id)
+			)`, nowUTC())
 	}
 	return deleted, nil
 }
