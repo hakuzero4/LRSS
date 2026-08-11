@@ -103,7 +103,7 @@ export interface UIPrefs {
   fontSize: string; // sm|md|lg
   showUnreadOnly: boolean;
   openLinksInBrowser: boolean;
-  readerWidth: string; // narrow|medium|wide
+  readerWidth: string; // narrow|medium|wide|fill
   defaultFolderId: string; // empty = null
   fetchFullContent: boolean;
   keepArticlesDays: number; // 7–365
@@ -143,7 +143,7 @@ export interface AppSettings {
   fontSize: "sm" | "md" | "lg";
   showUnreadOnly: boolean;
   openLinksInBrowser: boolean;
-  readerWidth: "narrow" | "medium" | "wide";
+  readerWidth: "narrow" | "medium" | "wide" | "fill";
 
   // 订阅
   defaultFolderId: string | null;

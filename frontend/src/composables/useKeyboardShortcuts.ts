@@ -16,6 +16,7 @@ export const KEYBOARD_SHORTCUT_MAP = {
   "Ctrl+,": "openSettings",
   "Meta+,": "openSettings",
   n: "openAddFeed",
+  z: "toggleZenMode",
 } as const;
 
 export type ShortcutAction = (typeof KEYBOARD_SHORTCUT_MAP)[keyof typeof KEYBOARD_SHORTCUT_MAP];
@@ -63,6 +64,7 @@ export function useKeyboardShortcuts() {
     searchQuery,
     settingsOpen,
     addFeedOpen,
+    zenMode,
     selectArticle,
     toggleStar,
     toggleRead,
@@ -71,6 +73,8 @@ export function useKeyboardShortcuts() {
     closeSettings,
     openAddFeed,
     closeAddFeed,
+    toggleZenMode,
+    setZenMode,
   } = useRssStore();
 
   function moveSelection(delta: 1 | -1) {
@@ -112,7 +116,7 @@ export function useKeyboardShortcuts() {
       return;
     }
 
-    // Escape — close dialogs / clear search (works while typing)
+    // Escape — close dialogs / clear search / exit zen (works while typing)
     if (e.key === "Escape") {
       if (settingsOpen.value) {
         e.preventDefault();
@@ -127,6 +131,11 @@ export function useKeyboardShortcuts() {
       if (searchQuery.value) {
         e.preventDefault();
         searchQuery.value = "";
+        return;
+      }
+      if (zenMode.value) {
+        e.preventDefault();
+        setZenMode(false);
         return;
       }
       if (editable) {
@@ -183,6 +192,10 @@ export function useKeyboardShortcuts() {
       case "n":
         e.preventDefault();
         openAddFeed();
+        break;
+      case "z":
+        e.preventDefault();
+        toggleZenMode();
         break;
       default:
         break;

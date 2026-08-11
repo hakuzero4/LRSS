@@ -22,7 +22,7 @@ type UIPrefs struct {
 	FontSize                string `json:"fontSize"` // sm|md|lg
 	ShowUnreadOnly          bool   `json:"showUnreadOnly"`
 	OpenLinksInBrowser      bool   `json:"openLinksInBrowser"`
-	ReaderWidth             string `json:"readerWidth"`     // narrow|medium|wide
+	ReaderWidth             string `json:"readerWidth"`     // narrow|medium|wide|fill
 	DefaultFolderId         string `json:"defaultFolderId"` // empty = none
 	FetchFullContent        bool   `json:"fetchFullContent"`
 	KeepArticlesDays        int    `json:"keepArticlesDays"` // 7–365, default 90

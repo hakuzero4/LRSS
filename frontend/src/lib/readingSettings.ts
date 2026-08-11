@@ -4,7 +4,7 @@
  */
 
 export type FontSizePref = "sm" | "md" | "lg";
-export type ReaderWidthPref = "narrow" | "medium" | "wide";
+export type ReaderWidthPref = "narrow" | "medium" | "wide" | "fill";
 
 /** Map prefs → CSS class tokens applied on `.reader-shell`. */
 export function readerShellClasses(
@@ -22,7 +22,9 @@ export function readerShellClasses(
       ? "reader-width-narrow"
       : readerWidth === "wide"
         ? "reader-width-wide"
-        : "reader-width-medium";
+        : readerWidth === "fill"
+          ? "reader-width-fill"
+          : "reader-width-medium";
   return { font, width, className: `${font} ${width}` };
 }
 

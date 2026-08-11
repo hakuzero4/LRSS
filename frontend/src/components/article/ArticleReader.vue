@@ -4,6 +4,7 @@ import {
   Check,
   ExternalLink,
   FileCode2,
+  Focus,
   LoaderCircle,
   Newspaper,
   Star,
@@ -40,6 +41,8 @@ const {
   toggleRead,
   fetchFullContent,
   backendReady,
+  zenMode,
+  toggleZenMode,
 } = useRssStore();
 
 const scrollPaneRef = ref<HTMLElement | null>(null);
@@ -166,6 +169,35 @@ watch(
 
         <TooltipProvider :delay-duration="300">
           <div class="flex shrink-0 items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  :class="
+                    zenMode
+                      ? 'text-primary bg-primary/10'
+                      : 'text-muted-foreground'
+                  "
+                  :aria-label="
+                    zenMode ? t('article.exitZenMode') : t('article.zenMode')
+                  "
+                  :aria-pressed="zenMode"
+                  @click="toggleZenMode"
+                >
+                  <Focus class="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {{
+                  zenMode
+                    ? t("article.exitZenMode")
+                    : t("article.zenMode")
+                }}
+                <span class="ml-1.5 opacity-60">z</span>
+              </TooltipContent>
+            </Tooltip>
+
             <Tooltip>
               <TooltipTrigger as-child>
                 <Button

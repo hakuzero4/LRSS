@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/resizable";
 
 const { t } = useI18n();
-const { bootstrapError, backendReady, reloadLibrary } = useRssStore();
+const { bootstrapError, backendReady, reloadLibrary, zenMode } = useRssStore();
 
 useTheme();
 useKeyboardShortcuts();
@@ -48,7 +48,15 @@ async function onRetryBootstrap() {
       </Button>
     </div>
 
+    <!-- Zen: reader only (sidebar + list hidden in ReaderView) -->
+    <template v-if="zenMode">
+      <main class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
+        <RouterView />
+      </main>
+    </template>
+
     <ResizablePanelGroup
+      v-else
       id="lrss-shell"
       direction="horizontal"
       auto-save-id="lrss-shell"

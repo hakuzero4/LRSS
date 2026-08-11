@@ -50,6 +50,8 @@ const addFeedOpen = ref(false);
 /** When set, AddFeed uses this folder id (from folder context menu). */
 const addFeedTargetFolderId = ref<string | null>(null);
 const settingsOpen = ref(false);
+/** Zen mode: hide feed sidebar + article list (session-only). */
+const zenMode = ref(false);
 const refreshing = ref(false);
 const backendReady = ref(false);
 const bootstrapError = ref("");
@@ -350,7 +352,7 @@ const SMART_COLLECTIONS: SmartCollectionId[] = ["unread", "today", "starred", "a
 const THEMES = new Set(["system", "light", "dark"]);
 
 const FONT_SIZES = new Set(["sm", "md", "lg"]);
-const READER_WIDTHS = new Set(["narrow", "medium", "wide"]);
+const READER_WIDTHS = new Set(["narrow", "medium", "wide", "fill"]);
 
 function isSmartCollection(v: unknown): v is SmartCollectionId {
   return typeof v === "string" && (SMART_COLLECTIONS as string[]).includes(v);
@@ -1165,6 +1167,15 @@ function closeSettings() {
   settingsOpen.value = false;
 }
 
+/** Toggle zen mode (hide sidebar + article list). Session-only. */
+function toggleZenMode() {
+  zenMode.value = !zenMode.value;
+}
+
+function setZenMode(on: boolean) {
+  zenMode.value = !!on;
+}
+
 /** Options for Add Feed advanced settings (applied after subscribe). */
 export type AddFeedOptions = {
   title?: string;
@@ -1738,6 +1749,7 @@ export function useRssStore() {
     addFeedOpen,
     addFeedTargetFolderId,
     settingsOpen,
+    zenMode,
     refreshing,
     backendReady,
     bootstrapError,
@@ -1760,6 +1772,8 @@ export function useRssStore() {
     setSearchQuery,
     openSettings,
     closeSettings,
+    toggleZenMode,
+    setZenMode,
     addFeed,
     addFeedFromURL,
     addFeedsFromURLs,

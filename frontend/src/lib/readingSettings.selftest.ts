@@ -26,6 +26,9 @@ assert(sm.className.includes("reader-font-sm") && sm.className.includes("reader-
 const lg = readerShellClasses("lg", "wide");
 assert(lg.font === "reader-font-lg" && lg.width === "reader-width-wide", "lg/wide");
 
+const fill = readerShellClasses("md", "fill");
+assert(fill.width === "reader-width-fill", "fill width class");
+
 const def = readerShellClasses("nope", undefined);
 assert(def.font === "reader-font-md" && def.width === "reader-width-medium", "defaults");
 
@@ -39,6 +42,7 @@ for (const token of [
   "reader-width-narrow",
   "reader-width-medium",
   "reader-width-wide",
+  "reader-width-fill",
   "--reader-body-size",
 ]) {
   assert(css.includes(token), `css defines ${token}`);

@@ -11,7 +11,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 
-const { selectedArticle, selectedFeed, selectedArticleId } = useRssStore();
+const { selectedArticle, selectedFeed, selectedArticleId, zenMode } = useRssStore();
 
 const markdownOpen = ref(false);
 
@@ -40,7 +40,28 @@ watch(selectedArticleId, (id) => {
 </script>
 
 <template>
+  <!-- Zen mode: reader (+ optional markdown) only — no article list -->
+  <div
+    v-if="zenMode"
+    class="flex h-full min-h-0 w-full flex-1 overflow-hidden"
+  >
+    <div class="min-h-0 min-w-0 flex-1">
+      <ArticleReader v-model:markdown-open="markdownOpen" />
+    </div>
+    <div
+      v-if="markdownOpen"
+      class="min-h-0 w-[min(40%,28rem)] min-w-[16rem] max-w-[48%] shrink-0"
+    >
+      <MarkdownPanel
+        :content="markdownContent"
+        :article-title="selectedArticle?.title"
+        @close="closeMarkdownPanel"
+      />
+    </div>
+  </div>
+
   <ResizablePanelGroup
+    v-else
     id="lrss-reader"
     direction="horizontal"
     auto-save-id="lrss-reader"

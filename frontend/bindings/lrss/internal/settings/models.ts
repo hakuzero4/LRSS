@@ -63,7 +63,7 @@ export interface UIPrefs {
     "openLinksInBrowser": boolean;
 
     /**
-     * narrow|medium|wide
+     * narrow|medium|wide|fill
      */
     "readerWidth": string;
 

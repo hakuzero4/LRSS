@@ -27,6 +27,7 @@ assert(css.includes("reader-font-sm"), "css sm font");
 assert(css.includes("reader-font-lg"), "css lg font");
 assert(css.includes("reader-width-narrow"), "css narrow width");
 assert(css.includes("reader-width-wide"), "css wide width");
+assert(css.includes("reader-width-fill"), "css fill width");
 assert(css.includes("--reader-body-size"), "css body size var");
 
 assert(store.includes("showUnreadOnly"), "unread-only setting");

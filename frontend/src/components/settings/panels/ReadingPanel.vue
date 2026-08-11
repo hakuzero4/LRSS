@@ -52,12 +52,16 @@ function patchBool(key: "showUnreadOnly" | "openLinksInBrowser", v: boolean) {
       <div class="space-y-3 py-3">
         <p class="text-[13px] font-medium">{{ t("settings.reading.width") }}</p>
         <Tabs v-model="readerWidthModel" class="w-full">
-          <TabsList class="grid w-full grid-cols-3">
+          <TabsList class="grid w-full grid-cols-4">
             <TabsTrigger value="narrow">{{ t("settings.reading.widthNarrow") }}</TabsTrigger>
             <TabsTrigger value="medium">{{ t("settings.reading.widthMedium") }}</TabsTrigger>
             <TabsTrigger value="wide">{{ t("settings.reading.widthWide") }}</TabsTrigger>
+            <TabsTrigger value="fill">{{ t("settings.reading.widthFill") }}</TabsTrigger>
           </TabsList>
         </Tabs>
+        <p class="text-[12px] leading-relaxed text-muted-foreground">
+          {{ t("settings.reading.widthFillHint") }}
+        </p>
       </div>
       <div class="py-2.5">
         <SettingsRow

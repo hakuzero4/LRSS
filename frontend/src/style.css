@@ -494,6 +494,11 @@
 .reader-shell.reader-width-wide {
   max-width: 56rem; /* ~896px */
 }
+/* Fill remaining reader pane width (no fixed column cap). */
+.reader-shell.reader-width-fill {
+  max-width: none;
+  width: 100%;
+}
 
 .reader-shell.reader-font-sm {
   --reader-body-size: 15px;
@@ -529,6 +534,8 @@
   padding-top: 0.15rem;
   font-size: var(--reader-body-size, 16.5px);
   line-height: var(--reader-body-leading, 1.7);
+  /* Wide tables / pre can scroll horizontally inside the pane */
+  overflow-x: auto;
 }
 
 .reader-body :where(p, ul, ol) {
@@ -573,6 +580,121 @@
   padding: 0.1em 0.35em;
   border-radius: 0.3em;
   background: var(--muted);
+}
+
+.reader-body :where(pre) {
+  margin-block: 1em;
+  overflow-x: auto;
+  padding: 0.85em 1em;
+  border-radius: 0.55em;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background: var(--muted);
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+
+.reader-body :where(pre code) {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.reader-body :where(blockquote) {
+  margin-block: 1em;
+  padding: 0.15em 0 0.15em 1em;
+  border-left: 3px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+  color: var(--muted-foreground);
+}
+
+.reader-body :where(hr) {
+  margin-block: 1.5em;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.reader-body :where(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.45em;
+}
+
+/* Tables — Tailwind preflight resets borders; restore a readable data grid.
+   Outer wrapper enables horizontal scroll for wide benchmark tables. */
+.reader-body :where(table) {
+  width: 100%;
+  min-width: min(100%, 36rem);
+  margin-block: 1.15em;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9em;
+  line-height: 1.45;
+  border: 1px solid var(--border);
+  border-radius: 0.6em;
+  overflow: hidden;
+  background: var(--background);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.reader-body :where(caption) {
+  caption-side: top;
+  padding: 0.5em 0.15em 0.65em;
+  text-align: left;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.reader-body :where(th),
+.reader-body :where(td) {
+  padding: 0.6em 0.85em;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  word-break: break-word;
+}
+
+.reader-body :where(th):last-child,
+.reader-body :where(td):last-child {
+  border-right: none;
+}
+
+.reader-body :where(th) {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--muted) 88%, var(--background));
+  white-space: nowrap;
+}
+
+.reader-body :where(thead th) {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, var(--foreground) 18%);
+}
+
+.reader-body :where(tbody tr:last-child > th),
+.reader-body :where(tbody tr:last-child > td) {
+  border-bottom: none;
+}
+
+.reader-body :where(tbody tr:nth-child(even) > td),
+.reader-body :where(tbody tr:nth-child(even) > th) {
+  background: color-mix(in srgb, var(--muted) 32%, transparent);
+}
+
+.reader-body :where(tbody tr:hover > td),
+.reader-body :where(tbody tr:hover > th) {
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+}
+
+/* Numeric-looking cells stay monospaced-ish via tabular nums */
+.reader-body :where(td) {
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-body :where(td strong, th strong, td b, th b) {
+  font-weight: 700;
+  color: var(--foreground);
 }
 
 /* —— Scroll panes (native scrollbars; reliable in WebView2) —— */
