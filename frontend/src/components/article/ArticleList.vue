@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { CheckCheck, RefreshCw, Search, X } from "@lucide/vue";
+import { CheckCheck, RefreshCw } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import ArticleListItem from "@/components/article/ArticleListItem.vue";
+import ArticleSearch from "@/components/article/ArticleSearch.vue";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -29,7 +29,6 @@ const {
   markAllRead,
   refreshFeeds,
   openAddFeed,
-  setSearchQuery,
 } = useRssStore();
 
 const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
@@ -38,11 +37,6 @@ const empty = computed(() => filteredArticles.value.length === 0);
 const articleCountLabel = computed(() => {
   const n = filteredArticles.value.length;
   return n === 1 ? t("article.countOne") : t("article.count", { n });
-});
-
-const searchModel = computed({
-  get: () => searchQuery.value,
-  set: (v: string) => setSearchQuery(v),
 });
 
 const emptyTitle = computed(() => {
@@ -120,29 +114,8 @@ const emptyHint = computed(() => {
       </TooltipProvider>
     </header>
 
-    <div class="px-3 pb-2">
-      <div class="relative">
-        <Search
-          class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          v-model="searchModel"
-          type="search"
-          :placeholder="t('article.searchPlaceholder')"
-          class="h-8 bg-muted/50 pl-8 pr-8 text-[13px]"
-          :aria-label="t('article.searchAria')"
-        />
-        <button
-          v-if="searchQuery"
-          type="button"
-          class="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-          :aria-label="t('article.clearSearch')"
-          @click="setSearchQuery('')"
-        >
-          <X class="size-3.5" />
-        </button>
-      </div>
-    </div>
+    <!-- Independent search module (not part of title chrome) -->
+    <ArticleSearch />
 
     <div class="scroll-pane flex-1">
       <div v-if="empty" class="flex h-48 flex-col items-center justify-center px-6 text-center">
