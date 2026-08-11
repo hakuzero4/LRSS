@@ -27,7 +27,6 @@ for (const key of [
   "aiSummarize",
   "aiTranslate",
   "aiAsk",
-  "aiDailyDigest",
   "aiSuggest",
   "aiClassify",
   "aiApplyFolder",
@@ -35,6 +34,7 @@ for (const key of [
 ]) {
   assert(store.includes(key), `store exports/uses ${key}`);
 }
+assert(!store.includes("aiDailyDigest"), "store must not export daily digest");
 
 assert(reader.includes("onSummarize") || reader.includes("aiSummarize"), "reader summarize");
 assert(reader.includes("onTranslate") || reader.includes("aiTranslate"), "reader translate");
@@ -47,35 +47,29 @@ assert(panel.includes("AIResultPanel") || panel.includes("ai.panelTitle") || pan
 assert(view.includes("AIResultPanel"), "ReaderView hosts AI panel");
 assert(view.includes("aiPanel"), "ReaderView binds aiPanel");
 
-assert(sidebar.includes("aiDailyDigest") || sidebar.includes("onDailyDigest"), "sidebar digest");
-assert(sidebar.includes("dailyDigest") || sidebar.includes("ai.dailyDigest"), "sidebar digest label");
+assert(!sidebar.includes("aiDailyDigest") && !sidebar.includes("onDailyDigest"), "no sidebar digest");
+assert(!sidebar.includes("dailyDigest"), "no digest label in sidebar");
 
 for (const [name, src] of [
   ["zh", zh],
   ["en", en],
 ] as const) {
-  for (const k of [
-    "summarize:",
-    "translate:",
-    "ask:",
-    "dailyDigest:",
-    "suggest:",
-    "classify:",
-  ]) {
+  for (const k of ["summarize:", "translate:", "ask:", "suggest:", "classify:"]) {
     assert(src.includes(k), `${name} i18n has ${k}`);
   }
+  assert(!src.includes("dailyDigest:"), `${name} i18n must drop dailyDigest`);
 }
 
 for (const fn of [
   "Summarize",
   "Translate",
   "Ask",
-  "DailyDigest",
   "SuggestFolders",
   "ClassifyPromo",
   "ApplySuggestedFolder",
 ]) {
   assert(aisvc.includes(`function ${fn}`), `binding ${fn}`);
 }
+assert(!aisvc.includes("function DailyDigest"), "binding must drop DailyDigest");
 
 console.log("aiFeatures.selftest: OK");

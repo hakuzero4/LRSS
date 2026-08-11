@@ -121,8 +121,6 @@ export default {
     askDefault: "What is this article about? Key claims and risks?",
     suggest: "Tag / folder suggestions",
     classify: "Ads / soft-promo check",
-    dailyDigest: "Daily digest",
-    dailyDigestDesc: "Summarize today’s unread (Top N)",
     working: "Generating…",
     streaming: "Streaming",
     cached: "cached",
@@ -508,7 +506,7 @@ export default {
       testOk: "Connection OK",
       testFailed: "Connection failed",
       llmSaved: "LLM config saved",
-      llmSavedEnabled: "Chat API enabled for reader AI and daily digest",
+      llmSavedEnabled: "Chat API enabled for reader AI features",
       llmSavedDisabled: "LLM disabled",
       autoGroup: "Automation",
       autoGroupDesc: "Whether to call AI when opening articles. Requires LLM config saved above.",
@@ -530,8 +528,6 @@ export default {
         "· Translate — Languages icon: streaming original+translation pairs; both are kept (original body is never deleted).",
       llmFeatureAsk:
         "· Ask / explain — ✨ → Ask about this article (editable default question).",
-      llmFeatureDigest:
-        "· Daily digest — under Smart lists in the sidebar: Top N of today’s unread.",
       llmFeatureSuggest:
         "· Tag / folder suggestions — ✨ menu; optional one-click move to suggested folder. Local keyword tags work even if LLM is off.",
       llmFeatureClassify:
@@ -543,7 +539,7 @@ export default {
       llmNoteCache:
         "· Same article + feature + model + content fingerprint + UI locale hits local cache to avoid re-billing.",
       llmNoteLocale:
-        "· Summarize / ask / digest prompts and replies follow the current UI language (Chinese UI → Chinese replies).",
+        "· Summarize / ask prompts and replies follow the current UI language (Chinese UI → Chinese replies).",
       llmNotePrivacy:
         "· API keys stay in local SQLite (masked in UI); requests use surf fingerprint HTTP. See docs/llm.md.",
       previewMode: "Design preview",

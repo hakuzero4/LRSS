@@ -16,11 +16,10 @@ const (
 	FeatureSummarize        = "summarize"
 	FeatureTranslate        = "translate"
 	FeatureSelectTranslate  = "select_translate"
-	FeatureContentFullness  = "content_fullness"
-	FeatureAsk              = "ask"
-	FeatureDigest           = "digest"
-	FeatureSuggest          = "suggest"
-	FeatureClassify         = "classify"
+	FeatureContentFullness = "content_fullness"
+	FeatureAsk             = "ask"
+	FeatureSuggest         = "suggest"
+	FeatureClassify        = "classify"
 )
 
 // Content fullness verdicts (DetectContentFullness / EnsureFullContent).
@@ -44,13 +43,6 @@ type ArticleInput struct {
 	Body    string // plain text preferred; HTML is stripped if needed
 	URL     string
 	Author  string
-}
-
-// DigestItem is one article line for daily digest.
-type DigestItem struct {
-	Title   string
-	Summary string
-	URL     string
 }
 
 // BudgetText truncates s to maxChars on a rune boundary, appending an ellipsis notice.
@@ -136,18 +128,7 @@ func ContentFingerprint(a ArticleInput) string {
 	return hex.EncodeToString(sum[:16]) // 32 hex chars
 }
 
-// DigestFingerprint hashes the digest item set.
-func DigestFingerprint(items []DigestItem, topN int) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "n=%d\n", topN)
-	for i, it := range items {
-		fmt.Fprintf(&b, "%d|%s|%s|%s\n", i, it.Title, it.Summary, it.URL)
-	}
-	sum := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(sum[:16])
-}
-
-// CacheKey builds a stable cache key for (article|digest scope) + feature + model + content hash + extra.
+// CacheKey builds a stable cache key for article + feature + model + content hash + extra.
 func CacheKey(articleID, feature, model, contentHash, extra string) string {
 	parts := []string{
 		strings.TrimSpace(articleID),
@@ -197,8 +178,6 @@ func SystemPromptFor(feature, locale string) string {
 		base = "You are a precise translator for short selected phrases and sentences from RSS articles. Preserve meaning, names, and tone. Output only the translation—no commentary, labels, or quotes."
 	case FeatureAsk:
 		base = "You are a careful reading assistant. Answer only from the provided article context. If unknown, say so. Prefer short Markdown answers."
-	case FeatureDigest:
-		base = "You are a news desk editor. Produce a compact daily unread digest in Markdown with short bullets and optional themes. Do not invent articles."
 	case FeatureSuggest:
 		base = "You suggest tags and folder placement for RSS articles. Reply in compact Markdown with clear sections. Prefer short tags."
 	case FeatureClassify:
@@ -513,36 +492,6 @@ func UserPromptAsk(bundle, question, locale string) string {
 		return "文章内容：\n" + bundle + "\n\n问题：" + q + "\n\n请用 Markdown 回答。\n" + OutputLanguageInstruction(locale)
 	}
 	return "Article context:\n" + bundle + "\n\nQuestion: " + q + "\n\nAnswer in Markdown.\n" + OutputLanguageInstruction(locale)
-}
-
-// UserPromptDigest builds the digest user message.
-func UserPromptDigest(items []DigestItem, locale string) string {
-	var b strings.Builder
-	if NormalizeUILocale(locale) == "zh" {
-		b.WriteString("根据以下今日未读文章（Top N）写一份每日简报。可按主题轻量分组。\n\n")
-	} else {
-		b.WriteString("Create a daily unread digest from these articles (Top N). Group lightly by theme if possible.\n\n")
-	}
-	for i, it := range items {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(it.Title))
-		if s := strings.TrimSpace(it.Summary); s != "" {
-			b.WriteString("   ")
-			b.WriteString(BudgetText(s, 280))
-			b.WriteByte('\n')
-		}
-		if u := strings.TrimSpace(it.URL); u != "" {
-			b.WriteString("   ")
-			b.WriteString(u)
-			b.WriteByte('\n')
-		}
-	}
-	if NormalizeUILocale(locale) == "zh" {
-		b.WriteString("\n输出 Markdown：标题、简短导语、要点列表。\n")
-	} else {
-		b.WriteString("\nOutput Markdown with a title, short intro, and bullets.\n")
-	}
-	b.WriteString(OutputLanguageInstruction(locale))
-	return b.String()
 }
 
 // UserPromptSuggest includes available folder names.

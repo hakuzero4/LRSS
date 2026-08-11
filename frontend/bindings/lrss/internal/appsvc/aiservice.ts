@@ -44,14 +44,6 @@ export function ClearTranslation(articleId: string): $CancellablePromise<void> {
 }
 
 /**
- * DailyDigest builds a Markdown digest of today's unread articles (Top N, default 12).
- * locale controls output language (app UI language).
- */
-export function DailyDigest(limit: number, locale: string): $CancellablePromise<$models.AIResult> {
-    return $Call.ByID(299240351, limit, locale);
-}
-
-/**
  * DetectContentFullness judges whether the stored body looks complete or partial.
  * Verdict: full|partial|unclear|skipped_no_url|already_fetched. Does not fetch the page.
  */

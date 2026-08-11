@@ -121,8 +121,6 @@ export default {
     askDefault: "这篇文章在说什么？有哪些要点与风险？",
     suggest: "标签 / 文件夹建议",
     classify: "广告 / 软文判断",
-    dailyDigest: "每日简报",
-    dailyDigestDesc: "汇总今日未读 Top N",
     working: "正在生成…",
     streaming: "生成中",
     cached: "缓存",
@@ -496,7 +494,7 @@ export default {
       testOk: "连接成功",
       testFailed: "连接失败",
       llmSaved: "大模型配置已保存",
-      llmSavedEnabled: "对话 API 已启用，可用于阅读器 AI 与每日简报",
+      llmSavedEnabled: "对话 API 已启用，可用于阅读器 AI 功能",
       llmSavedDisabled: "已关闭大语言模型",
       autoGroup: "自动行为",
       autoGroupDesc: "打开文章时是否自动调用 AI。需先启用并保存上方大模型配置。",
@@ -517,7 +515,6 @@ export default {
       llmFeatureTranslate:
         "· 翻译 — 工具栏语言图标：原文+译文对照（流式）；完成后两者都保留，原文不会被删掉。",
       llmFeatureAsk: "· 问答 / 解释 — ✨ →「问答」，针对当前文章提问（可改默认问题）。",
-      llmFeatureDigest: "· 每日简报 — 左侧边栏智能列表下方「每日简报」，汇总今日未读 Top N。",
       llmFeatureSuggest:
         "· 标签 / 文件夹建议 — ✨ →「标签 / 文件夹建议」；可一键把该订阅移到建议文件夹。未开 LLM 时仍有本地关键词标签。",
       llmFeatureClassify:

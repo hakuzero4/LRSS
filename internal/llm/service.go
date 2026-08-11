@@ -385,17 +385,6 @@ func (s *Service) Ask(ctx context.Context, a ArticleInput, question, locale stri
 	return s.runCached(ctx, a.ID, FeatureAsk, extra, hash, SystemPromptFor(FeatureAsk, locale), UserPromptAsk(bundle, question, locale))
 }
 
-// Digest builds a daily digest from items (already Top N).
-func (s *Service) Digest(ctx context.Context, items []DigestItem, locale string) (FeatureResult, error) {
-	if len(items) == 0 {
-		return FeatureResult{}, fmt.Errorf("no unread articles for today")
-	}
-	// Cap body size per item via UserPromptDigest's BudgetText.
-	hash := DigestFingerprint(items, len(items))
-	loc := NormalizeUILocale(locale)
-	return s.runCached(ctx, "", FeatureDigest, fmt.Sprintf("n=%d|loc=%s", len(items), loc), hash, SystemPromptFor(FeatureDigest, locale), UserPromptDigest(items, locale))
-}
-
 // FolderRef is a minimal folder for suggestions.
 type FolderRef struct {
 	ID   string `json:"id"`

@@ -22,27 +22,28 @@
 - `SettingsService.TestLLMConfig` — 发极短 completion，校验连通与鉴权
 - **`AIService`**（用户显式触发）  
   - `Summarize` / `Translate` / `Ask`  
-  - `DailyDigest`  
   - `SuggestFolders` / `ApplySuggestedFolder`  
-  - `ClassifyPromo`  
+  - `ClassifyPromo` / `DetectContentFullness` / `EnsureFullContent`  
+  - `TranslateSelection`  
   - `IsLLMConfigured`
 
-### 已上线 AI 功能（设置 → 搜索/AI 说明同步）
+### 已上线 AI 功能（设置 → 模型 / AI 功能）
 
 | 功能 | 入口 | 说明 |
 | --- | --- | --- |
-| **摘要** | 阅读器工具栏 ✨ →「摘要」 | Markdown 概述 + 要点；结果在右侧 AI 面板 |
-| **翻译** | ✨ →「翻译」→ 中文 / English | 将当前文章译为目标语言 |
-| **问答 / 解释** | ✨ →「问答」 | 针对当前文章提问（可改默认问题） |
-| **每日简报** | 侧栏 · 智能列表下方「每日简报」 | 汇总今日未读 Top N |
-| **标签 / 文件夹建议** | ✨ →「标签 / 文件夹建议」 | 本地关键词标签 + LLM 建议；可一键把订阅移到建议文件夹。LLM 关闭时仍有本地标签 |
-| **广告 / 软文判断** | ✨ →「广告 / 软文判断」 | 用户手动触发，返回 organic / promo / unclear，不自动扫全库 |
+| **摘要** | 阅读器工具栏「生成摘要」/ ✨ | 流式写入正文上方 deck |
+| **翻译** | 工具栏语言图标 | 原文+译文对照，原文不覆盖 |
+| **划词翻译** | 选中正文 | 短文本固定 prompt |
+| **问答 / 解释** | ✨ →「问答」 | 针对当前文章提问 |
+| **标签 / 文件夹建议** | ✨ →「标签 / 文件夹建议」 | 本地关键词 + LLM；可一键移文件夹 |
+| **广告 / 软文判断** | ✨ →「广告 / 软文判断」 | organic / promo / unclear |
+| **自动请求全文** | 设置 → AI 功能（可选） | 打开文章时判断 partial 并抓取 |
 
 **共性**
 
-- 配置与测试在 **设置 → 搜索/AI → 大语言模型**
-- **自动摘要**（可选）：设置 → 搜索/AI →「自动摘要」；打开文章时调用摘要，输出语言 = **当前界面语言**
-- 摘要 / 问答 / 简报 / 建议 / 分类 的 prompt 与回复语言跟随 UI 语言（`zh-CN` → 简体中文）
+- 模型配置在 **设置 → 模型**；功能开关在 **设置 → AI 功能**
+- **自动摘要**（可选）：打开文章时调用摘要，输出语言 = **当前界面语言**
+- 摘要 / 问答 / 建议 / 分类 的 prompt 与回复语言跟随 UI 语言（`zh-CN` → 简体中文）
 - 结果 Markdown 展示在右侧 AI 面板（可复制）
 - 缓存：`llm_feature_cache`（article + feature + model + content 指纹 + locale）
 - 正文预算：`BuildArticleBundle` + `BudgetText`
@@ -81,7 +82,6 @@
 
 | 功能 | 说明 |
 | --- | --- |
-| **每日简报** | 汇总「今日未读」Top N 为一条 digest |
 | **智能标签 / 文件夹建议** | 根据正文建议标签（先本地规则，再 LLM 兜底） |
 | **过滤增强** | 用 LLM 判断是否广告/软文（与关键词过滤互补，需明确开销与离线策略） |
 
@@ -102,8 +102,8 @@ Settings(LLMConfig)
        ▼
  internal/llm.Client  ──httpx/surf──►  OpenAI-compatible API
        │
-       ├── feature: summarize / translate / ask
-       ├── feature: digest
+       ├── feature: summarize / translate / ask / select_translate
+       ├── feature: content_fullness / suggest / classify
        └── (later) rag.Query(library, q)
 ```
 

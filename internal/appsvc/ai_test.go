@@ -84,25 +84,3 @@ func TestAIService_SummarizeViaHTTP(t *testing.T) {
 	}
 }
 
-func TestAIService_DailyDigestEmpty(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "e.db")
-	database, err := db.Open(ctx, db.Options{Path: path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-	store := settings.NewStore(database.SQL)
-	_ = store.SaveLLMConfig(ctx, settings.LLMConfig{
-		Provider: settings.LLMProviderOpenAICompatible,
-		BaseURL:  "http://127.0.0.1:9/v1",
-		Model:    "m",
-	})
-	repos := repo.New(database.SQL)
-	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
-	ai := appsvc.NewAI(store, lib, database.SQL)
-	_, err = ai.DailyDigest(5, "zh-CN")
-	if err == nil {
-		t.Fatal("expected no articles error")
-	}
-}

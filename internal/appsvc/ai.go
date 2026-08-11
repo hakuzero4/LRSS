@@ -354,58 +354,6 @@ func (s *AIService) Ask(articleId, question, locale string) (AIResult, error) {
 	return toAIResult(r), nil
 }
 
-// DailyDigest builds a Markdown digest of today's unread articles (Top N, default 12).
-// locale controls output language (app UI language).
-func (s *AIService) DailyDigest(limit int, locale string) (AIResult, error) {
-	ctx := context.Background()
-	if s.lib == nil {
-		return AIResult{}, fmt.Errorf("library unavailable")
-	}
-	if limit <= 0 {
-		limit = 12
-	}
-	if limit > 40 {
-		limit = 40
-	}
-	// "today" collection already scopes to the current day; prefer unread among them.
-	list, err := s.lib.ListArticles(ctx, "today", limit*3, 0, false)
-	if err != nil {
-		return AIResult{}, err
-	}
-	items := make([]llm.DigestItem, 0, limit)
-	for _, a := range list {
-		if a.IsRead {
-			continue
-		}
-		sum := ""
-		if a.Summary != nil {
-			sum = *a.Summary
-		}
-		items = append(items, llm.DigestItem{Title: a.Title, Summary: sum, URL: a.URL})
-		if len(items) >= limit {
-			break
-		}
-	}
-	// Fallback: if all of today's are read, use any today articles.
-	if len(items) == 0 {
-		for _, a := range list {
-			sum := ""
-			if a.Summary != nil {
-				sum = *a.Summary
-			}
-			items = append(items, llm.DigestItem{Title: a.Title, Summary: sum, URL: a.URL})
-			if len(items) >= limit {
-				break
-			}
-		}
-	}
-	r, err := s.feat.Digest(ctx, items, locale)
-	if err != nil {
-		return AIResult{}, err
-	}
-	return toAIResult(r), nil
-}
-
 // SuggestFolders returns tag/folder suggestions for an article.
 // When LLM is off, returns local-rule tags only. locale is app UI language.
 func (s *AIService) SuggestFolders(articleId, locale string) (AIResult, error) {

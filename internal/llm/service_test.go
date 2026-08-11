@@ -114,7 +114,7 @@ func TestService_Disabled(t *testing.T) {
 	}
 }
 
-func TestService_TranslateAskDigestClassify(t *testing.T) {
+func TestService_TranslateAskClassify(t *testing.T) {
 	store, database := testStore(t)
 	stub := &stubChat{model: "test-model", content: "**Verdict:** organic\n\nAll good."}
 	svc := &llm.Service{
@@ -131,14 +131,6 @@ func TestService_TranslateAskDigestClassify(t *testing.T) {
 	ask, err := svc.Ask(context.Background(), a, "What?", "en-US")
 	if err != nil || ask.Markdown == "" {
 		t.Fatalf("ask: %+v %v", ask, err)
-	}
-	dig, err := svc.Digest(context.Background(), []llm.DigestItem{{Title: "One", Summary: "s"}}, "zh-CN")
-	if err != nil || dig.Markdown == "" {
-		t.Fatalf("digest: %+v %v", dig, err)
-	}
-	_, err = svc.Digest(context.Background(), nil, "en")
-	if err == nil {
-		t.Fatal("empty digest should fail")
 	}
 	cl, err := svc.ClassifyPromo(context.Background(), a, "en")
 	if err != nil {
@@ -304,7 +296,7 @@ func TestService_SelectTranslate(t *testing.T) {
 func TestPromptsNonEmpty(t *testing.T) {
 	for _, f := range []string{
 		llm.FeatureSummarize, llm.FeatureTranslate, llm.FeatureSelectTranslate, llm.FeatureAsk,
-		llm.FeatureDigest, llm.FeatureSuggest, llm.FeatureClassify,
+		llm.FeatureSuggest, llm.FeatureClassify,
 	} {
 		if strings.TrimSpace(llm.SystemPromptFor(f, "zh-CN")) == "" {
 			t.Fatalf("empty system for %s", f)

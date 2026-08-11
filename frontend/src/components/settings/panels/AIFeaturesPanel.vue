@@ -72,7 +72,6 @@ function patchBool(
         <p>{{ t("settings.searchAi.llmFeatureSelectTranslate") }}</p>
         <p>{{ t("settings.searchAi.llmFeatureTranslate") }}</p>
         <p>{{ t("settings.searchAi.llmFeatureAsk") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureDigest") }}</p>
         <p>{{ t("settings.searchAi.llmFeatureSuggest") }}</p>
         <p>{{ t("settings.searchAi.llmFeatureClassify") }}</p>
       </div>

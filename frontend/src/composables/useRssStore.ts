@@ -63,7 +63,7 @@ const refreshing = ref(false);
 const backendReady = ref(false);
 const bootstrapError = ref("");
 
-/** Right-side AI result panel (translate / ask / digest / … — not summarize). */
+/** Right-side AI result panel (ask / suggest / classify / … — not summarize). */
 export type AIPanelState = {
   open: boolean;
   busy: boolean;
@@ -496,13 +496,6 @@ async function aiAsk(articleId: string, question: string) {
   const locale = uiLocale();
   await runAIFeature(t("ai.ask"), "ask", (api) =>
     api.AIService.Ask(articleId, question ?? "", locale),
-  );
-}
-
-async function aiDailyDigest(limit = 12) {
-  const locale = uiLocale();
-  await runAIFeature(t("ai.dailyDigest"), "digest", (api) =>
-    api.AIService.DailyDigest(limit, locale),
   );
 }
 
@@ -2413,7 +2406,6 @@ export function useRssStore() {
     aiTranslate,
     aiTranslateSelection,
     aiAsk,
-    aiDailyDigest,
     aiSuggest,
     aiClassify,
     aiApplyFolder,
