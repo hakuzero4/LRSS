@@ -116,4 +116,9 @@ export interface UIPrefs {
      * NsfwMode: true = show NSFW feeds (default); false = office mode hide isNsfw feeds.
      */
     "nsfwMode": boolean;
+
+    /**
+     * AutoSummarize: when true, opening an article requests an LLM summary (if LLM configured).
+     */
+    "autoSummarize": boolean;
 }

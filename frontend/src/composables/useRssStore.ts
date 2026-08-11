@@ -56,7 +56,7 @@ const refreshing = ref(false);
 const backendReady = ref(false);
 const bootstrapError = ref("");
 
-/** Right-side AI result panel (summarize / translate / ask / digest / …). */
+/** Right-side AI result panel (translate / ask / digest / … — not summarize). */
 export type AIPanelState = {
   open: boolean;
   busy: boolean;
@@ -82,6 +82,98 @@ const aiPanel = reactive<AIPanelState>({
   folderName: "",
   verdict: "",
 });
+
+/** In-reader deck streaming for summarize (above body, replaces article.summary). */
+export type SummaryStreamState = {
+  articleId: string | null;
+  text: string;
+  busy: boolean;
+  error: string;
+};
+
+const summaryStream = reactive<SummaryStreamState>({
+  articleId: null,
+  text: "",
+  busy: false,
+  error: "",
+});
+
+let llmStreamUnsub: (() => void) | null = null;
+
+async function ensureLLMStreamListener() {
+  if (llmStreamUnsub || typeof window === "undefined") return;
+  try {
+    const { Events } = await import("@wailsio/runtime");
+    llmStreamUnsub = Events.On("llm:stream", (ev: { data?: any }) => {
+      const d = ev?.data ?? ev;
+      if (!d || d.feature !== "summarize") return;
+      const articleId = String(d.articleId ?? d.ArticleID ?? "");
+      if (!articleId) return;
+      // Ignore chunks for other articles if user navigated away mid-stream.
+      if (
+        summaryStream.articleId &&
+        summaryStream.articleId !== articleId &&
+        selectedArticleId.value !== articleId
+      ) {
+        return;
+      }
+      if (selectedArticleId.value === articleId || summaryStream.articleId === articleId) {
+        summaryStream.articleId = articleId;
+      } else {
+        return;
+      }
+      const text = String(d.text ?? d.Text ?? "");
+      const done = !!(d.done ?? d.Done);
+      const err = String(d.error ?? d.Error ?? "");
+      if (text) summaryStream.text = text;
+      if (err && done) {
+        summaryStream.error = err.startsWith("save summary:") ? "" : err;
+        summaryStream.busy = false;
+      }
+      if (done) {
+        summaryStream.busy = false;
+        if (text && !err.startsWith("save summary:")) {
+          // Replace in-memory article summary so list + reader update.
+          patchArticleSummary(articleId, text);
+        } else if (text && err.startsWith("save summary:")) {
+          // Still show text even if persist failed.
+          patchArticleSummary(articleId, text);
+        }
+      } else {
+        summaryStream.busy = true;
+        summaryStream.error = "";
+      }
+    });
+  } catch {
+    /* pure vite preview */
+  }
+}
+
+function patchArticleSummary(articleId: string, summary: string) {
+  const apply = (list: Article[] | null) => {
+    if (!list) return;
+    const idx = list.findIndex((a) => a.id === articleId);
+    if (idx < 0) return;
+    list[idx] = { ...list[idx], summary };
+  };
+  apply(articles.value);
+  apply(searchArticles.value);
+}
+
+function beginSummaryStream(articleId: string) {
+  summaryStream.articleId = articleId;
+  summaryStream.text = "";
+  summaryStream.busy = true;
+  summaryStream.error = "";
+  void ensureLLMStreamListener();
+}
+
+function clearSummaryStream() {
+  summaryStream.articleId = null;
+  summaryStream.text = "";
+  summaryStream.busy = false;
+  summaryStream.error = "";
+}
 
 function closeAIPanel() {
   aiPanel.open = false;
@@ -139,10 +231,41 @@ async function runAIFeature(
   }
 }
 
+/** Current app UI locale for AI prompts (zh-CN / en-US). */
+function uiLocale(): string {
+  try {
+    return String(i18n.global.locale.value || "en-US");
+  } catch {
+    return "en-US";
+  }
+}
+
+/**
+ * Summarize streams into the reader deck (not the side AI panel) and
+ * replaces article.summary when finished.
+ */
 async function aiSummarize(articleId: string) {
-  await runAIFeature(t("ai.summarize"), "summarize", (api) =>
-    api.AIService.Summarize(articleId),
-  );
+  if (!backendReady.value) throw new Error(t("ai.backendUnavailable"));
+  const api = await loadAppsvc();
+  if (!api?.AIService?.Summarize) throw new Error(t("ai.unavailable"));
+  beginSummaryStream(articleId);
+  // Do not open side AI panel for summarize.
+  aiPanel.open = false;
+  try {
+    const locale = uiLocale();
+    const raw = await api.AIService.Summarize(articleId, locale);
+    const text = String(raw?.markdown ?? raw?.Markdown ?? summaryStream.text ?? "").trim();
+    if (text) {
+      summaryStream.text = text;
+      patchArticleSummary(articleId, text);
+    }
+    summaryStream.busy = false;
+  } catch (e) {
+    summaryStream.busy = false;
+    const msg = e instanceof Error ? e.message : String(e);
+    summaryStream.error = msg;
+    throw e;
+  }
 }
 
 async function aiTranslate(articleId: string, targetLang: string) {
@@ -153,27 +276,49 @@ async function aiTranslate(articleId: string, targetLang: string) {
 }
 
 async function aiAsk(articleId: string, question: string) {
+  const locale = uiLocale();
   await runAIFeature(t("ai.ask"), "ask", (api) =>
-    api.AIService.Ask(articleId, question ?? ""),
+    api.AIService.Ask(articleId, question ?? "", locale),
   );
 }
 
 async function aiDailyDigest(limit = 12) {
+  const locale = uiLocale();
   await runAIFeature(t("ai.dailyDigest"), "digest", (api) =>
-    api.AIService.DailyDigest(limit),
+    api.AIService.DailyDigest(limit, locale),
   );
 }
 
 async function aiSuggest(articleId: string) {
+  const locale = uiLocale();
   await runAIFeature(t("ai.suggest"), "suggest", (api) =>
-    api.AIService.SuggestFolders(articleId),
+    api.AIService.SuggestFolders(articleId, locale),
   );
 }
 
 async function aiClassify(articleId: string) {
+  const locale = uiLocale();
   await runAIFeature(t("ai.classify"), "classify", (api) =>
-    api.AIService.ClassifyPromo(articleId),
+    api.AIService.ClassifyPromo(articleId, locale),
   );
+}
+
+/** Last article id we already auto-summarized this session (avoid loops). */
+let lastAutoSummarizeId: string | null = null;
+
+async function maybeAutoSummarize(articleId: string) {
+  if (!settings.autoSummarize) return;
+  if (!backendReady.value) return;
+  if (!articleId || articleId === lastAutoSummarizeId) return;
+  if (aiPanel.busy) return;
+  lastAutoSummarizeId = articleId;
+  try {
+    await aiSummarize(articleId);
+  } catch {
+    // Quiet fail for auto path — user can retry from AI menu.
+    // Allow retry on next open if failed.
+    if (lastAutoSummarizeId === articleId) lastAutoSummarizeId = null;
+  }
 }
 
 async function aiApplyFolder(articleId: string, folderId: string) {
@@ -214,6 +359,7 @@ const settings = reactive<AppSettings>({
   clearCacheOnQuit: false,
   developerMode: false,
   nsfwMode: true,
+  autoSummarize: false,
 });
 
 function isToday(iso: string): boolean {
@@ -512,6 +658,7 @@ function buildUIPrefs(): UIPrefs {
     clearCacheOnQuit: settings.clearCacheOnQuit,
     developerMode: settings.developerMode,
     nsfwMode: settings.nsfwMode,
+    autoSummarize: settings.autoSummarize,
   };
 }
 
@@ -636,6 +783,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const nsfw = pickBool(p, "nsfwMode", "NsfwMode");
   if (nsfw !== undefined) settings.nsfwMode = nsfw;
+
+  const autoSum = pickBool(p, "autoSummarize", "AutoSummarize");
+  if (autoSum !== undefined) settings.autoSummarize = autoSum;
 }
 
 async function loadUIPrefs() {
@@ -1007,7 +1157,15 @@ function selectCollection(id: CollectionId) {
 
 async function selectArticle(id: string | null) {
   selectedArticleId.value = id;
-  if (!id) return;
+  if (!id) {
+    lastAutoSummarizeId = null;
+    clearSummaryStream();
+    return;
+  }
+  // Clear in-progress stream UI when switching articles (backend may still finish).
+  if (summaryStream.articleId && summaryStream.articleId !== id) {
+    clearSummaryStream();
+  }
   // Search hits may not be on the current collection page.
   let article =
     resolveSelectedArticle(id, articles.value, searchArticles.value) ?? undefined;
@@ -1074,6 +1232,8 @@ async function selectArticle(id: string | null) {
   if (markedRead) {
     await syncAfterReadChange();
   }
+  // Settings → Search/AI: optional auto summarize (UI locale in prompts).
+  void maybeAutoSummarize(id);
 }
 
 async function reloadLibraryFeedsOnly() {
@@ -1820,6 +1980,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     clearCacheOnQuit: false,
     developerMode: false,
     nsfwMode: true,
+    autoSummarize: false,
   };
   applyUIPrefs(defaults);
   settings.autoRefresh = true;
@@ -1880,6 +2041,7 @@ export function useRssStore() {
     settingsOpen,
     zenMode,
     aiPanel,
+    summaryStream,
     refreshing,
     backendReady,
     bootstrapError,

@@ -74,7 +74,7 @@ func TestService_Summarize_CacheHit(t *testing.T) {
 		},
 	}
 	a := llm.ArticleInput{ID: "a1", Title: "T", Body: "Long body about golang testing."}
-	r1, err := svc.Summarize(context.Background(), a)
+	r1, err := svc.Summarize(context.Background(), a, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +84,23 @@ func TestService_Summarize_CacheHit(t *testing.T) {
 	if stub.calls != 1 {
 		t.Fatalf("calls = %d", stub.calls)
 	}
-	r2, err := svc.Summarize(context.Background(), a)
+	r2, err := svc.Summarize(context.Background(), a, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !r2.Cached || stub.calls != 1 {
 		t.Fatalf("expected cache hit: cached=%v calls=%d", r2.Cached, stub.calls)
+	}
+	// Different UI locale → different cache key → second call.
+	_, err = svc.Summarize(context.Background(), a, "zh-CN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.calls != 2 {
+		t.Fatalf("locale should miss cache: calls=%d", stub.calls)
+	}
+	if !strings.Contains(stub.lastUser, "简体中文") && !strings.Contains(stub.lastSys, "简体中文") {
+		t.Fatalf("zh prompts missing Chinese instruction: sys=%q user=%q", stub.lastSys, stub.lastUser)
 	}
 }
 
@@ -97,7 +108,7 @@ func TestService_Disabled(t *testing.T) {
 	store, database := testStore(t)
 	_ = store.SaveLLMConfig(context.Background(), settings.DefaultLLMConfig())
 	svc := &llm.Service{Store: store, Cache: &llm.Cache{DB: database.SQL}}
-	_, err := svc.Summarize(context.Background(), llm.ArticleInput{ID: "x", Title: "t", Body: "b"})
+	_, err := svc.Summarize(context.Background(), llm.ArticleInput{ID: "x", Title: "t", Body: "b"}, "en")
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("err = %v", err)
 	}
@@ -117,19 +128,19 @@ func TestService_TranslateAskDigestClassify(t *testing.T) {
 	if err != nil || tr.Markdown == "" {
 		t.Fatalf("translate: %+v %v", tr, err)
 	}
-	ask, err := svc.Ask(context.Background(), a, "What?")
+	ask, err := svc.Ask(context.Background(), a, "What?", "en-US")
 	if err != nil || ask.Markdown == "" {
 		t.Fatalf("ask: %+v %v", ask, err)
 	}
-	dig, err := svc.Digest(context.Background(), []llm.DigestItem{{Title: "One", Summary: "s"}})
+	dig, err := svc.Digest(context.Background(), []llm.DigestItem{{Title: "One", Summary: "s"}}, "zh-CN")
 	if err != nil || dig.Markdown == "" {
 		t.Fatalf("digest: %+v %v", dig, err)
 	}
-	_, err = svc.Digest(context.Background(), nil)
+	_, err = svc.Digest(context.Background(), nil, "en")
 	if err == nil {
 		t.Fatal("empty digest should fail")
 	}
-	cl, err := svc.ClassifyPromo(context.Background(), a)
+	cl, err := svc.ClassifyPromo(context.Background(), a, "en")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +155,7 @@ func TestService_Suggest_LocalWhenLLMOff(t *testing.T) {
 	svc := &llm.Service{Store: store, Cache: &llm.Cache{DB: database.SQL}}
 	res, err := svc.Suggest(context.Background(), llm.ArticleInput{
 		ID: "a", Title: "Kubernetes guide #k8s", Summary: "cluster tips",
-	}, nil)
+	}, nil, "en")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +195,7 @@ func TestService_HTTPPath_Summarize(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := &llm.Service{Store: store, Cache: &llm.Cache{DB: database.SQL}}
-	res, err := svc.Summarize(ctx, llm.ArticleInput{ID: "h1", Title: "T", Body: "body"})
+	res, err := svc.Summarize(ctx, llm.ArticleInput{ID: "h1", Title: "T", Body: "body"}, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +206,7 @@ func TestService_HTTPPath_Summarize(t *testing.T) {
 		t.Fatalf("calls = %d", calls)
 	}
 	// cache
-	res2, err := svc.Summarize(ctx, llm.ArticleInput{ID: "h1", Title: "T", Body: "body"})
+	res2, err := svc.Summarize(ctx, llm.ArticleInput{ID: "h1", Title: "T", Body: "body"}, "en-US")
 	if err != nil || !res2.Cached || calls != 1 {
 		t.Fatalf("cache: %+v calls=%d err=%v", res2, calls, err)
 	}
@@ -220,7 +231,7 @@ func TestService_HTTPError(t *testing.T) {
 		Model:    "m",
 	})
 	svc := &llm.Service{Store: store, Cache: &llm.Cache{DB: database.SQL}}
-	_, err = svc.Summarize(ctx, llm.ArticleInput{ID: "1", Title: "t", Body: "b"})
+	_, err = svc.Summarize(ctx, llm.ArticleInput{ID: "1", Title: "t", Body: "b"}, "en")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -234,9 +245,15 @@ func TestPromptsNonEmpty(t *testing.T) {
 		llm.FeatureSummarize, llm.FeatureTranslate, llm.FeatureAsk,
 		llm.FeatureDigest, llm.FeatureSuggest, llm.FeatureClassify,
 	} {
-		if strings.TrimSpace(llm.SystemPromptFor(f)) == "" {
+		if strings.TrimSpace(llm.SystemPromptFor(f, "zh-CN")) == "" {
 			t.Fatalf("empty system for %s", f)
 		}
+	}
+	if llm.NormalizeUILocale("zh-CN") != "zh" || llm.NormalizeUILocale("en-US") != "en" {
+		t.Fatal("locale normalize")
+	}
+	if !strings.Contains(llm.UserPromptSummarize("body", "zh-CN"), "简体中文") {
+		t.Fatal("zh summarize prompt")
 	}
 	_ = fmt.Sprintf("ok")
 }

@@ -36,6 +36,8 @@ type UIPrefs struct {
 	DeveloperMode           bool   `json:"developerMode"`
 	// NsfwMode: true = show NSFW feeds (default); false = office mode hide isNsfw feeds.
 	NsfwMode bool `json:"nsfwMode"`
+	// AutoSummarize: when true, opening an article requests an LLM summary (if LLM configured).
+	AutoSummarize bool `json:"autoSummarize"`
 }
 
 // DefaultUIPrefs matches frontend default settings in useRssStore.
@@ -64,6 +66,7 @@ func DefaultUIPrefs() UIPrefs {
 		ClearCacheOnQuit:        false,
 		DeveloperMode:           false,
 		NsfwMode:                true, // show all until user enables office hide
+		AutoSummarize:           false,
 	}
 }
 

@@ -149,29 +149,75 @@ func CacheKey(articleID, feature, model, contentHash, extra string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// SystemPromptFor returns the feature system prompt (overrides user default for quality).
-func SystemPromptFor(feature string) string {
-	switch feature {
-	case FeatureSummarize:
-		return "You are an RSS reading assistant. Summarize articles clearly in Markdown. Be concise and faithful to the source. Use the same language as the article unless asked otherwise."
-	case FeatureTranslate:
-		return "You are a precise translator for RSS articles. Preserve meaning, names, and structure. Output Markdown only."
-	case FeatureAsk:
-		return "You are a careful reading assistant. Answer only from the provided article context. If unknown, say so. Prefer short Markdown answers."
-	case FeatureDigest:
-		return "You are a news desk editor. Produce a compact daily unread digest in Markdown with short bullets and optional themes. Do not invent articles."
-	case FeatureSuggest:
-		return "You suggest tags and folder placement for RSS articles. Reply in compact Markdown with clear sections. Prefer short tags."
-	case FeatureClassify:
-		return "You classify RSS items as organic editorial content vs ads/soft-promo/sponsored. Be conservative: only flag clear promotional content. Reply in Markdown with a clear verdict line."
+// NormalizeUILocale maps app UI locales to a short code used in prompts/cache.
+// zh* → "zh", everything else → "en".
+func NormalizeUILocale(locale string) string {
+	l := strings.ToLower(strings.TrimSpace(locale))
+	if l == "" {
+		return "en"
+	}
+	if strings.HasPrefix(l, "zh") {
+		return "zh"
+	}
+	return "en"
+}
+
+// OutputLanguageInstruction tells the model which language to write in.
+func OutputLanguageInstruction(locale string) string {
+	switch NormalizeUILocale(locale) {
+	case "zh":
+		return "Write the entire reply in Simplified Chinese (简体中文). Do not use English except for proper nouns, code, or URLs."
 	default:
-		return "You are a helpful RSS reading assistant. Reply in Markdown."
+		return "Write the entire reply in English."
 	}
 }
 
-// UserPromptSummarize builds the user message for summarize.
-func UserPromptSummarize(bundle string) string {
-	return "Summarize this article in Markdown:\n1) 2–4 sentence overview\n2) Bullet key points (3–7)\n\n" + bundle
+// SystemPromptFor returns the feature system prompt for the UI language.
+func SystemPromptFor(feature, locale string) string {
+	lang := OutputLanguageInstruction(locale)
+	var base string
+	switch feature {
+	case FeatureSummarize:
+		base = "You are an RSS reading assistant. Write concise deck/standfirst summaries for the reader UI (plain text + optional • bullets). Be faithful and avoid markdown headings or bold."
+	case FeatureTranslate:
+		base = "You are a precise translator for RSS articles. Preserve meaning, names, and structure. Output Markdown only."
+	case FeatureAsk:
+		base = "You are a careful reading assistant. Answer only from the provided article context. If unknown, say so. Prefer short Markdown answers."
+	case FeatureDigest:
+		base = "You are a news desk editor. Produce a compact daily unread digest in Markdown with short bullets and optional themes. Do not invent articles."
+	case FeatureSuggest:
+		base = "You suggest tags and folder placement for RSS articles. Reply in compact Markdown with clear sections. Prefer short tags."
+	case FeatureClassify:
+		base = "You classify RSS items as organic editorial content vs ads/soft-promo/sponsored. Be conservative: only flag clear promotional content. Reply in Markdown with a clear verdict line."
+	default:
+		base = "You are a helpful RSS reading assistant. Reply in Markdown."
+	}
+	// Translate already targets an explicit language; still keep a short style line.
+	if feature == FeatureTranslate {
+		return base
+	}
+	return base + " " + lang
+}
+
+// UserPromptSummarize builds a deck-style summary for the reader (above the body).
+// Plain prose + optional • bullets — no markdown headings/bold (shown as standfirst).
+func UserPromptSummarize(bundle, locale string) string {
+	if NormalizeUILocale(locale) == "zh" {
+		return "为 RSS 阅读器写一段「文首摘要」（替换文章原摘要，显示在正文上方）。\n" +
+			"要求：\n" +
+			"- 先写 2–4 句连贯概述（纯文本，不要标题、不要 **加粗**）\n" +
+			"- 空一行后，用 3–5 行要点，每行以「• 」开头\n" +
+			"- 忠实原文，简洁好读，不要「本文介绍了」套话\n" +
+			"- 不要输出「概述」「要点列表」等小标题\n\n" +
+			OutputLanguageInstruction(locale) + "\n\n" + bundle
+	}
+	return "Write a standfirst / deck summary for an RSS reader (replaces the feed summary above the body).\n" +
+		"Requirements:\n" +
+		"- 2–4 continuous sentences of plain prose (no headings, no **bold**)\n" +
+		"- Then a blank line and 3–5 bullet lines each starting with \"• \"\n" +
+		"- Faithful and concise; no meta phrases like \"This article discusses\"\n" +
+		"- Do not label sections as Overview / Key points\n\n" +
+		OutputLanguageInstruction(locale) + "\n\n" + bundle
 }
 
 // UserPromptTranslate builds the user message for translation.
@@ -180,22 +226,43 @@ func UserPromptTranslate(bundle, targetLang string) string {
 	if targetLang == "" {
 		targetLang = "zh-CN"
 	}
-	return fmt.Sprintf("Translate the following article into %s. Keep Markdown structure if useful. Output only the translation.\n\n%s", targetLang, bundle)
+	// Human-readable target for the model.
+	label := targetLang
+	switch NormalizeUILocale(targetLang) {
+	case "zh":
+		label = "Simplified Chinese (简体中文)"
+	default:
+		if strings.HasPrefix(strings.ToLower(targetLang), "en") {
+			label = "English"
+		}
+	}
+	return fmt.Sprintf("Translate the following article into %s. Keep Markdown structure if useful. Output only the translation.\n\n%s", label, bundle)
 }
 
 // UserPromptAsk builds the user message for Q&A.
-func UserPromptAsk(bundle, question string) string {
+func UserPromptAsk(bundle, question, locale string) string {
 	q := strings.TrimSpace(question)
 	if q == "" {
-		q = "What is this article about? List main claims and any risks or caveats."
+		if NormalizeUILocale(locale) == "zh" {
+			q = "这篇文章在说什么？列出主要观点与任何风险或注意事项。"
+		} else {
+			q = "What is this article about? List main claims and any risks or caveats."
+		}
 	}
-	return "Article context:\n" + bundle + "\n\nQuestion: " + q + "\n\nAnswer in Markdown."
+	if NormalizeUILocale(locale) == "zh" {
+		return "文章内容：\n" + bundle + "\n\n问题：" + q + "\n\n请用 Markdown 回答。\n" + OutputLanguageInstruction(locale)
+	}
+	return "Article context:\n" + bundle + "\n\nQuestion: " + q + "\n\nAnswer in Markdown.\n" + OutputLanguageInstruction(locale)
 }
 
 // UserPromptDigest builds the digest user message.
-func UserPromptDigest(items []DigestItem) string {
+func UserPromptDigest(items []DigestItem, locale string) string {
 	var b strings.Builder
-	b.WriteString("Create a daily unread digest from these articles (Top N). Group lightly by theme if possible.\n\n")
+	if NormalizeUILocale(locale) == "zh" {
+		b.WriteString("根据以下今日未读文章（Top N）写一份每日简报。可按主题轻量分组。\n\n")
+	} else {
+		b.WriteString("Create a daily unread digest from these articles (Top N). Group lightly by theme if possible.\n\n")
+	}
 	for i, it := range items {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(it.Title))
 		if s := strings.TrimSpace(it.Summary); s != "" {
@@ -209,31 +276,51 @@ func UserPromptDigest(items []DigestItem) string {
 			b.WriteByte('\n')
 		}
 	}
-	b.WriteString("\nOutput Markdown with a title, short intro, and bullets.")
+	if NormalizeUILocale(locale) == "zh" {
+		b.WriteString("\n输出 Markdown：标题、简短导语、要点列表。\n")
+	} else {
+		b.WriteString("\nOutput Markdown with a title, short intro, and bullets.\n")
+	}
+	b.WriteString(OutputLanguageInstruction(locale))
 	return b.String()
 }
 
 // UserPromptSuggest includes available folder names.
-func UserPromptSuggest(bundle string, folderNames []string) string {
+func UserPromptSuggest(bundle string, folderNames []string, locale string) string {
 	var b strings.Builder
-	b.WriteString("Suggest organization for this article.\n")
-	b.WriteString("Output Markdown with:\n## Tags\n- tag1\n- tag2\n## Folder\nBest match folder name from the list (or Unfiled), with one-line reason.\n\n")
+	if NormalizeUILocale(locale) == "zh" {
+		b.WriteString("为这篇文章建议组织方式。\n")
+		b.WriteString("用 Markdown 输出：\n## 标签\n- 标签1\n- 标签2\n## 文件夹\n从列表中选最合适的文件夹名（或 Unfiled），并给一句理由。\n\n")
+	} else {
+		b.WriteString("Suggest organization for this article.\n")
+		b.WriteString("Output Markdown with:\n## Tags\n- tag1\n- tag2\n## Folder\nBest match folder name from the list (or Unfiled), with one-line reason.\n\n")
+	}
 	if len(folderNames) > 0 {
 		b.WriteString("Available folders: ")
 		b.WriteString(strings.Join(folderNames, ", "))
 		b.WriteString("\n\n")
+	} else if NormalizeUILocale(locale) == "zh" {
+		b.WriteString("尚无文件夹；仍请建议标签，文件夹写 Unfiled。\n\n")
 	} else {
 		b.WriteString("No folders exist yet; still suggest tags and say Unfiled for folder.\n\n")
 	}
+	b.WriteString(OutputLanguageInstruction(locale))
+	b.WriteString("\n\n")
 	b.WriteString(bundle)
 	return b.String()
 }
 
 // UserPromptClassify builds classify prompt.
-func UserPromptClassify(bundle string) string {
+func UserPromptClassify(bundle, locale string) string {
+	if NormalizeUILocale(locale) == "zh" {
+		return "判断这篇文章是否主要为广告 / 软文 / 赞助内容。\n" +
+			"用 Markdown 输出：\n**Verdict:** organic | promo | unclear\n**Confidence:** low|medium|high\n**Why:** 1–3 条简短理由\n" +
+			"（Verdict 行请保留英文枚举值；说明可用中文。）\n\n" +
+			OutputLanguageInstruction(locale) + "\n\n" + bundle
+	}
 	return "Classify whether this item is primarily advertising / soft promo / sponsored content.\n" +
 		"Output Markdown:\n**Verdict:** organic | promo | unclear\n**Confidence:** low|medium|high\n**Why:** 1–3 short bullets\n\n" +
-		bundle
+		OutputLanguageInstruction(locale) + "\n\n" + bundle
 }
 
 var tagWordRe = regexp.MustCompile(`(?i)\b([A-Za-z][A-Za-z0-9+#.]{1,24}|[\p{Han}]{2,8})\b`)

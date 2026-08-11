@@ -15,7 +15,7 @@ type Chatter interface {
 	ModelName() string
 }
 
-// clientAdapter exposes ModelName on *Client.
+// clientAdapter exposes ModelName + streaming on *Client.
 type clientAdapter struct{ *Client }
 
 func (a clientAdapter) ModelName() string {
@@ -23,6 +23,10 @@ func (a clientAdapter) ModelName() string {
 		return ""
 	}
 	return a.model
+}
+
+func (a clientAdapter) ChatStream(ctx context.Context, req ChatRequest, onChunk StreamHandler) (ChatResponse, error) {
+	return a.Client.ChatStream(ctx, req, onChunk)
 }
 
 // NewChatter builds a Chatter from config.
@@ -136,11 +140,99 @@ func (s *Service) runCached(
 	}, nil
 }
 
-// Summarize generates an article summary.
-func (s *Service) Summarize(ctx context.Context, a ArticleInput) (FeatureResult, error) {
+// Summarize generates an article summary. locale is the app UI language (e.g. zh-CN).
+func (s *Service) Summarize(ctx context.Context, a ArticleInput, locale string) (FeatureResult, error) {
+	return s.SummarizeStream(ctx, a, locale, nil)
+}
+
+// SummarizeStream is like Summarize but streams tokens via onChunk when not cache-hit.
+func (s *Service) SummarizeStream(ctx context.Context, a ArticleInput, locale string, onChunk StreamHandler) (FeatureResult, error) {
+	// Exclude Summary from fingerprint — we overwrite it with the AI result.
+	hashInput := ArticleInput{Title: a.Title, Body: a.Body, URL: a.URL, Author: a.Author}
+	// Prefer body for generation; still pass summary into the model as context only.
 	bundle := BuildArticleBundle(a, DefaultMaxInputChars)
-	hash := ContentFingerprint(a)
-	return s.runCached(ctx, a.ID, FeatureSummarize, "", hash, SystemPromptFor(FeatureSummarize), UserPromptSummarize(bundle))
+	hash := ContentFingerprint(hashInput)
+	loc := NormalizeUILocale(locale)
+	extra := "loc=" + loc + "|deck=1"
+	feature := FeatureSummarize
+	system := SystemPromptFor(feature, locale)
+	user := UserPromptSummarize(bundle, locale)
+
+	cfg, err := s.loadCfg(ctx)
+	if err != nil {
+		return FeatureResult{}, err
+	}
+	key := CacheKey(a.ID, feature, cfg.Model, hash, extra)
+	if s.Cache != nil {
+		if hit, ok, err := s.Cache.Get(ctx, key); err != nil {
+			return FeatureResult{}, err
+		} else if ok && strings.TrimSpace(hit.ResultMD) != "" {
+			if onChunk != nil {
+				onChunk(hit.ResultMD, hit.ResultMD)
+			}
+			return FeatureResult{
+				Markdown: hit.ResultMD,
+				Feature:  feature,
+				Model:    hit.Model,
+				Cached:   true,
+			}, nil
+		}
+	}
+
+	chat, err := s.chatter(cfg)
+	if err != nil {
+		return FeatureResult{}, err
+	}
+
+	// Prefer streaming when underlying client supports it.
+	var res ChatResponse
+	if sc, ok := chat.(streamChatter); ok {
+		res, err = sc.ChatStream(ctx, ChatRequest{
+			Messages: []Message{
+				{Role: "system", Content: system},
+				{Role: "user", Content: user},
+			},
+		}, onChunk)
+	} else {
+		res, err = chat.Chat(ctx, ChatRequest{
+			Messages: []Message{
+				{Role: "system", Content: system},
+				{Role: "user", Content: user},
+			},
+		})
+		if err == nil && onChunk != nil && res.Content != "" {
+			onChunk(res.Content, res.Content)
+		}
+	}
+	if err != nil {
+		return FeatureResult{}, err
+	}
+	md := strings.TrimSpace(res.Content)
+	if md == "" {
+		return FeatureResult{}, fmt.Errorf("llm returned empty content")
+	}
+	model := res.Model
+	if model == "" {
+		model = chat.ModelName()
+	}
+	if s.Cache != nil {
+		_ = s.Cache.Put(ctx, CachedResult{
+			Key: key, ArticleID: a.ID, Feature: feature,
+			Model: model, ContentHash: hash, ResultMD: md,
+		})
+	}
+	return FeatureResult{
+		Markdown: md,
+		Feature:  feature,
+		Model:    model,
+		Cached:   false,
+	}, nil
+}
+
+// streamChatter is optional streaming capability.
+type streamChatter interface {
+	Chatter
+	ChatStream(ctx context.Context, req ChatRequest, onChunk StreamHandler) (ChatResponse, error)
 }
 
 // Translate translates the article into targetLang (e.g. zh-CN, en).
@@ -151,25 +243,26 @@ func (s *Service) Translate(ctx context.Context, a ArticleInput, targetLang stri
 	}
 	bundle := BuildArticleBundle(a, DefaultMaxInputChars)
 	hash := ContentFingerprint(a)
-	return s.runCached(ctx, a.ID, FeatureTranslate, targetLang, hash, SystemPromptFor(FeatureTranslate), UserPromptTranslate(bundle, targetLang))
+	return s.runCached(ctx, a.ID, FeatureTranslate, targetLang, hash, SystemPromptFor(FeatureTranslate, targetLang), UserPromptTranslate(bundle, targetLang))
 }
 
 // Ask answers a question about the article.
-func (s *Service) Ask(ctx context.Context, a ArticleInput, question string) (FeatureResult, error) {
+func (s *Service) Ask(ctx context.Context, a ArticleInput, question, locale string) (FeatureResult, error) {
 	bundle := BuildArticleBundle(a, DefaultMaxInputChars)
 	hash := ContentFingerprint(a)
-	extra := ContentFingerprint(ArticleInput{Body: question}) // reuse hash helper for question
-	return s.runCached(ctx, a.ID, FeatureAsk, extra, hash, SystemPromptFor(FeatureAsk), UserPromptAsk(bundle, question))
+	extra := ContentFingerprint(ArticleInput{Body: question}) + "|loc=" + NormalizeUILocale(locale)
+	return s.runCached(ctx, a.ID, FeatureAsk, extra, hash, SystemPromptFor(FeatureAsk, locale), UserPromptAsk(bundle, question, locale))
 }
 
 // Digest builds a daily digest from items (already Top N).
-func (s *Service) Digest(ctx context.Context, items []DigestItem) (FeatureResult, error) {
+func (s *Service) Digest(ctx context.Context, items []DigestItem, locale string) (FeatureResult, error) {
 	if len(items) == 0 {
 		return FeatureResult{}, fmt.Errorf("no unread articles for today")
 	}
 	// Cap body size per item via UserPromptDigest's BudgetText.
 	hash := DigestFingerprint(items, len(items))
-	return s.runCached(ctx, "", FeatureDigest, fmt.Sprintf("n=%d", len(items)), hash, SystemPromptFor(FeatureDigest), UserPromptDigest(items))
+	loc := NormalizeUILocale(locale)
+	return s.runCached(ctx, "", FeatureDigest, fmt.Sprintf("n=%d|loc=%s", len(items), loc), hash, SystemPromptFor(FeatureDigest, locale), UserPromptDigest(items, locale))
 }
 
 // FolderRef is a minimal folder for suggestions.
@@ -179,9 +272,8 @@ type FolderRef struct {
 }
 
 // Suggest returns tags/folder suggestion Markdown.
-// When LLM is configured it calls the model; local tags are always prepended as a note if LLM fails... 
-// Actually plan says LLM and/or local-rule path. We always run local tags; if LLM configured, enhance.
-func (s *Service) Suggest(ctx context.Context, a ArticleInput, folders []FolderRef) (FeatureResult, error) {
+// Local tags always available; LLM enhances when configured.
+func (s *Service) Suggest(ctx context.Context, a ArticleInput, folders []FolderRef, locale string) (FeatureResult, error) {
 	localTags := LocalSuggestTags(a.Title, a.Summary, 6)
 	localMD := FormatLocalSuggestMarkdown(localTags, "Unfiled")
 
@@ -204,8 +296,8 @@ func (s *Service) Suggest(ctx context.Context, a ArticleInput, folders []FolderR
 	}
 	bundle := BuildArticleBundle(a, DefaultMaxInputChars)
 	hash := ContentFingerprint(a)
-	extra := strings.Join(names, ",")
-	res, err := s.runCached(ctx, a.ID, FeatureSuggest, extra, hash, SystemPromptFor(FeatureSuggest), UserPromptSuggest(bundle, names))
+	extra := strings.Join(names, ",") + "|loc=" + NormalizeUILocale(locale)
+	res, err := s.runCached(ctx, a.ID, FeatureSuggest, extra, hash, SystemPromptFor(FeatureSuggest, locale), UserPromptSuggest(bundle, names, locale))
 	if err != nil {
 		return FeatureResult{}, err
 	}
@@ -214,16 +306,21 @@ func (s *Service) Suggest(ctx context.Context, a ArticleInput, folders []FolderR
 	res.FolderID = id
 	res.FolderName = name
 	// Prepend local tags section for transparency.
-	res.Markdown = "### Local tags\n" + strings.TrimPrefix(localMD, "## Tags\n") + "\n---\n\n" + res.Markdown
+	if NormalizeUILocale(locale) == "zh" {
+		res.Markdown = "### 本地标签\n" + strings.TrimPrefix(localMD, "## Tags\n") + "\n---\n\n" + res.Markdown
+	} else {
+		res.Markdown = "### Local tags\n" + strings.TrimPrefix(localMD, "## Tags\n") + "\n---\n\n" + res.Markdown
+	}
 	_ = cfg
 	return res, nil
 }
 
 // ClassifyPromo classifies ads/soft-promo.
-func (s *Service) ClassifyPromo(ctx context.Context, a ArticleInput) (FeatureResult, error) {
+func (s *Service) ClassifyPromo(ctx context.Context, a ArticleInput, locale string) (FeatureResult, error) {
 	bundle := BuildArticleBundle(a, DefaultMaxInputChars)
 	hash := ContentFingerprint(a)
-	res, err := s.runCached(ctx, a.ID, FeatureClassify, "", hash, SystemPromptFor(FeatureClassify), UserPromptClassify(bundle))
+	loc := NormalizeUILocale(locale)
+	res, err := s.runCached(ctx, a.ID, FeatureClassify, "loc="+loc, hash, SystemPromptFor(FeatureClassify, locale), UserPromptClassify(bundle, locale))
 	if err != nil {
 		return FeatureResult{}, err
 	}

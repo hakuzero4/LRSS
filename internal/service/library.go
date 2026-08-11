@@ -566,6 +566,15 @@ func validateArticleURL(raw string) error {
 	return nil
 }
 
+// UpdateArticleSummary persists a new summary (e.g. AI-generated deck) and refreshes FTS.
+func (lib *Library) UpdateArticleSummary(ctx context.Context, articleID, summary string) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("article id is required")
+	}
+	return lib.Articles.UpdateSummary(ctx, articleID, summary)
+}
+
 // SetRead marks an article read/unread.
 func (lib *Library) SetRead(ctx context.Context, articleID string, read bool) error {
 	return lib.Articles.SetRead(ctx, articleID, read)

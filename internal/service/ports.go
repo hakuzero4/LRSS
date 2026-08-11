@@ -34,6 +34,7 @@ type ArticleStore interface {
 	CountByFeed(ctx context.Context, feedID string) (int, error)
 	UpsertFromParsed(ctx context.Context, feedID string, items []repo.ParsedItem) (repo.UpsertResult, error)
 	UpdateContent(ctx context.Context, articleID, contentHTML, contentText string) error
+	UpdateSummary(ctx context.Context, articleID, summary string) error
 	SetRead(ctx context.Context, articleID string, read bool) error
 	SetStarred(ctx context.Context, articleID string, starred bool) error
 	MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error

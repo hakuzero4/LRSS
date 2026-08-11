@@ -23,6 +23,20 @@ export interface ClearAllResult {
 }
 
 /**
+ * LLMStreamEvent is emitted to the frontend during streaming AI features.
+ */
+export interface LLMStreamEvent {
+    "articleId": string;
+    "feature": string;
+    "delta": string;
+    "text": string;
+    "done": boolean;
+    "error"?: string;
+    "model"?: string;
+    "cached"?: boolean;
+}
+
+/**
  * OPMLImportResult is the Wails-facing import summary (mirrors service.OPMLImportResult).
  */
 export interface OPMLImportResult {

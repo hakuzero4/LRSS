@@ -117,6 +117,8 @@ export interface UIPrefs {
   developerMode: boolean;
   /** true = show NSFW feeds; false = office mode hide isNsfw feeds */
   nsfwMode: boolean;
+  /** When true, open article triggers LLM summarize (if LLM configured). */
+  autoSummarize: boolean;
 }
 
 export interface AppSettings {
@@ -175,4 +177,6 @@ export interface AppSettings {
    * from smart lists and the sidebar (settings feed list still shows all).
    */
   nsfwMode: boolean;
+  /** Auto-run LLM summarize when opening an article (if LLM configured). */
+  autoSummarize: boolean;
 }

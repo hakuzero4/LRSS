@@ -70,7 +70,7 @@ func TestAIService_SummarizeViaHTTP(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("configured: %v %v", ok, err)
 	}
-	res, err := ai.Summarize(arts[0].ID)
+	res, err := ai.Summarize(arts[0].ID, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestAIService_SummarizeViaHTTP(t *testing.T) {
 		t.Fatalf("md = %q", res.Markdown)
 	}
 	// cache hit
-	res2, err := ai.Summarize(arts[0].ID)
+	res2, err := ai.Summarize(arts[0].ID, "en-US")
 	if err != nil || !res2.Cached {
 		t.Fatalf("cache: %+v err=%v", res2, err)
 	}
@@ -101,7 +101,7 @@ func TestAIService_DailyDigestEmpty(t *testing.T) {
 	repos := repo.New(database.SQL)
 	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
 	ai := appsvc.NewAI(store, lib, database.SQL)
-	_, err = ai.DailyDigest(5)
+	_, err = ai.DailyDigest(5, "zh-CN")
 	if err == nil {
 		t.Fatal("expected no articles error")
 	}

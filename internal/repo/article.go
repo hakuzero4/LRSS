@@ -271,6 +271,42 @@ func (r *ArticleRepo) UpsertFromParsed(ctx context.Context, feedID string, items
 	return res, nil
 }
 
+// UpdateSummary replaces the article summary (e.g. after AI summarize) and refreshes FTS.
+func (r *ArticleRepo) UpdateSummary(ctx context.Context, articleID, summary string) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("update summary: article id required")
+	}
+	summary = strings.TrimSpace(summary)
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE articles SET summary = ? WHERE id = ?`,
+		nullStr(&summary), articleID,
+	)
+	if err != nil {
+		return fmt.Errorf("update summary: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("article not found: %s", articleID)
+	}
+	var title, contentText sql.NullString
+	err = r.DB.QueryRowContext(ctx,
+		`SELECT title, content_text FROM articles WHERE id = ?`, articleID,
+	).Scan(&title, &contentText)
+	if err != nil {
+		return fmt.Errorf("update summary fts load: %w", err)
+	}
+	if err := search.UpsertFTS(ctx, r.DB, articleID, title.String, summary, contentText.String); err != nil {
+		return fmt.Errorf("update summary fts: %w", err)
+	}
+	if r.embeddingEnabled != nil && r.embeddingEnabled(ctx) && r.vec != nil {
+		if err := r.vec.MarkPending(ctx, articleID); err != nil {
+			return fmt.Errorf("update summary mark pending: %w", err)
+		}
+	}
+	return nil
+}
+
 // UpdateContent replaces content_html / content_text (e.g. after full-text fetch)
 // and refreshes FTS. Optionally marks embedding pending when enabled.
 func (r *ArticleRepo) UpdateContent(ctx context.Context, articleID, contentHTML, contentText string) error {

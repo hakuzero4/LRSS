@@ -102,6 +102,7 @@ export default {
     dailyDigest: "每日简报",
     dailyDigestDesc: "汇总今日未读 Top N",
     working: "正在生成…",
+    streaming: "生成中",
     cached: "缓存",
     empty: "暂无结果",
     copy: "复制",
@@ -435,16 +436,31 @@ export default {
       testOk: "连接成功",
       testFailed: "连接失败",
       llmSaved: "大模型配置已保存",
-      llmSavedEnabled: "对话 API 已启用，可用于后续 AI 功能",
+      llmSavedEnabled: "对话 API 已启用，可用于阅读器 AI 与每日简报",
       llmSavedDisabled: "已关闭大语言模型",
-      llmNotesTitle: "大模型说明与规划",
+      autoGroup: "自动行为",
+      autoGroupDesc: "打开文章时是否自动调用 AI。需先启用并保存上方大模型配置。",
+      autoSummarize: "自动摘要",
+      autoSummarizeDesc:
+        "选中文章后自动生成摘要，并在右侧 AI 面板展示。输出语言跟随界面语言（设置 → 外观/语言）。",
+      llmNotesTitle: "AI 功能说明",
+      llmFeaturesTitle: "当前可用功能",
+      llmFeatureSummarize:
+        "· 摘要 — 阅读器 ✨ →「摘要」或「自动摘要」：在正文上方流式生成，完成后替换原文摘要（不再用右侧面板）。",
+      llmFeatureTranslate: "· 翻译 — ✨ →「翻译」→ 中文 / English，将正文译为目标语言。",
+      llmFeatureAsk: "· 问答 / 解释 — ✨ →「问答」，针对当前文章提问（可改默认问题）。",
+      llmFeatureDigest: "· 每日简报 — 左侧边栏智能列表下方「每日简报」，汇总今日未读 Top N。",
+      llmFeatureSuggest:
+        "· 标签 / 文件夹建议 — ✨ →「标签 / 文件夹建议」；可一键把该订阅移到建议文件夹。未开 LLM 时仍有本地关键词标签。",
+      llmFeatureClassify:
+        "· 广告 / 软文判断 — ✨ →「广告 / 软文判断」，用户手动触发，不自动扫全库。",
       llmNoteCompat:
         "· 兼容 OpenAI Chat Completions：官方 API、DeepSeek、通义等代理、Ollama / LM Studio 的 /v1 层。",
       llmNoteSeparate:
         "· 与向量 Embedding 独立：可同一网关不同模型，也可完全不同的 Base URL。",
-      llmNoteRoadmap:
-        "· 下一步计划：文章摘要 / 翻译 / 问答、每日简报、基于向量的库内问答（详见 docs/llm.md）。",
-      llmNotePrivacy: "· API Key 仅存本机 SQLite，界面展示脱敏；测试与调用走 surf 指纹 HTTP。",
+      llmNoteCache: "· 相同文章 + 功能 + 模型 + 正文指纹 + 界面语言会命中本地缓存，避免重复计费。",
+      llmNoteLocale: "· 摘要 / 问答 / 简报等 prompt 与输出语言跟随当前 UI 语言（中文界面 → 中文回复）。",
+      llmNotePrivacy: "· API Key 仅存本机 SQLite，界面脱敏；请求走 surf 指纹 HTTP。详见 docs/llm.md。",
       previewMode: "设计预览",
       previewReason: "后端未连接时显示为设计预览",
       backendDisconnected: "Go 服务未连接，配置未写入。",

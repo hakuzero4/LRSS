@@ -102,6 +102,7 @@ export default {
     dailyDigest: "Daily digest",
     dailyDigestDesc: "Summarize today’s unread (Top N)",
     working: "Generating…",
+    streaming: "Streaming",
     cached: "cached",
     empty: "No result yet",
     copy: "Copy",
@@ -444,17 +445,37 @@ export default {
       testOk: "Connection OK",
       testFailed: "Connection failed",
       llmSaved: "LLM config saved",
-      llmSavedEnabled: "Chat API enabled for upcoming AI features",
+      llmSavedEnabled: "Chat API enabled for reader AI and daily digest",
       llmSavedDisabled: "LLM disabled",
-      llmNotesTitle: "LLM notes & roadmap",
+      autoGroup: "Automation",
+      autoGroupDesc: "Whether to call AI when opening articles. Requires LLM config saved above.",
+      autoSummarize: "Auto summarize",
+      autoSummarizeDesc:
+        "When you select an article, generate a summary in the AI panel. Output language follows the UI language.",
+      llmNotesTitle: "AI features",
+      llmFeaturesTitle: "Available now",
+      llmFeatureSummarize:
+        "· Summarize — ✨ or Auto summarize: streams into the deck above the body and replaces the feed summary when done.",
+      llmFeatureTranslate:
+        "· Translate — ✨ → Translate → Chinese / English for the current article.",
+      llmFeatureAsk:
+        "· Ask / explain — ✨ → Ask about this article (editable default question).",
+      llmFeatureDigest:
+        "· Daily digest — under Smart lists in the sidebar: Top N of today’s unread.",
+      llmFeatureSuggest:
+        "· Tag / folder suggestions — ✨ menu; optional one-click move to suggested folder. Local keyword tags work even if LLM is off.",
+      llmFeatureClassify:
+        "· Ads / soft-promo check — ✨ menu, user-triggered only (no full-library scan).",
       llmNoteCompat:
         "· OpenAI Chat Completions compatible: official API, DeepSeek, proxies, Ollama / LM Studio /v1.",
       llmNoteSeparate:
         "· Independent from embeddings: same gateway with different models, or fully separate Base URLs.",
-      llmNoteRoadmap:
-        "· Next: article summarize / translate / Q&A, daily digest, library RAG (see docs/llm.md).",
+      llmNoteCache:
+        "· Same article + feature + model + content fingerprint + UI locale hits local cache to avoid re-billing.",
+      llmNoteLocale:
+        "· Summarize / ask / digest prompts and replies follow the current UI language (Chinese UI → Chinese replies).",
       llmNotePrivacy:
-        "· API keys stay in local SQLite (masked in UI); requests use the surf fingerprint HTTP client.",
+        "· API keys stay in local SQLite (masked in UI); requests use surf fingerprint HTTP. See docs/llm.md.",
       previewMode: "Design preview",
       previewReason: "Shown as design preview when backend is disconnected",
       backendDisconnected: "Go service not connected; config was not saved.",

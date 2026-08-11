@@ -22,24 +22,26 @@ export function ApplySuggestedFolder(articleId: string, folderId: string): $Canc
 }
 
 /**
- * Ask answers a question about the article (empty question → default overview).
+ * Ask answers a question about the article (empty question → default overview in UI locale).
  */
-export function Ask(articleId: string, question: string): $CancellablePromise<$models.AIResult> {
-    return $Call.ByID(3630355463, articleId, question);
+export function Ask(articleId: string, question: string, locale: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(3630355463, articleId, question, locale);
 }
 
 /**
  * ClassifyPromo classifies the article as organic / promo / unclear (user-triggered).
+ * locale is the app UI language for explanation text.
  */
-export function ClassifyPromo(articleId: string): $CancellablePromise<$models.AIResult> {
-    return $Call.ByID(3093298899, articleId);
+export function ClassifyPromo(articleId: string, locale: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(3093298899, articleId, locale);
 }
 
 /**
  * DailyDigest builds a Markdown digest of today's unread articles (Top N, default 12).
+ * locale controls output language (app UI language).
  */
-export function DailyDigest(limit: number): $CancellablePromise<$models.AIResult> {
-    return $Call.ByID(299240351, limit);
+export function DailyDigest(limit: number, locale: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(299240351, limit, locale);
 }
 
 /**
@@ -51,17 +53,18 @@ export function IsLLMConfigured(): $CancellablePromise<boolean> {
 
 /**
  * SuggestFolders returns tag/folder suggestions for an article.
- * When LLM is off, returns local-rule tags only.
+ * When LLM is off, returns local-rule tags only. locale is app UI language.
  */
-export function SuggestFolders(articleId: string): $CancellablePromise<$models.AIResult> {
-    return $Call.ByID(1013387109, articleId);
+export function SuggestFolders(articleId: string, locale: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(1013387109, articleId, locale);
 }
 
 /**
- * Summarize generates a Markdown summary for an article.
+ * Summarize streams a deck-style summary into the reader (via llm:stream events),
+ * then replaces the article's stored summary. locale is the app UI language.
  */
-export function Summarize(articleId: string): $CancellablePromise<$models.AIResult> {
-    return $Call.ByID(2212174867, articleId);
+export function Summarize(articleId: string, locale: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(2212174867, articleId, locale);
 }
 
 /**

@@ -27,20 +27,26 @@
   - `ClassifyPromo`  
   - `IsLLMConfigured`
 
-### P0/P1 功能状态（已交付）
+### 已上线 AI 功能（设置 → 搜索/AI 说明同步）
 
-| 功能 | 入口 | 缓存 |
+| 功能 | 入口 | 说明 |
 | --- | --- | --- |
-| 摘要 | 阅读器 → AI 菜单 | `llm_feature_cache` |
-| 翻译 zh/en | 同上 | 含目标语言 |
-| 问答 | 同上（prompt） | 含问题指纹 |
-| 每日简报 | 侧栏智能列表下 | 按今日 Top N 集合 |
-| 标签/文件夹建议 | AI 菜单；可一键 `MoveFeed` | 本地规则可在 LLM 关闭时使用 |
-| 广告/软文判断 | AI 菜单 | 返回 verdict |
+| **摘要** | 阅读器工具栏 ✨ →「摘要」 | Markdown 概述 + 要点；结果在右侧 AI 面板 |
+| **翻译** | ✨ →「翻译」→ 中文 / English | 将当前文章译为目标语言 |
+| **问答 / 解释** | ✨ →「问答」 | 针对当前文章提问（可改默认问题） |
+| **每日简报** | 侧栏 · 智能列表下方「每日简报」 | 汇总今日未读 Top N |
+| **标签 / 文件夹建议** | ✨ →「标签 / 文件夹建议」 | 本地关键词标签 + LLM 建议；可一键把订阅移到建议文件夹。LLM 关闭时仍有本地标签 |
+| **广告 / 软文判断** | ✨ →「广告 / 软文判断」 | 用户手动触发，返回 organic / promo / unclear，不自动扫全库 |
 
+**共性**
+
+- 配置与测试在 **设置 → 搜索/AI → 大语言模型**
+- **自动摘要**（可选）：设置 → 搜索/AI →「自动摘要」；打开文章时调用摘要，输出语言 = **当前界面语言**
+- 摘要 / 问答 / 简报 / 建议 / 分类 的 prompt 与回复语言跟随 UI 语言（`zh-CN` → 简体中文）
+- 结果 Markdown 展示在右侧 AI 面板（可复制）
+- 缓存：`llm_feature_cache`（article + feature + model + content 指纹 + locale）
 - 正文预算：`BuildArticleBundle` + `BudgetText`
-- 缓存键：`article + feature + model + content_hash (+ extra)`
-- HTTP：`internal/httpx`（surf）
+- 出站：`internal/httpx`（surf）→ OpenAI 兼容 `/chat/completions`
 
 ### 实现
 

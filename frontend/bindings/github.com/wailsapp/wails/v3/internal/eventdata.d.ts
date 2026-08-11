@@ -5,9 +5,14 @@
 // @ts-ignore: Unused imports
 import type { Events } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as appsvc$0 from "../../../../../lrss/internal/appsvc/models.js";
+
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "llm:stream": appsvc$0.LLMStreamEvent;
             "time": string;
         }
     }

@@ -97,17 +97,65 @@ func mapArticleInput(a model.Article) llm.ArticleInput {
 	}
 }
 
-// Summarize generates a Markdown summary for an article.
-func (s *AIService) Summarize(articleId string) (AIResult, error) {
+// Summarize streams a deck-style summary into the reader (via llm:stream events),
+// then replaces the article's stored summary. locale is the app UI language.
+func (s *AIService) Summarize(articleId, locale string) (AIResult, error) {
 	ctx := context.Background()
 	in, err := s.articleInput(ctx, articleId)
 	if err != nil {
 		return AIResult{}, err
 	}
-	r, err := s.feat.Summarize(ctx, in)
+
+	emitLLMStream(LLMStreamEvent{
+		ArticleID: articleId,
+		Feature:   llm.FeatureSummarize,
+		Done:      false,
+	})
+
+	r, err := s.feat.SummarizeStream(ctx, in, locale, func(delta, full string) {
+		emitLLMStream(LLMStreamEvent{
+			ArticleID: articleId,
+			Feature:   llm.FeatureSummarize,
+			Delta:     delta,
+			Text:      full,
+			Done:      false,
+		})
+	})
 	if err != nil {
+		emitLLMStream(LLMStreamEvent{
+			ArticleID: articleId,
+			Feature:   llm.FeatureSummarize,
+			Done:      true,
+			Error:     err.Error(),
+		})
 		return AIResult{}, err
 	}
+
+	// Persist: replace original feed summary with AI deck text.
+	if s.lib != nil && strings.TrimSpace(r.Markdown) != "" {
+		if uerr := s.lib.UpdateArticleSummary(ctx, articleId, r.Markdown); uerr != nil {
+			// Still return text; emit warning via error field empty + frontend has text.
+			emitLLMStream(LLMStreamEvent{
+				ArticleID: articleId,
+				Feature:   llm.FeatureSummarize,
+				Text:      r.Markdown,
+				Done:      true,
+				Model:     r.Model,
+				Cached:    r.Cached,
+				Error:     "save summary: " + uerr.Error(),
+			})
+			return toAIResult(r), uerr
+		}
+	}
+
+	emitLLMStream(LLMStreamEvent{
+		ArticleID: articleId,
+		Feature:   llm.FeatureSummarize,
+		Text:      r.Markdown,
+		Done:      true,
+		Model:     r.Model,
+		Cached:    r.Cached,
+	})
 	return toAIResult(r), nil
 }
 
@@ -125,14 +173,14 @@ func (s *AIService) Translate(articleId, targetLang string) (AIResult, error) {
 	return toAIResult(r), nil
 }
 
-// Ask answers a question about the article (empty question → default overview).
-func (s *AIService) Ask(articleId, question string) (AIResult, error) {
+// Ask answers a question about the article (empty question → default overview in UI locale).
+func (s *AIService) Ask(articleId, question, locale string) (AIResult, error) {
 	ctx := context.Background()
 	in, err := s.articleInput(ctx, articleId)
 	if err != nil {
 		return AIResult{}, err
 	}
-	r, err := s.feat.Ask(ctx, in, question)
+	r, err := s.feat.Ask(ctx, in, question, locale)
 	if err != nil {
 		return AIResult{}, err
 	}
@@ -140,7 +188,8 @@ func (s *AIService) Ask(articleId, question string) (AIResult, error) {
 }
 
 // DailyDigest builds a Markdown digest of today's unread articles (Top N, default 12).
-func (s *AIService) DailyDigest(limit int) (AIResult, error) {
+// locale controls output language (app UI language).
+func (s *AIService) DailyDigest(limit int, locale string) (AIResult, error) {
 	ctx := context.Background()
 	if s.lib == nil {
 		return AIResult{}, fmt.Errorf("library unavailable")
@@ -183,7 +232,7 @@ func (s *AIService) DailyDigest(limit int) (AIResult, error) {
 			}
 		}
 	}
-	r, err := s.feat.Digest(ctx, items)
+	r, err := s.feat.Digest(ctx, items, locale)
 	if err != nil {
 		return AIResult{}, err
 	}
@@ -191,8 +240,8 @@ func (s *AIService) DailyDigest(limit int) (AIResult, error) {
 }
 
 // SuggestFolders returns tag/folder suggestions for an article.
-// When LLM is off, returns local-rule tags only.
-func (s *AIService) SuggestFolders(articleId string) (AIResult, error) {
+// When LLM is off, returns local-rule tags only. locale is app UI language.
+func (s *AIService) SuggestFolders(articleId, locale string) (AIResult, error) {
 	ctx := context.Background()
 	in, err := s.articleInput(ctx, articleId)
 	if err != nil {
@@ -207,7 +256,7 @@ func (s *AIService) SuggestFolders(articleId string) (AIResult, error) {
 			}
 		}
 	}
-	r, err := s.feat.Suggest(ctx, in, folders)
+	r, err := s.feat.Suggest(ctx, in, folders, locale)
 	if err != nil {
 		return AIResult{}, err
 	}
@@ -232,13 +281,14 @@ func (s *AIService) ApplySuggestedFolder(articleId, folderId string) error {
 }
 
 // ClassifyPromo classifies the article as organic / promo / unclear (user-triggered).
-func (s *AIService) ClassifyPromo(articleId string) (AIResult, error) {
+// locale is the app UI language for explanation text.
+func (s *AIService) ClassifyPromo(articleId, locale string) (AIResult, error) {
 	ctx := context.Background()
 	in, err := s.articleInput(ctx, articleId)
 	if err != nil {
 		return AIResult{}, err
 	}
-	r, err := s.feat.ClassifyPromo(ctx, in)
+	r, err := s.feat.ClassifyPromo(ctx, in, locale)
 	if err != nil {
 		return AIResult{}, err
 	}

@@ -17,6 +17,7 @@ export {
 export type {
     AIResult,
     ClearAllResult,
+    LLMStreamEvent,
     OPMLImportResult,
     PurgeResult,
     RefreshAllResult,

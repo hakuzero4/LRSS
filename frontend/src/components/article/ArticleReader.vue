@@ -60,6 +60,7 @@ const {
   zenMode,
   toggleZenMode,
   aiPanel,
+  summaryStream,
   aiSummarize,
   aiTranslate,
   aiAsk,
@@ -73,23 +74,52 @@ const scrollEndMarkedForId = ref<string | null>(null);
 const fetchingFull = ref(false);
 const aiBusy = computed(() => aiPanel.busy);
 
+/** Live AI summary stream for the selected article. */
+const isStreamingSummary = computed(() => {
+  const a = selectedArticle.value;
+  return (
+    !!a &&
+    summaryStream.articleId === a.id &&
+    (summaryStream.busy || !!summaryStream.text)
+  );
+});
+
 /**
  * Deck / standfirst under the title.
+ * Prefer streaming AI text; else stored summary (possibly AI-replaced).
  * Hidden only when it is essentially the same as the full body text.
  */
 const readerSummary = computed(() => {
   const a = selectedArticle.value;
-  if (!a?.summary) return "";
-  const s = plainText(a.summary, 480);
+  if (!a) return "";
+
+  // Streaming / just-finished AI deck (show full text, no aggressive clamp).
+  if (summaryStream.articleId === a.id && summaryStream.text.trim()) {
+    return summaryStream.text.trim();
+  }
+
+  if (!a.summary) return "";
+  // Keep newlines for AI deck (• bullets); only strip HTML tags if present.
+  const raw = String(a.summary);
+  const s = /[<>]/.test(raw)
+    ? plainText(raw, 4000)
+    : raw.replace(/\r\n/g, "\n").trim();
   if (!s || s.length < 12) return "";
   const body = plainText(a.contentHtml, 800);
   if (!body) return s;
+  const sOneLine = s.replace(/\s+/g, " ").trim();
   // Exact or near-full duplicate of the article body → no deck.
-  if (s === body) return "";
-  if (body.startsWith(s) && s.length > body.length * 0.72) return "";
-  if (s.startsWith(body) && body.length > s.length * 0.72) return "";
+  if (sOneLine === body) return "";
+  if (body.startsWith(sOneLine) && sOneLine.length > body.length * 0.72) return "";
+  if (sOneLine.startsWith(body) && body.length > sOneLine.length * 0.72) return "";
   return s;
 });
+
+const showSummaryDeck = computed(
+  () =>
+    !!readerSummary.value ||
+    (isStreamingSummary.value && summaryStream.busy),
+);
 
 const hasBody = computed(() => {
   const html = selectedArticle.value?.contentHtml?.trim() ?? "";
@@ -466,19 +496,48 @@ watch(
               {{ selectedArticle.title }}
             </h1>
 
-            <!-- Summary deck: visually separate from body -->
+            <!-- Summary deck: feed or AI (streams in place above body) -->
             <aside
-              v-if="readerSummary"
+              v-if="showSummaryDeck"
               class="reader-summary"
               :aria-label="t('article.summaryLabel')"
+              :data-streaming="isStreamingSummary && summaryStream.busy ? '1' : undefined"
             >
               <div class="reader-summary-inner">
                 <p class="reader-summary-label">
                   <span class="reader-summary-label-dot" aria-hidden="true" />
                   {{ t("article.summaryLabel") }}
+                  <span
+                    v-if="summaryStream.busy && summaryStream.articleId === selectedArticle.id"
+                    class="ml-1.5 font-normal text-muted-foreground"
+                  >
+                    · {{ t("ai.streaming") }}
+                  </span>
                 </p>
-                <p class="reader-summary-text">
-                  {{ readerSummary }}
+                <p
+                  class="reader-summary-text whitespace-pre-wrap"
+                  :class="
+                    summaryStream.busy &&
+                    summaryStream.articleId === selectedArticle.id &&
+                    'summary-stream-live'
+                  "
+                >
+                  <template v-if="readerSummary">{{ readerSummary }}</template>
+                  <span
+                    v-else-if="summaryStream.busy"
+                    class="text-muted-foreground"
+                  >{{ t("ai.streaming") }}…</span>
+                  <span
+                    v-if="summaryStream.busy && summaryStream.articleId === selectedArticle.id"
+                    class="summary-caret"
+                    aria-hidden="true"
+                  />
+                </p>
+                <p
+                  v-if="summaryStream.error && summaryStream.articleId === selectedArticle.id"
+                  class="mt-2 text-[12px] text-destructive"
+                >
+                  {{ summaryStream.error }}
                 </p>
               </div>
             </aside>
@@ -486,7 +545,7 @@ watch(
 
           <template v-if="hasBody">
             <div
-              v-if="readerSummary"
+              v-if="showSummaryDeck"
               class="reader-body-rule"
               role="separator"
               :aria-label="t('article.bodyLabel')"
@@ -497,7 +556,7 @@ watch(
               :class="
                 cn(
                   'reader-body text-foreground/90',
-                  readerSummary ? 'mt-4' : 'mt-8',
+                  showSummaryDeck ? 'mt-4' : 'mt-8',
                 )
               "
               @click="onBodyClick"
