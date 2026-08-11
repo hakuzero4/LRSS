@@ -976,6 +976,36 @@ button:active:not(:disabled) {
   transition-duration: 80ms;
 }
 
+/* Article reader: soft fade + gentle settle from above */
+.reader-enter-enter-active {
+  transition:
+    opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reader-enter-leave-active {
+  transition:
+    opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.reader-enter-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.reader-enter-enter-to,
+.reader-enter-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reader-enter-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

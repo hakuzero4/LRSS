@@ -785,7 +785,10 @@ watch(
         class="scroll-pane flex-1"
         @scroll.passive="onReaderScroll"
       >
+        <!-- Fade + soft drop-in when switching articles -->
+        <Transition name="reader-enter" mode="out-in">
         <article
+          :key="selectedArticle.id"
           ref="readerContentRef"
           :class="
             cn(
@@ -920,6 +923,7 @@ watch(
             />
           </template>
         </article>
+        </Transition>
       </div>
     </template>
 
