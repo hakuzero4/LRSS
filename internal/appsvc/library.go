@@ -91,8 +91,11 @@ type RefreshResult struct {
 }
 
 // RefreshFeed re-fetches one feed.
+// Bounded so a hung remote feed cannot leave the UI spinner spinning forever.
 func (s *FeedService) RefreshFeed(id string) (RefreshResult, error) {
-	n, err := s.lib.RefreshFeed(context.Background(), id)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	n, err := s.lib.RefreshFeed(ctx, id)
 	if err != nil {
 		return RefreshResult{}, err
 	}

@@ -18,6 +18,7 @@ const { t } = useI18n();
 const {
   feeds,
   filteredArticles,
+  collectionId,
   collectionTitle,
   selectedArticleId,
   searchQuery,
@@ -34,6 +35,14 @@ const {
 
 const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
 const empty = computed(() => filteredArticles.value.length === 0);
+
+/** Tooltip / aria for the list header refresh button (scoped by current collection). */
+const refreshLabel = computed(() => {
+  const col = collectionId.value;
+  if (col.startsWith("feed:")) return t("article.refreshThisFeed");
+  if (col.startsWith("folder:")) return t("article.refreshThisFolder");
+  return t("article.refreshFeeds");
+});
 
 const articleCountLabel = computed(() => {
   if (articlesLoading.value && empty.value) {
@@ -93,13 +102,13 @@ const emptyHint = computed(() => {
               size="icon-sm"
               class="text-muted-foreground"
               :disabled="refreshing"
-              :aria-label="t('article.refreshFeeds')"
+              :aria-label="refreshLabel"
               @click="refreshFeeds"
             >
               <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{{ t("common.refresh") }}</TooltipContent>
+          <TooltipContent>{{ refreshLabel }}</TooltipContent>
         </Tooltip>
 
         <Tooltip>

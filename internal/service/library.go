@@ -33,8 +33,13 @@ type Library struct {
 	// Sanitizer for content_html (UGC policy). Lazily created if nil.
 	Sanitizer *bluemonday.Policy
 
-	// refreshMu serializes RefreshAll and ImportOPML fetch phase with auto-refresh.
+	// refreshMu serializes a single refreshOne / AddFeed / purge unit so upserts
+	// do not interleave on MaxOpenConns=1.
 	refreshMu sync.Mutex
+	// refreshBatchMu covers multi-feed passes (RefreshAll / TryRefreshDue).
+	// Held for the whole pass, but refreshMu is released between feeds so a
+	// manual RefreshFeed is not stuck behind hundreds of HTTP round-trips.
+	refreshBatchMu sync.Mutex
 }
 
 // NewLibrary constructs a Library with default HTML sanitizer.
@@ -206,6 +211,8 @@ type ClearAllResult struct {
 // ClearAllSubscriptions removes every feed (and cascaded articles/embeddings/FTS)
 // and every folder. Blocks concurrent refresh while running.
 func (lib *Library) ClearAllSubscriptions(ctx context.Context) (ClearAllResult, error) {
+	lib.refreshBatchMu.Lock()
+	defer lib.refreshBatchMu.Unlock()
 	lib.refreshMu.Lock()
 	defer lib.refreshMu.Unlock()
 
@@ -224,8 +231,8 @@ func (lib *Library) ClearAllSubscriptions(ctx context.Context) (ClearAllResult, 
 }
 
 // RefreshFeed re-fetches one feed and upserts articles. Returns number of new articles.
-// Serialized with RefreshAll / TryRefreshDue via refreshMu so concurrent manual +
-// auto refresh cannot interleave upserts on MaxOpenConns=1.
+// Only holds the per-feed lock for this one source so a long RefreshAll / auto-refresh
+// pass does not leave the UI spinner waiting behind every other feed.
 func (lib *Library) RefreshFeed(ctx context.Context, feedID string) (int, error) {
 	lib.refreshMu.Lock()
 	defer lib.refreshMu.Unlock()
@@ -248,10 +255,11 @@ type RefreshAllResult struct {
 }
 
 // RefreshAll refreshes non-paused feeds sequentially.
-// Concurrent callers block on refreshMu so only one full refresh runs at a time.
+// Concurrent multi-feed passes wait on refreshBatchMu; each feed only holds refreshMu
+// for its own fetch so manual RefreshFeed can run between sources.
 func (lib *Library) RefreshAll(ctx context.Context) (RefreshAllResult, error) {
-	lib.refreshMu.Lock()
-	defer lib.refreshMu.Unlock()
+	lib.refreshBatchMu.Lock()
+	defer lib.refreshBatchMu.Unlock()
 
 	feeds, err := lib.Feeds.ListActive(ctx)
 	if err != nil {
@@ -259,7 +267,12 @@ func (lib *Library) RefreshAll(ctx context.Context) (RefreshAllResult, error) {
 	}
 	var res RefreshAllResult
 	for _, f := range feeds {
+		if ctx.Err() != nil {
+			break
+		}
+		lib.refreshMu.Lock()
 		n, err := lib.refreshOne(ctx, f)
+		lib.refreshMu.Unlock()
 		if err != nil {
 			res.FeedsErr++
 			continue
@@ -270,20 +283,25 @@ func (lib *Library) RefreshAll(ctx context.Context) (RefreshAllResult, error) {
 	return res, nil
 }
 
-// TryRefreshAll is like RefreshAll but returns immediately if a refresh is already running.
-// ok is false when the lock could not be acquired.
+// TryRefreshAll is like RefreshAll but returns immediately if a multi-feed pass is already running.
+// ok is false when the batch lock could not be acquired.
 func (lib *Library) TryRefreshAll(ctx context.Context) (res RefreshAllResult, ok bool, err error) {
-	if !lib.refreshMu.TryLock() {
+	if !lib.refreshBatchMu.TryLock() {
 		return RefreshAllResult{}, false, nil
 	}
-	defer lib.refreshMu.Unlock()
+	defer lib.refreshBatchMu.Unlock()
 
 	feeds, err := lib.Feeds.ListActive(ctx)
 	if err != nil {
 		return RefreshAllResult{}, true, err
 	}
 	for _, f := range feeds {
+		if ctx.Err() != nil {
+			break
+		}
+		lib.refreshMu.Lock()
 		n, rerr := lib.refreshOne(ctx, f)
+		lib.refreshMu.Unlock()
 		if rerr != nil {
 			res.FeedsErr++
 			continue
@@ -328,12 +346,12 @@ func feedRefreshDue(feed model.Feed, defaultMinutes int, now time.Time) bool {
 
 // TryRefreshDue refreshes only non-paused feeds whose last fetch is older than
 // their effective interval. defaultMinutes is the global LibraryConfig interval.
-// ok is false when another refresh holds the lock.
+// ok is false when another multi-feed pass holds refreshBatchMu.
 func (lib *Library) TryRefreshDue(ctx context.Context, defaultMinutes int) (res RefreshAllResult, ok bool, err error) {
-	if !lib.refreshMu.TryLock() {
+	if !lib.refreshBatchMu.TryLock() {
 		return RefreshAllResult{}, false, nil
 	}
-	defer lib.refreshMu.Unlock()
+	defer lib.refreshBatchMu.Unlock()
 
 	feeds, err := lib.Feeds.ListActive(ctx)
 	if err != nil {
@@ -341,10 +359,15 @@ func (lib *Library) TryRefreshDue(ctx context.Context, defaultMinutes int) (res 
 	}
 	now := time.Now().UTC()
 	for _, f := range feeds {
+		if ctx.Err() != nil {
+			break
+		}
 		if !feedRefreshDue(f, defaultMinutes, now) {
 			continue
 		}
+		lib.refreshMu.Lock()
 		n, rerr := lib.refreshOne(ctx, f)
+		lib.refreshMu.Unlock()
 		if rerr != nil {
 			res.FeedsErr++
 			continue

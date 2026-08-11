@@ -52,9 +52,9 @@ func (lib *Library) ImportOPML(ctx context.Context, xml string, fetch bool) (OPM
 	res.AddedFeedIDs = addedIDs
 
 	if fetch && len(addedIDs) > 0 {
-		// Avoid overlapping with auto-refresh / RefreshAll.
-		lib.refreshMu.Lock()
-		defer lib.refreshMu.Unlock()
+		// Batch pass: release per-feed lock between sources so UI RefreshFeed can run.
+		lib.refreshBatchMu.Lock()
+		defer lib.refreshBatchMu.Unlock()
 
 		for _, id := range addedIDs {
 			if ctx.Err() != nil {
@@ -62,7 +62,10 @@ func (lib *Library) ImportOPML(ctx context.Context, xml string, fetch bool) (OPM
 				res.appendError(fmt.Sprintf("refresh cancelled: %v", ctx.Err()))
 				break
 			}
-			if _, err := lib.refreshOneByID(ctx, id); err != nil {
+			lib.refreshMu.Lock()
+			_, err := lib.refreshOneByID(ctx, id)
+			lib.refreshMu.Unlock()
+			if err != nil {
 				res.FeedsFailed++
 				res.appendError(fmt.Sprintf("refresh %s: %v", id, err))
 			}

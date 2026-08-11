@@ -2281,10 +2281,32 @@ async function refreshFolderFeeds(folderId: string): Promise<{ refreshed: number
   return { refreshed, added };
 }
 
+/**
+ * Header / shortcut refresh, scoped to the current list:
+ * - feed:… → that feed only
+ * - folder:… → every feed in the folder
+ * - smart lists (unread / today / starred / all) → RefreshAll
+ */
 async function refreshFeeds() {
   if (refreshing.value) return;
   refreshing.value = true;
   try {
+    const col = collectionId.value;
+    if (col.startsWith("feed:")) {
+      const feedId = col.slice(5);
+      if (feedId) {
+        await refreshOneFeed(feedId);
+        return;
+      }
+    }
+    if (col.startsWith("folder:")) {
+      const folderId = col.slice(7);
+      if (folderId) {
+        await refreshFolderFeeds(folderId);
+        return;
+      }
+    }
+
     const api = await loadAppsvc();
     if (api?.FeedService?.RefreshAll) {
       await api.FeedService.RefreshAll();
@@ -2295,7 +2317,12 @@ async function refreshFeeds() {
         feed.lastFetchedAt = new Date().toISOString();
       }
     }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[lrss] refreshFeeds failed", e);
+    toast.error(t("article.refreshFailed"), { description: msg });
   } finally {
+    // Always clear the header spinner — never leave it spinning after a hang/timeout.
     refreshing.value = false;
   }
 }

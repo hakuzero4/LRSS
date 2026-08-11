@@ -101,6 +101,7 @@ export function RefreshAll(): $CancellablePromise<$models.RefreshAllResult> {
 
 /**
  * RefreshFeed re-fetches one feed.
+ * Bounded so a hung remote feed cannot leave the UI spinner spinning forever.
  */
 export function RefreshFeed(id: string): $CancellablePromise<$models.RefreshResult> {
     return $Call.ByID(4066473343, id);
