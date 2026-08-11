@@ -2111,6 +2111,49 @@ async function deleteFeed(feedId: string): Promise<void> {
   await reloadLibrary();
 }
 
+/**
+ * Remove every feed that currently has a non-empty lastError (failed refresh/parse).
+ * Deletes sequentially then reloads the library once (not after each row).
+ */
+async function deleteFailedFeeds(): Promise<{ deleted: number; failed: number }> {
+  const targets = feeds.value.filter((f) => !!f.lastError?.trim());
+  if (targets.length === 0) {
+    return { deleted: 0, failed: 0 };
+  }
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.DeleteFeed;
+  let deleted = 0;
+  let failed = 0;
+  const deletedIds = new Set<string>();
+
+  for (const feed of targets) {
+    try {
+      if (typeof fn === "function") {
+        await fn(feed.id);
+      }
+      deletedIds.add(feed.id);
+      deleted++;
+    } catch (e) {
+      failed++;
+      console.warn("[lrss] deleteFailedFeeds:", feed.id, e);
+    }
+  }
+
+  if (deletedIds.size > 0) {
+    feeds.value = feeds.value.filter((f) => !deletedIds.has(f.id));
+    articles.value = articles.value.filter((a) => !deletedIds.has(a.feedId));
+    if (
+      collectionId.value.startsWith("feed:") &&
+      deletedIds.has(collectionId.value.slice(5))
+    ) {
+      collectionId.value = "unread";
+      selectedArticleId.value = null;
+    }
+    await reloadLibrary();
+  }
+  return { deleted, failed };
+}
+
 async function moveFeedToFolder(feedId: string, folderId: string | null): Promise<void> {
   const api = await loadAppsvc();
   const fn = api?.FeedService?.MoveFeed;
@@ -2555,6 +2598,7 @@ export function useRssStore() {
     refreshOneFeed,
     markFeedRead,
     deleteFeed,
+    deleteFailedFeeds,
     moveFeedToFolder,
     reloadLibrary,
     persistLibraryConfig,

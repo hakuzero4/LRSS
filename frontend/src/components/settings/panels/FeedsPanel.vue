@@ -60,6 +60,7 @@ const {
   moveFeedToFolder,
   refreshOneFeed,
   deleteFeed,
+  deleteFailedFeeds,
   setFeedNsfw,
   addFeedsFromURLs,
 } = useRssStore();
@@ -75,6 +76,8 @@ const confirmClearOpen = ref(false);
 const clearing = ref(false);
 const clearStatus = ref("");
 const purging = ref(false);
+const deleteFailedOpen = ref(false);
+const deleteFailedBusy = ref(false);
 
 /** Interval presets (minutes). 0 = follow global default. */
 const INTERVAL_OPTIONS = [0, 5, 15, 30, 60, 120, 180] as const;
@@ -157,8 +160,44 @@ function folderName(feed: Feed): string {
 }
 
 const busy = computed(
-  () => importing.value || exporting.value || clearing.value || purging.value || addingFeeds.value,
+  () =>
+    importing.value ||
+    exporting.value ||
+    clearing.value ||
+    purging.value ||
+    addingFeeds.value ||
+    deleteFailedBusy.value,
 );
+
+function openDeleteFailed() {
+  if (errorFeedCount.value === 0 || deleteFailedBusy.value) return;
+  deleteFailedOpen.value = true;
+}
+
+async function confirmDeleteFailed(ev: Event) {
+  ev.preventDefault();
+  if (deleteFailedBusy.value || errorFeedCount.value === 0) return;
+  deleteFailedBusy.value = true;
+  try {
+    const { deleted, failed } = await deleteFailedFeeds();
+    deleteFailedOpen.value = false;
+    feedErrorsOnly.value = false;
+    if (failed > 0 && deleted > 0) {
+      toast.success(t("settings.feeds.deleteFailedPartial", { ok: deleted, fail: failed }));
+    } else if (deleted > 0) {
+      toast.success(t("settings.feeds.deleteFailedDone", { n: deleted }));
+    } else if (failed > 0) {
+      toast.error(t("settings.feeds.deleteFailedAllFailed", { n: failed }));
+    } else {
+      toast.message(t("settings.feeds.deleteFailedNone"));
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.feeds.deleteFailedError"), { description: msg });
+  } finally {
+    deleteFailedBusy.value = false;
+  }
+}
 
 // ── Add feed(s) dialog (multi-line) ────────────────────────────
 const addOpen = ref(false);
@@ -534,6 +573,7 @@ async function confirmClearAll(ev: Event) {
             "
             :aria-pressed="feedErrorsOnly"
             :aria-label="t('settings.feeds.filterErrors')"
+            :disabled="busy"
             @click="feedErrorsOnly = !feedErrorsOnly"
           >
             <AlertCircle class="size-3.5" />
@@ -541,6 +581,23 @@ async function confirmClearAll(ev: Event) {
               feedErrorsOnly
                 ? t("settings.feeds.filterErrorsOn", { n: errorFeedCount })
                 : t("settings.feeds.filterErrors", { n: errorFeedCount })
+            }}
+          </Button>
+          <Button
+            v-if="subscriptionCount > 0 && errorFeedCount > 0"
+            type="button"
+            size="sm"
+            variant="outline"
+            class="h-8 shrink-0 gap-1 px-2.5 text-[12px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+            :disabled="busy"
+            :aria-label="t('settings.feeds.deleteFailedFeeds')"
+            @click="openDeleteFailed"
+          >
+            <Trash2 class="size-3.5 opacity-80" />
+            {{
+              deleteFailedBusy
+                ? t("settings.feeds.deleteFailedBusy")
+                : t("settings.feeds.deleteFailedFeeds", { n: errorFeedCount })
             }}
           </Button>
           <div v-if="subscriptionCount > 0" class="relative w-full max-w-[200px] sm:w-[200px]">
@@ -1103,6 +1160,42 @@ async function confirmClearAll(ev: Event) {
               deleteFeedBusy
                 ? t("common.loading")
                 : t("settings.feeds.deleteFeed")
+            }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog
+      :open="deleteFailedOpen"
+      @update:open="(v) => !deleteFailedBusy && (deleteFailedOpen = v)"
+    >
+      <AlertDialogContent class="sm:max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogMedia class="bg-destructive/10 text-destructive">
+            <TriangleAlert />
+          </AlertDialogMedia>
+          <AlertDialogTitle>
+            {{ t("settings.feeds.deleteFailedConfirmTitle") }}
+          </AlertDialogTitle>
+          <AlertDialogDescription class="text-[13px] leading-relaxed">
+            {{ t("settings.feeds.deleteFailedConfirmBody", { n: errorFeedCount }) }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel size="sm" :disabled="deleteFailedBusy">
+            {{ t("common.cancel") }}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            size="sm"
+            :disabled="deleteFailedBusy || errorFeedCount === 0"
+            @click="confirmDeleteFailed"
+          >
+            {{
+              deleteFailedBusy
+                ? t("settings.feeds.deleteFailedBusy")
+                : t("settings.feeds.deleteFailedConfirmAction", { n: errorFeedCount })
             }}
           </AlertDialogAction>
         </AlertDialogFooter>
