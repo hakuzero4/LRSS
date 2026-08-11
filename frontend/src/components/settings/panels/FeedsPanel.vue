@@ -40,7 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { parseFeedUrlsFromText } from "@/lib/feedUrls";
 import { relativeTime } from "@/lib/format";
 import type { Feed } from "@/types/rss";
-import { AlertCircle, Pencil, Plus, Search, TriangleAlert } from "@lucide/vue";
+import { AlertCircle, Pencil, Plus, Search, Trash2, TriangleAlert } from "@lucide/vue";
 
 const { t } = useI18n();
 
@@ -317,7 +317,12 @@ async function onEditRefresh() {
   }
 }
 
-function openDeleteFeed() {
+/** Open unsubscribe confirm. Pass `feed` from the list row; omit when already in edit dialog. */
+function openDeleteFeed(feed?: Feed) {
+  if (feed) {
+    editFeedId.value = feed.id;
+    editTitle.value = feed.title;
+  }
   if (!editFeedId.value) return;
   deleteFeedOpen.value = true;
 }
@@ -627,17 +632,31 @@ async function confirmClearAll(ev: Event) {
                   {{ feed.lastError }}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                class="h-8 shrink-0 gap-1 px-2.5 text-[12px]"
-                :disabled="busy"
-                @click="openEdit(feed)"
-              >
-                <Pencil class="size-3.5 opacity-70" />
-                {{ t("settings.feeds.edit") }}
-              </Button>
+              <div class="flex shrink-0 items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-8 gap-1 px-2.5 text-[12px]"
+                  :disabled="busy || deleteFeedBusy"
+                  @click="openEdit(feed)"
+                >
+                  <Pencil class="size-3.5 opacity-70" />
+                  {{ t("settings.feeds.edit") }}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-8 gap-1 px-2.5 text-[12px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  :disabled="busy || deleteFeedBusy"
+                  :aria-label="t('settings.feeds.deleteFeed')"
+                  @click="openDeleteFeed(feed)"
+                >
+                  <Trash2 class="size-3.5 opacity-80" />
+                  {{ t("settings.feeds.deleteFeed") }}
+                </Button>
+              </div>
             </li>
             <li
               v-if="sortedFeeds.length === 0"
