@@ -16,12 +16,13 @@ import (
 )
 
 type stubChat struct {
-	model   string
-	content string
-	err     error
-	calls   int
-	lastSys string
-	lastUser string
+	model        string
+	content      string
+	finishReason string
+	err          error
+	calls        int
+	lastSys      string
+	lastUser     string
 }
 
 func (s *stubChat) Chat(ctx context.Context, req llm.ChatRequest) (llm.ChatResponse, error) {
@@ -37,7 +38,11 @@ func (s *stubChat) Chat(ctx context.Context, req llm.ChatRequest) (llm.ChatRespo
 	if s.err != nil {
 		return llm.ChatResponse{}, s.err
 	}
-	return llm.ChatResponse{Content: s.content, Model: s.model}, nil
+	return llm.ChatResponse{
+		Content:      s.content,
+		Model:        s.model,
+		FinishReason: s.finishReason,
+	}, nil
 }
 func (s *stubChat) ModelName() string { return s.model }
 
@@ -309,4 +314,105 @@ func TestPromptsNonEmpty(t *testing.T) {
 		t.Fatal("zh summarize prompt")
 	}
 	_ = fmt.Sprintf("ok")
+}
+
+func TestService_Summarize_TruncatedNotCached(t *testing.T) {
+	store, database := testStore(t)
+	stub := &stubChat{
+		model:        "test-model",
+		content:      "## Summary\n- partial bullet that hit the limit",
+		finishReason: "length",
+	}
+	svc := &llm.Service{
+		Store: store,
+		Cache: &llm.Cache{DB: database.SQL},
+		NewChatter: func(cfg settings.LLMConfig) (llm.Chatter, error) {
+			return stub, nil
+		},
+	}
+	a := llm.ArticleInput{ID: "trunc1", Title: "T", Body: "Long enough body for summarize."}
+	ctx := context.Background()
+	_, err := svc.Summarize(ctx, a, "en-US")
+	if err == nil {
+		t.Fatal("expected truncated error")
+	}
+	if !strings.Contains(err.Error(), "truncated") && !strings.Contains(err.Error(), "length") {
+		t.Fatalf("err = %v", err)
+	}
+	if stub.calls != 1 {
+		t.Fatalf("calls = %d", stub.calls)
+	}
+	// Subsequent get must miss cache (nothing stored) and call the model again.
+	stub.finishReason = "stop"
+	stub.content = "## Summary\n- complete now"
+	r2, err := svc.Summarize(ctx, a, "en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2.Cached {
+		t.Fatal("truncated result must not have been cached")
+	}
+	if stub.calls != 2 {
+		t.Fatalf("expected second model call after miss, calls=%d", stub.calls)
+	}
+	if !strings.Contains(r2.Markdown, "complete") {
+		t.Fatalf("md = %q", r2.Markdown)
+	}
+}
+
+func TestService_Translate_TruncatedNotCached(t *testing.T) {
+	store, database := testStore(t)
+	partial := "<<o>> Hello world ends abruptly mid pair\n<<t>> 你好"
+	stub := &stubChat{
+		model:        "test-model",
+		content:      partial,
+		finishReason: "length",
+	}
+	svc := &llm.Service{
+		Store: store,
+		Cache: &llm.Cache{DB: database.SQL},
+		NewChatter: func(cfg settings.LLMConfig) (llm.Chatter, error) {
+			return stub, nil
+		},
+	}
+	a := llm.ArticleInput{ID: "tr-trunc", Title: "Hi", Body: "Hello world article body."}
+	ctx := context.Background()
+	res, err := svc.Translate(ctx, a, "zh-CN")
+	if err == nil {
+		t.Fatalf("expected error, got success md=%q", res.Markdown)
+	}
+	if !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("err = %v", err)
+	}
+	// Cache must not serve the truncated bilingual blob.
+	stub.finishReason = "stop"
+	stub.content = "<<o>> Hello world article body.\n<<t>> 你好世界文章正文。"
+	r2, err := svc.Translate(ctx, a, "zh-CN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2.Cached {
+		t.Fatal("truncated translate must not be cached")
+	}
+	if stub.calls != 2 {
+		t.Fatalf("calls = %d want 2", stub.calls)
+	}
+}
+
+func TestIsIncompleteCompletion(t *testing.T) {
+	if !llm.IsIncompleteCompletion("length") || !llm.IsIncompleteCompletion("LENGTH") {
+		t.Fatal("length")
+	}
+	if !llm.IsIncompleteCompletion("max_tokens") {
+		t.Fatal("max_tokens")
+	}
+	if llm.IsIncompleteCompletion("stop") || llm.IsIncompleteCompletion("") {
+		t.Fatal("stop/empty should be complete")
+	}
+	if llm.RejectIfIncomplete("length") == nil {
+		t.Fatal("RejectIfIncomplete length")
+	}
+	if llm.RejectIfIncomplete("stop") != nil {
+		t.Fatal("RejectIfIncomplete stop")
+	}
 }

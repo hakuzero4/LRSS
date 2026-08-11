@@ -31,7 +31,8 @@ func TestFetch_ExtractsArticle(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	res, err := fulltext.Fetch(context.Background(), srv.URL+"/post/1", fulltext.Options{
-		HTTP: srv.Client(),
+		HTTP:              srv.Client(),
+		AllowPrivateHosts: true, // httptest is 127.0.0.1
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +58,10 @@ func TestFetch_HTTPError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := fulltext.Fetch(context.Background(), srv.URL, fulltext.Options{HTTP: srv.Client()})
+	_, err := fulltext.Fetch(context.Background(), srv.URL, fulltext.Options{
+		HTTP:              srv.Client(),
+		AllowPrivateHosts: true,
+	})
 	if err == nil {
 		t.Fatal("expected http error")
 	}

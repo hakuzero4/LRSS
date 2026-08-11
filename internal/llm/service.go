@@ -123,6 +123,10 @@ func (s *Service) runCached(
 	if md == "" {
 		return FeatureResult{}, fmt.Errorf("llm returned empty content")
 	}
+	if err := RejectIfIncomplete(res.FinishReason); err != nil {
+		// Do not cache truncated completions.
+		return FeatureResult{}, err
+	}
 	model := res.Model
 	if model == "" {
 		model = chat.ModelName()
@@ -211,6 +215,10 @@ func (s *Service) SummarizeStream(ctx context.Context, a ArticleInput, locale st
 	md := strings.TrimSpace(res.Content)
 	if md == "" {
 		return FeatureResult{}, fmt.Errorf("llm returned empty content")
+	}
+	if err := RejectIfIncomplete(res.FinishReason); err != nil {
+		// Do not cache truncated summaries.
+		return FeatureResult{}, err
 	}
 	model := res.Model
 	if model == "" {
@@ -306,6 +314,10 @@ func (s *Service) TranslateStream(ctx context.Context, a ArticleInput, targetLan
 	md := strings.TrimSpace(res.Content)
 	if md == "" {
 		return FeatureResult{}, fmt.Errorf("llm returned empty content")
+	}
+	if err := RejectIfIncomplete(res.FinishReason); err != nil {
+		// Do not cache or surface truncated bilingual text as success.
+		return FeatureResult{}, err
 	}
 	model := res.Model
 	if model == "" {

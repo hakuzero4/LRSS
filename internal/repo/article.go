@@ -351,6 +351,7 @@ func (r *ArticleRepo) UpdateSummary(ctx context.Context, articleID, summary stri
 
 // UpdateContent replaces content_html / content_text (e.g. after full-text fetch)
 // and refreshes FTS. Marks full_content_fetched so auto-fetch will not re-run.
+// Clears translation_raw/lang so a stale bilingual overlay cannot cover the new body.
 // Optionally marks embedding pending when enabled.
 func (r *ArticleRepo) UpdateContent(ctx context.Context, articleID, contentHTML, contentText string) error {
 	articleID = strings.TrimSpace(articleID)
@@ -359,7 +360,8 @@ func (r *ArticleRepo) UpdateContent(ctx context.Context, articleID, contentHTML,
 	}
 	res, err := r.DB.ExecContext(ctx, `
 		UPDATE articles
-		SET content_html = ?, content_text = ?, fetched_at = ?, full_content_fetched = 1
+		SET content_html = ?, content_text = ?, fetched_at = ?, full_content_fetched = 1,
+		    translation_raw = NULL, translation_lang = NULL
 		WHERE id = ?`,
 		nullStr(&contentHTML), nullStr(&contentText), nowUTC(), articleID,
 	)

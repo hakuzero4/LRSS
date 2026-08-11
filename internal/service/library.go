@@ -563,6 +563,10 @@ func validateArticleURL(raw string) error {
 	if u.Host == "" {
 		return fmt.Errorf("article url host is required")
 	}
+	// Same public-host policy as fulltext.Fetch (SSRF-style egress).
+	if err := fulltext.ValidateFetchURL(raw); err != nil {
+		return err
+	}
 	return nil
 }
 

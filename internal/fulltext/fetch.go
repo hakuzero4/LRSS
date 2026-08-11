@@ -35,6 +35,9 @@ type Options struct {
 	UserAgent string
 	// HTTP injects a client (tests); default is httpx.Std (surf).
 	HTTP *http.Client
+	// AllowPrivateHosts skips loopback/private/metadata host checks.
+	// Intended for unit tests that serve over httptest (127.0.0.1).
+	AllowPrivateHosts bool
 }
 
 // Fetch downloads pageURL with the fingerprint HTTP client and extracts
@@ -47,6 +50,11 @@ func Fetch(ctx context.Context, pageURL string, opts Options) (Result, error) {
 	u, err := url.Parse(pageURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return Result{}, fmt.Errorf("fulltext: invalid url")
+	}
+	if !opts.AllowPrivateHosts {
+		if err := ValidateFetchURL(pageURL); err != nil {
+			return Result{}, err
+		}
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -67,6 +75,9 @@ func Fetch(ctx context.Context, pageURL string, opts Options) (Result, error) {
 			Timeout:   timeout,
 			UserAgent: ua,
 		})
+	}
+	if !opts.AllowPrivateHosts {
+		client = withHostPolicyRedirect(client)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
@@ -91,6 +102,11 @@ func Fetch(ctx context.Context, pageURL string, opts Options) (Result, error) {
 	finalURL := pageURL
 	if resp.Request != nil && resp.Request.URL != nil {
 		finalURL = resp.Request.URL.String()
+	}
+	if !opts.AllowPrivateHosts {
+		if err := ValidateFetchURL(finalURL); err != nil {
+			return Result{}, err
+		}
 	}
 	pageParsed, err := url.Parse(finalURL)
 	if err != nil {

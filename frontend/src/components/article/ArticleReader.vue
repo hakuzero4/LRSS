@@ -855,12 +855,13 @@ watch(
             </aside>
           </header>
 
-          <!-- Bilingual translation (interlinear pairs) -->
+          <!-- Bilingual translation (interlinear pairs) — does not replace body HTML -->
           <section
             v-if="showBilingual"
             class="bilingual-view mt-8"
             :aria-label="t('ai.translate')"
             :data-streaming="translateBusy ? '1' : undefined"
+            data-bilingual-with-original="1"
           >
             <div class="bilingual-view-head">
               <Languages class="size-3.5 opacity-80" />
@@ -902,22 +903,24 @@ watch(
             </p>
           </section>
 
-          <template v-else-if="hasBody">
+          <!-- Original formatted body stays mounted while bilingual is active -->
+          <template v-if="hasBody">
             <div
-              v-if="showSummaryDeck"
+              v-if="showSummaryDeck || showBilingual"
               class="reader-body-rule"
               role="separator"
               :aria-label="t('article.bodyLabel')"
             >
-              {{ t("article.bodyLabel") }}
+              {{ showBilingual ? t("ai.translateShowOriginal") : t("article.bodyLabel") }}
             </div>
             <div
               :class="
                 cn(
                   'reader-body text-foreground/90',
-                  showSummaryDeck ? 'mt-4' : 'mt-8',
+                  showSummaryDeck || showBilingual ? 'mt-4' : 'mt-8',
                 )
               "
+              data-reader-original-body="1"
               @click="onBodyClick"
               v-html="selectedArticle.contentHtml"
             />

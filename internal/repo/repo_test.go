@@ -508,3 +508,57 @@ func TestFeed_SetFolderAndSetPaused(t *testing.T) {
 		t.Fatalf("after folder delete expected unfiled, got %v", *got.FolderID)
 	}
 }
+
+func TestUpdateContent_ClearsTranslationAndMarksFetched(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+	feed := &model.Feed{Title: "F", FeedURL: "https://example.com/clear-tr.xml"}
+	if err := r.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	body := "partial excerpt"
+	html := "<p>partial excerpt</p>"
+	res, err := r.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{{
+		GUID: "g-tr", URL: "https://example.com/tr", Title: "T",
+		ContentHTML: &html, ContentText: &body, PublishedAt: &now,
+	}})
+	if err != nil || res.Inserted != 1 {
+		t.Fatalf("upsert: %+v %v", res, err)
+	}
+	arts, err := r.Articles.List(ctx, "feed:"+feed.ID, repo.ListOpts{Limit: 5})
+	if err != nil || len(arts) != 1 {
+		t.Fatalf("list: %v %#v", err, arts)
+	}
+	id := arts[0].ID
+	if err := r.Articles.UpdateTranslation(ctx, id, "<<o>> partial\n<<t>> 片段", "zh-CN"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Articles.Get(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TranslationRaw == nil || *got.TranslationRaw == "" {
+		t.Fatal("expected translation before content replace")
+	}
+
+	if err := r.Articles.UpdateContent(ctx, id, "<p>full page body</p>", "full page body"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = r.Articles.Get(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TranslationRaw != nil && *got.TranslationRaw != "" {
+		t.Fatalf("translation should be cleared, got %q", *got.TranslationRaw)
+	}
+	if got.TranslationLang != nil && *got.TranslationLang != "" {
+		t.Fatalf("translation lang should be cleared, got %q", *got.TranslationLang)
+	}
+	if !got.FullContentFetched {
+		t.Fatal("expected full_content_fetched")
+	}
+	if got.ContentText == nil || *got.ContentText != "full page body" {
+		t.Fatalf("content = %#v", got.ContentText)
+	}
+}

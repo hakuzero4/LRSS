@@ -11,13 +11,19 @@ export async function loadAppsvc(): Promise<any | null> {
   }
 }
 
+/**
+ * Map a backend article into the frontend Article shape.
+ * Summary is preserved in full for the reader deck (AI summaries can be long);
+ * list teasers clamp at display time in ArticleListItem.
+ */
 export function mapArticle(a: any) {
   if (!a) return a;
   const rawSummary = a.summary ?? a.Summary ?? "";
   const contentHtml = a.contentHtml ?? a.ContentHTML ?? "";
-  // Always expose plain summary (legacy rows may still store HTML).
-  let summary = plainText(rawSummary, 320);
-  // Drop lead-in that duplicates the article body.
+  // Strip HTML tags if present, but do NOT hard-clamp length — AI deck text
+  // is stored on summary and must survive list/get remapping.
+  let summary = plainText(rawSummary);
+  // Drop lead-in that duplicates the article body (feed standfirst noise).
   const bodyText = plainText(contentHtml, 400);
   if (summary && bodyText && (bodyText === summary || bodyText.startsWith(summary.slice(0, Math.min(80, summary.length))))) {
     // Keep a short teaser only when much shorter than body; else hide in list via empty.
