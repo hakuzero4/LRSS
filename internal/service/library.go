@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +43,20 @@ type Library struct {
 	refreshBatchMu sync.Mutex
 }
 
+// youtubeEmbedSrcRe allows only YouTube / youtube-nocookie embed iframe srcs.
+var youtubeEmbedSrcRe = regexp.MustCompile(`(?i)^https://(www\.)?(youtube\.com|youtube-nocookie\.com)/embed/[A-Za-z0-9_-]{6,20}([?#].*)?$`)
+
+// newArticleSanitizer is UGC plus privacy-friendly YouTube embeds (for channel RSS).
+func newArticleSanitizer() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	p.AllowElements("iframe")
+	p.AllowAttrs("width", "height", "allow", "allowfullscreen", "frameborder",
+		"loading", "title", "class", "referrerpolicy", "sandbox").OnElements("iframe")
+	p.AllowAttrs("src").Matching(youtubeEmbedSrcRe).OnElements("iframe")
+	p.AllowAttrs("class").OnElements("div")
+	return p
+}
+
 // NewLibrary constructs a Library with default HTML sanitizer.
 func NewLibrary(feeds FeedStore, articles ArticleStore, folders FolderStore, rssClient RSSFetcher) *Library {
 	return &Library{
@@ -49,7 +64,7 @@ func NewLibrary(feeds FeedStore, articles ArticleStore, folders FolderStore, rss
 		Articles:  articles,
 		Folders:   folders,
 		RSS:       rssClient,
-		Sanitizer: bluemonday.UGCPolicy(),
+		Sanitizer: newArticleSanitizer(),
 	}
 }
 
@@ -64,7 +79,7 @@ func (lib *Library) sanitizeHTML(raw string) string {
 	}
 	p := lib.Sanitizer
 	if p == nil {
-		p = bluemonday.UGCPolicy()
+		p = newArticleSanitizer()
 	}
 	return p.Sanitize(raw)
 }

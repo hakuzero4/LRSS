@@ -29,6 +29,7 @@ import {
   shouldMarkReadOnScrollEnd,
 } from "@/lib/readingSettings";
 import { cn } from "@/lib/utils";
+import { articleDisplayHTML } from "@/lib/youtubeEmbed";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -170,9 +171,25 @@ const showSummaryDeck = computed(
     (isStreamingSummary.value && summaryStream.busy),
 );
 
+/** Body HTML: stored content, or YouTube embed synthesized from watch URL. */
+const displayBodyHtml = computed(() => {
+  const a = selectedArticle.value;
+  if (!a) return "";
+  return articleDisplayHTML({
+    contentHtml: a.contentHtml,
+    url: a.url,
+    summary: a.summary,
+  });
+});
+
 const hasBody = computed(() => {
-  const html = selectedArticle.value?.contentHtml?.trim() ?? "";
-  return html.length > 0 && plainText(html).length > 0;
+  const html = displayBodyHtml.value.trim();
+  if (!html) return false;
+  // Embed-only pages have no plain text — still count as a body.
+  if (/<iframe\b/i.test(html) || /youtube(?:-nocookie)?\.com\/embed\//i.test(html)) {
+    return true;
+  }
+  return plainText(html).length > 0;
 });
 
 /** Root classes driven by Settings → Reading (font size + column width). */
@@ -939,7 +956,7 @@ watch(
               "
               data-reader-original-body="1"
               @click="onBodyClick"
-              v-html="selectedArticle.contentHtml"
+              v-html="displayBodyHtml"
             />
           </template>
         </article>

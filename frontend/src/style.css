@@ -938,6 +938,39 @@
   border-radius: 0.45em;
 }
 
+/* YouTube channel RSS: responsive privacy-friendly embed */
+.reader-body .yt-embed {
+  position: relative;
+  width: 100%;
+  max-width: 42rem;
+  margin-block: 0.75em 1.25em;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 0.65em;
+  background: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+
+.reader-body .yt-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.reader-body .yt-desc {
+  margin-top: 0.85em;
+  font-size: 0.95em;
+  line-height: 1.65;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  white-space: normal;
+}
+
+.reader-body .yt-desc p {
+  margin-block: 0.55em;
+}
+
 /* Tables — Tailwind preflight resets borders; restore a readable data grid.
    Outer wrapper enables horizontal scroll for wide benchmark tables. */
 .reader-body :where(table) {

@@ -106,7 +106,7 @@ func mapItem(item *gofeed.Item, baseURL, feedURL string) ParsedItem {
 	// <name>…</name><title>…</title><department>…</department>
 	author = normalizeAuthor(author)
 
-	return ParsedItem{
+	pi := ParsedItem{
 		GUID:        guid,
 		URL:         absURL,
 		Title:       title,
@@ -117,6 +117,10 @@ func mapItem(item *gofeed.Item, baseURL, feedURL string) ParsedItem {
 		ImageURL:    imageURL,
 		PublishedAt: publishedAt,
 	}
+	// YouTube Atom (and some media RSS) store description/thumbnail only under
+	// media:group / yt:videoId — not item.Content / Description.
+	enrichFromMediaExtensions(item, &pi)
+	return pi
 }
 
 func bestContentHTML(item *gofeed.Item) string {
