@@ -73,6 +73,62 @@ export interface SearchConfig {
 }
 
 /**
+ * SyncConfig is remote backup/sync for subscription list (OPML only).
+ */
+export interface SyncConfig {
+    "enabled": boolean;
+
+    /**
+     * none|webdav|s3
+     */
+    "provider": string;
+
+    /**
+     * ObjectKey is the remote file/object name (default lrss-subscriptions.opml).
+     */
+    "objectKey": string;
+
+    /**
+     * WebDAV
+     */
+    "webdavUrl": string;
+    "webdavUsername": string;
+    "webdavPassword": string;
+
+    /**
+     * WebDAVPath is the full path under the server, e.g. /remote.php/dav/files/user/lrss.opml
+     * If empty, ObjectKey is appended to WebDAVURL.
+     */
+    "webdavPath": string;
+
+    /**
+     * S3-compatible (S3 / R2 / MinIO)
+     */
+    "s3Endpoint": string;
+    "s3Region": string;
+    "s3Bucket": string;
+    "s3AccessKey": string;
+    "s3SecretKey": string;
+
+    /**
+     * MinIO usually true; R2 often false
+     */
+    "s3ForcePathStyle": boolean;
+
+    /**
+     * when endpoint has no scheme
+     */
+    "s3UseSSL": boolean;
+
+    /**
+     * LastPushAt / LastPullAt are RFC3339 timestamps (informational).
+     */
+    "lastPushAt"?: string;
+    "lastPullAt"?: string;
+    "lastError"?: string;
+}
+
+/**
  * UIPrefs holds frontend UI / reading / retention preferences.
  * JSON keys match the frontend AppSettings fields (camelCase).
  */

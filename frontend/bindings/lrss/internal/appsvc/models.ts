@@ -84,3 +84,31 @@ export interface RefreshAllResult {
 export interface RefreshResult {
     "added": number;
 }
+
+/**
+ * SyncPullResult is returned after downloading and importing OPML.
+ */
+export interface SyncPullResult {
+    "bytes": number;
+    "imported": number;
+    "skipped": number;
+    "folders": number;
+    "pulledAt": string;
+    "fetchAfter": boolean;
+}
+
+/**
+ * SyncPushResult is returned after uploading OPML.
+ */
+export interface SyncPushResult {
+    "bytes": number;
+    "pushedAt": string;
+}
+
+/**
+ * SyncTestResult is returned by TestSyncConnection.
+ */
+export interface SyncTestResult {
+    "ok": boolean;
+    "message": string;
+}

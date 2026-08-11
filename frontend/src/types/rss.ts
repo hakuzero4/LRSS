@@ -222,8 +222,9 @@ export interface AppSettings {
   blockKeywords: string;
 
   // 同步 (not in UIPrefs / S6 non-goal)
+  /** UI-only mirror; real sync config lives in SyncService / app.sync_config. */
   syncEnabled: boolean;
-  syncProvider: "none" | "icloud" | "webdav" | "custom";
+  syncProvider: "none" | "webdav" | "s3";
 
   // 快捷键
   enableKeyboardShortcuts: boolean;

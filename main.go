@@ -72,6 +72,7 @@ func main() {
 	feedAPI.SetNotifier(notifier)
 	articleAPI := appsvc.NewArticleService(library, store)
 	aiAPI := appsvc.NewAI(store, library, database.SQL)
+	syncAPI := appsvc.NewSync(store, library)
 
 	// Background auto-refresh (reads LibraryConfig each tick).
 	go runAutoRefresh(ctx, library, store, notifier)
@@ -87,6 +88,7 @@ func main() {
 			application.NewService(feedAPI),
 			application.NewService(articleAPI),
 			application.NewService(aiAPI),
+			application.NewService(syncAPI),
 			application.NewService(ns),
 			application.NewService(&GreetService{}),
 		},

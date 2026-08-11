@@ -6,12 +6,14 @@ import * as ArticleService from "./articleservice.js";
 import * as FeedService from "./feedservice.js";
 import * as SearchService from "./searchservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as SyncService from "./syncservice.js";
 export {
     AIService,
     ArticleService,
     FeedService,
     SearchService,
-    SettingsService
+    SettingsService,
+    SyncService
 };
 
 export type {
@@ -22,5 +24,8 @@ export type {
     OPMLImportResult,
     PurgeResult,
     RefreshAllResult,
-    RefreshResult
+    RefreshResult,
+    SyncPullResult,
+    SyncPushResult,
+    SyncTestResult
 } from "./models.js";

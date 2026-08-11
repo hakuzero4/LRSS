@@ -7,5 +7,6 @@ export type {
     LibraryConfig,
     ReaderToolbarButtons,
     SearchConfig,
+    SyncConfig,
     UIPrefs
 } from "./models.js";
