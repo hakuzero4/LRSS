@@ -40,6 +40,8 @@ export interface Feed {
    * 0 (or undefined) = follow global LibraryConfig default.
    */
   refreshIntervalMinutes?: number;
+  /** 0 = follow global keepArticlesDays; else [7, 365]. */
+  keepArticlesDays?: number;
   lastError?: string;
   /** Sensitive feed; hidden from smart lists/sidebar when nsfwMode is false. */
   isNsfw?: boolean;

@@ -365,6 +365,11 @@ func (lib *Library) SetFeedRefreshInterval(ctx context.Context, feedID string, m
 	return lib.Feeds.SetRefreshInterval(ctx, feedID, minutes)
 }
 
+// SetFeedKeepArticlesDays sets per-feed retention days (0 = global UIPrefs default).
+func (lib *Library) SetFeedKeepArticlesDays(ctx context.Context, feedID string, days int) error {
+	return lib.Feeds.SetKeepArticlesDays(ctx, feedID, days)
+}
+
 func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error) {
 	opts := rss.FetchOptions{}
 	if feed.ETag != nil {

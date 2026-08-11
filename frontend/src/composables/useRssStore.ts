@@ -2204,13 +2204,18 @@ async function refreshFeeds() {
 /** Patch one feed in place so sidebar badges / list keys do not thrash. */
 function patchFeedLocal(
   id: string,
-  patch: Partial<Pick<Feed, "title" | "refreshIntervalMinutes" | "isPaused" | "isNsfw">>,
+  patch: Partial<
+    Pick<Feed, "title" | "refreshIntervalMinutes" | "keepArticlesDays" | "isPaused" | "isNsfw">
+  >,
 ) {
   const feed = feeds.value.find((f) => f.id === id);
   if (!feed) return;
   if (patch.title !== undefined) feed.title = patch.title;
   if (patch.refreshIntervalMinutes !== undefined) {
     feed.refreshIntervalMinutes = patch.refreshIntervalMinutes;
+  }
+  if (patch.keepArticlesDays !== undefined) {
+    feed.keepArticlesDays = patch.keepArticlesDays;
   }
   if (patch.isPaused !== undefined) feed.isPaused = patch.isPaused;
   if (patch.isNsfw !== undefined) feed.isNsfw = patch.isNsfw;
@@ -2248,6 +2253,25 @@ async function setFeedRefreshInterval(id: string, minutes: number): Promise<void
     return;
   }
   patchFeedLocal(id, { refreshIntervalMinutes: n });
+}
+
+/**
+ * Per-feed article retention days.
+ * 0 = follow global Settings keepArticlesDays; otherwise clamped to [7, 365].
+ */
+async function setFeedKeepArticlesDays(id: string, days: number): Promise<void> {
+  let n = Math.floor(Number(days) || 0);
+  if (n < 0) n = 0;
+  if (n > 0 && n < 7) n = 7;
+  if (n > 365) n = 365;
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.SetFeedKeepArticlesDays;
+  if (typeof fn === "function") {
+    await fn(id, n);
+    patchFeedLocal(id, { keepArticlesDays: n });
+    return;
+  }
+  patchFeedLocal(id, { keepArticlesDays: n });
 }
 
 async function setFeedPaused(id: string, paused: boolean): Promise<void> {
@@ -2491,6 +2515,7 @@ export function useRssStore() {
     refreshFolderFeeds,
     renameFeed,
     setFeedRefreshInterval,
+    setFeedKeepArticlesDays,
     setFeedPaused,
     setFeedNsfw,
     setFolderNsfw,

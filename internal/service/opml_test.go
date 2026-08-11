@@ -61,7 +61,7 @@ func TestLibrary_ImportOPML_NoFetch(t *testing.T) {
 		t.Fatalf("folders = %+v", folders)
 	}
 
-	// Second import: all skip
+	// Second import: all skip — folders reused, no duplicates
 	res2, err := lib.ImportOPML(ctx, sampleOPML, false)
 	if err != nil {
 		t.Fatalf("ImportOPML 2: %v", err)
@@ -72,10 +72,57 @@ func TestLibrary_ImportOPML_NoFetch(t *testing.T) {
 	if res2.FeedsAdded != 0 {
 		t.Fatalf("second import added = %d want 0", res2.FeedsAdded)
 	}
-	// Folder create always creates (duplicate names OK)
-	if res2.FoldersCreated != 1 {
-		t.Fatalf("second foldersCreated = %d want 1", res2.FoldersCreated)
+	if res2.FoldersCreated != 0 {
+		t.Fatalf("second foldersCreated = %d want 0 (reuse existing)", res2.FoldersCreated)
 	}
+	folders2, err := lib.ListFolders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders2) != 1 {
+		t.Fatalf("after re-import folders = %d want 1 (no duplicates)", len(folders2))
+	}
+}
+
+func TestLibrary_ImportOPML_ReusesFolderByName(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	// Pre-create folder with same name (different case) as OPML "News".
+	pre, err := lib.CreateFolder(ctx, "news", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := lib.ImportOPML(ctx, sampleOPML, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.FoldersCreated != 0 {
+		t.Fatalf("FoldersCreated = %d want 0 (case-insensitive reuse)", res.FoldersCreated)
+	}
+	folders, err := lib.ListFolders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 1 {
+		t.Fatalf("folders = %d want 1", len(folders))
+	}
+	// Feed under OPML "News" should land in pre-existing folder.
+	feeds, err := lib.ListFeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range feeds {
+		if strings.Contains(feeds[i].FeedURL, "example.com/feed") {
+			if feeds[i].FolderID == nil || *feeds[i].FolderID != pre.ID {
+				t.Fatalf("example feed folder = %v want %s", feeds[i].FolderID, pre.ID)
+			}
+			return
+		}
+	}
+	t.Fatal("example feed not found")
 }
 
 func TestLibrary_ExportOPML_ContainsXMLURL(t *testing.T) {

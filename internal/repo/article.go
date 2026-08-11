@@ -454,30 +454,43 @@ func (r *ArticleRepo) Delete(ctx context.Context, articleID string) error {
 }
 
 // PurgeOlderThan deletes non-starred articles that are old by BOTH publish time and
-// local fetch time (each older than days days). Starred articles are always kept.
+// local fetch time. Starred articles are always kept.
 //
-// Using both timestamps avoids wiping a just-subscribed feed whose items are all
-// older than the retention window by published_at alone (common for static RSS
-// archives). After purge, empty feeds re-download on refresh (no ETag when empty).
+// Per-feed keep_articles_days overrides the global default when set in [7, 365];
+// 0 (or out of range) uses globalDays. Using both timestamps avoids wiping a
+// just-subscribed feed whose items are all older than the retention window by
+// published_at alone. After purge, empty feeds re-download on refresh.
 //
-// days is clamped to [7, 365]. Returns the number of articles deleted.
+// globalDays is clamped to [7, 365]. Returns the number of articles deleted.
 // Fully consumes the ID select before further Exec (MaxOpenConns=1).
-func (r *ArticleRepo) PurgeOlderThan(ctx context.Context, days int) (int, error) {
-	if days < 7 {
-		days = 7
+func (r *ArticleRepo) PurgeOlderThan(ctx context.Context, globalDays int) (int, error) {
+	if globalDays < 7 {
+		globalDays = 7
 	}
-	if days > 365 {
-		days = 365
+	if globalDays > 365 {
+		globalDays = 365
 	}
-	mod := fmt.Sprintf("-%d days", days)
 
 	// Collect IDs fully before any further DB ops on this connection.
-	// Require publish-old AND fetch-old so newly imported historical items survive.
+	// Effective days: feed override when set, else global default.
+	// julianday diff avoids building dynamic "now','-N days'" modifiers.
 	rows, err := r.DB.QueryContext(ctx, `
-		SELECT id FROM articles
-		WHERE is_starred = 0
-		  AND date(COALESCE(published_at, fetched_at)) < date('now', ?)
-		  AND date(fetched_at) < date('now', ?)`, mod, mod)
+		SELECT a.id
+		FROM articles a
+		JOIN feeds f ON f.id = a.feed_id
+		WHERE a.is_starred = 0
+		  AND (julianday('now') - julianday(date(COALESCE(a.published_at, a.fetched_at)))) >
+		      CASE
+		        WHEN f.keep_articles_days >= 7 AND f.keep_articles_days <= 365
+		          THEN f.keep_articles_days
+		        ELSE ?
+		      END
+		  AND (julianday('now') - julianday(date(a.fetched_at))) >
+		      CASE
+		        WHEN f.keep_articles_days >= 7 AND f.keep_articles_days <= 365
+		          THEN f.keep_articles_days
+		        ELSE ?
+		      END`, globalDays, globalDays)
 	if err != nil {
 		return 0, fmt.Errorf("purge select: %w", err)
 	}

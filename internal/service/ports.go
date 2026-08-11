@@ -20,6 +20,7 @@ type FeedStore interface {
 	SetPaused(ctx context.Context, feedID string, paused bool) error
 	SetTitle(ctx context.Context, feedID, title string) error
 	SetRefreshInterval(ctx context.Context, feedID string, minutes int) error
+	SetKeepArticlesDays(ctx context.Context, feedID string, days int) error
 	SetNsfw(ctx context.Context, feedID string, nsfw bool) error
 	SetSiteURL(ctx context.Context, feedID, siteURL string) error
 	SetFaviconURL(ctx context.Context, feedID, faviconURL string) error
@@ -53,6 +54,8 @@ type FulltextFetcher interface {
 type FolderStore interface {
 	List(ctx context.Context) ([]model.Folder, error)
 	Create(ctx context.Context, name string, parentID *string) (model.Folder, error)
+	// FindByNameAndParent returns sql.ErrNoRows when no match (for OPML merge).
+	FindByNameAndParent(ctx context.Context, name string, parentID *string) (model.Folder, error)
 	Get(ctx context.Context, folderID string) (model.Folder, error)
 	Rename(ctx context.Context, folderID, name string) error
 	SetNsfw(ctx context.Context, folderID string, nsfw bool) error

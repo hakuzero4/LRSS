@@ -49,6 +49,44 @@ func (r *FolderRepo) List(ctx context.Context) ([]model.Folder, error) {
 	return out, rows.Err()
 }
 
+// FindByNameAndParent finds a folder with the given display name under parent.
+// parentID nil/empty means root. Name match is case-insensitive (COLLATE NOCASE).
+// Returns sql.ErrNoRows when not found.
+func (r *FolderRepo) FindByNameAndParent(ctx context.Context, name string, parentID *string) (model.Folder, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return model.Folder{}, sql.ErrNoRows
+	}
+	var row *sql.Row
+	if parentID == nil || strings.TrimSpace(*parentID) == "" {
+		row = r.DB.QueryRowContext(ctx, `
+			SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
+			FROM folders
+			WHERE name = ? COLLATE NOCASE AND parent_id IS NULL
+			ORDER BY sort_order ASC, created_at ASC
+			LIMIT 1`, name)
+	} else {
+		row = r.DB.QueryRowContext(ctx, `
+			SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
+			FROM folders
+			WHERE name = ? COLLATE NOCASE AND parent_id = ?
+			ORDER BY sort_order ASC, created_at ASC
+			LIMIT 1`, name, strings.TrimSpace(*parentID))
+	}
+	var f model.Folder
+	var parent sql.NullString
+	var nsfw int
+	if err := row.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &nsfw, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return model.Folder{}, sql.ErrNoRows
+		}
+		return model.Folder{}, fmt.Errorf("find folder by name: %w", err)
+	}
+	f.ParentID = strPtr(parent)
+	f.IsNsfw = nsfw != 0
+	return f, nil
+}
+
 // Get loads one folder by id.
 func (r *FolderRepo) Get(ctx context.Context, folderID string) (model.Folder, error) {
 	row := r.DB.QueryRowContext(ctx, `

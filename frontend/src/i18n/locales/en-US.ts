@@ -397,7 +397,12 @@ export default {
       edit: "Edit",
       editName: "Rename",
       editTitle: "Edit subscription",
-      editDesc: "Change name, interval, folder, pause, and sensitive flag.",
+      editDesc: "Change name, interval, retention, folder, pause, and sensitive flag.",
+      keepDaysPerFeed: "Keep articles (days)",
+      keepDaysPerFeedDesc:
+        "Only non-starred articles for this feed. “Use global” follows the retention setting below.",
+      keepDaysDefault: "Use global ({n})",
+      keepDaysCustom: "{n}",
       renameTitle: "Rename subscription",
       renameDesc: "Custom names are not overwritten by the remote feed title.",
       renameLabel: "Display name",

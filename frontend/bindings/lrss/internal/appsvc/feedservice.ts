@@ -120,6 +120,14 @@ export function RenameFolder(id: string, name: string): $CancellablePromise<void
 }
 
 /**
+ * SetFeedKeepArticlesDays sets per-feed article retention days.
+ * 0 = use global UIPrefs keepArticlesDays; otherwise clamped to [7, 365].
+ */
+export function SetFeedKeepArticlesDays(id: string, days: number): $CancellablePromise<void> {
+    return $Call.ByID(892312109, id, days);
+}
+
+/**
  * SetFeedNsfw marks or unmarks a feed as sensitive (NSFW).
  */
 export function SetFeedNsfw(id: string, nsfw: boolean): $CancellablePromise<void> {

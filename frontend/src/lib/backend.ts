@@ -66,6 +66,14 @@ export function mapFeed(f: any) {
     typeof intervalRaw === "number" && Number.isFinite(intervalRaw)
       ? Math.max(0, Math.floor(intervalRaw))
       : 0;
+  const keepRaw = f.keepArticlesDays ?? f.KeepArticlesDays ?? 0;
+  let keepDays =
+    typeof keepRaw === "number" && Number.isFinite(keepRaw)
+      ? Math.floor(keepRaw)
+      : 0;
+  if (keepDays < 0) keepDays = 0;
+  if (keepDays > 0 && keepDays < 7) keepDays = 7;
+  if (keepDays > 365) keepDays = 365;
   const lastErr = f.lastError ?? f.LastError;
   return {
     id: f.id,
@@ -78,6 +86,7 @@ export function mapFeed(f: any) {
     lastFetchedAt: f.lastFetchedAt ?? f.LastFetchedAt ?? "",
     isPaused: !!(f.isPaused ?? f.IsPaused),
     refreshIntervalMinutes: interval,
+    keepArticlesDays: keepDays,
     lastError: typeof lastErr === "string" && lastErr.trim() ? lastErr.trim() : undefined,
     isNsfw: !!(f.isNsfw ?? f.IsNsfw),
   };

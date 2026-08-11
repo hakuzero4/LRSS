@@ -25,7 +25,8 @@ type OPMLImportResult struct {
 }
 
 // ImportOPML parses OPML XML, creates folders/feeds, optionally refreshes new feeds.
-// Existing feed URLs are skipped (merge).
+// Existing feed URLs are skipped (merge). Folders with the same name under the same
+// parent are reused (case-insensitive) so re-import does not duplicate the tree.
 //
 // Prefer fetch=false from the UI, then refresh AddedFeedIDs with progress. When
 // fetch=true, every new feed is refreshed in-process (can take a long time).
@@ -99,16 +100,27 @@ func (lib *Library) walkImportOutline(
 		name = "Folder"
 	}
 
-	folder, err := lib.CreateFolder(ctx, name, parentFolderID)
-	if err != nil {
-		res.appendError(fmt.Sprintf("create folder %q: %v", name, err))
-		// Still try children under the parent so import continues.
+	// Reuse existing folder with same name under same parent (OPML re-import).
+	folder, err := lib.Folders.FindByNameAndParent(ctx, name, parentFolderID)
+	if err != nil && err != sql.ErrNoRows {
+		res.appendError(fmt.Sprintf("lookup folder %q: %v", name, err))
 		for i := range o.Children {
 			lib.walkImportOutline(ctx, &o.Children[i], parentFolderID, res, addedIDs)
 		}
 		return
 	}
-	res.FoldersCreated++
+	if err == sql.ErrNoRows {
+		folder, err = lib.CreateFolder(ctx, name, parentFolderID)
+		if err != nil {
+			res.appendError(fmt.Sprintf("create folder %q: %v", name, err))
+			// Still try children under the parent so import continues.
+			for i := range o.Children {
+				lib.walkImportOutline(ctx, &o.Children[i], parentFolderID, res, addedIDs)
+			}
+			return
+		}
+		res.FoldersCreated++
+	}
 	fid := folder.ID
 	for i := range o.Children {
 		lib.walkImportOutline(ctx, &o.Children[i], &fid, res, addedIDs)

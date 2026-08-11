@@ -177,6 +177,12 @@ func (s *FeedService) SetFeedRefreshInterval(id string, minutes int) error {
 	return s.lib.SetFeedRefreshInterval(context.Background(), id, minutes)
 }
 
+// SetFeedKeepArticlesDays sets per-feed article retention days.
+// 0 = use global UIPrefs keepArticlesDays; otherwise clamped to [7, 365].
+func (s *FeedService) SetFeedKeepArticlesDays(id string, days int) error {
+	return s.lib.SetFeedKeepArticlesDays(context.Background(), id, days)
+}
+
 // OPMLImportResult is the Wails-facing import summary (mirrors service.OPMLImportResult).
 type OPMLImportResult struct {
 	FoldersCreated int      `json:"foldersCreated"`

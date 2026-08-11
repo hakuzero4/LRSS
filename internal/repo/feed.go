@@ -24,7 +24,7 @@ func NewFeedRepo(db *sql.DB) *FeedRepo {
 const feedSelect = `
 	SELECT f.id, f.folder_id, f.title, f.site_url, f.feed_url, f.favicon_url,
 	       f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.is_paused,
-	       f.refresh_interval_minutes, f.title_user_set, f.is_nsfw,
+	       f.refresh_interval_minutes, f.keep_articles_days, f.title_user_set, f.is_nsfw,
 	       f.created_at, f.updated_at,
 	       (SELECT COUNT(*) FROM articles a WHERE a.feed_id = f.id AND a.is_read = 0) AS unread
 	FROM feeds f`
@@ -132,16 +132,17 @@ func (r *FeedRepo) Insert(ctx context.Context, f *model.Feed) error {
 	if f.RefreshIntervalMinutes < 0 {
 		f.RefreshIntervalMinutes = 0
 	}
+	f.KeepArticlesDays = NormalizeKeepArticlesDays(f.KeepArticlesDays)
 	_, err := r.DB.ExecContext(ctx, `
 		INSERT INTO feeds (
 			id, folder_id, title, site_url, feed_url, favicon_url,
 			etag, last_modified, last_fetched_at, last_error, is_paused,
-			refresh_interval_minutes, title_user_set, is_nsfw,
+			refresh_interval_minutes, keep_articles_days, title_user_set, is_nsfw,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		f.ID, nullStr(f.FolderID), f.Title, nullStr(f.SiteURL), f.FeedURL, nullStr(f.FaviconURL),
 		nullStr(f.ETag), nullStr(f.LastModified), nullStr(f.LastFetchedAt), nullStr(f.LastError),
-		boolToInt(f.IsPaused), f.RefreshIntervalMinutes, boolToInt(f.TitleUserSet), boolToInt(f.IsNsfw),
+		boolToInt(f.IsPaused), f.RefreshIntervalMinutes, f.KeepArticlesDays, boolToInt(f.TitleUserSet), boolToInt(f.IsNsfw),
 		f.CreatedAt, f.UpdatedAt,
 	)
 	if err != nil {
@@ -344,6 +345,37 @@ func (r *FeedRepo) SetRefreshInterval(ctx context.Context, feedID string, minute
 	return nil
 }
 
+// NormalizeKeepArticlesDays: 0 = follow global; else clamp to [7, 365].
+func NormalizeKeepArticlesDays(days int) int {
+	if days <= 0 {
+		return 0
+	}
+	if days < 7 {
+		return 7
+	}
+	if days > 365 {
+		return 365
+	}
+	return days
+}
+
+// SetKeepArticlesDays sets per-feed retention days (0 = use global UIPrefs).
+func (r *FeedRepo) SetKeepArticlesDays(ctx context.Context, feedID string, days int) error {
+	days = NormalizeKeepArticlesDays(days)
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE feeds SET keep_articles_days = ?, updated_at = ? WHERE id = ?`,
+		days, now, feedID)
+	if err != nil {
+		return fmt.Errorf("set keep articles days: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feed not found: %s", feedID)
+	}
+	return nil
+}
+
 // DeleteAll removes every feed (articles cascade via FK). Clears articles_fts first
 // because FTS is application-synced, not FK-linked. Returns the number of feeds removed.
 func (r *FeedRepo) DeleteAll(ctx context.Context) (int, error) {
@@ -409,7 +441,7 @@ func scanFeed(row scannable) (model.Feed, error) {
 	if err := row.Scan(
 		&f.ID, &folder, &f.Title, &site, &f.FeedURL, &fav,
 		&etag, &lastMod, &lastFetch, &lastErr, &paused,
-		&f.RefreshIntervalMinutes, &titleUserSet, &nsfw,
+		&f.RefreshIntervalMinutes, &f.KeepArticlesDays, &titleUserSet, &nsfw,
 		&f.CreatedAt, &f.UpdatedAt, &f.UnreadCount,
 	); err != nil {
 		return model.Feed{}, err

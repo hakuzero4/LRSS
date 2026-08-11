@@ -29,6 +29,9 @@ type Feed struct {
 	// RefreshIntervalMinutes is per-feed auto-refresh interval.
 	// 0 means use the global LibraryConfig default.
 	RefreshIntervalMinutes int `json:"refreshIntervalMinutes"`
+	// KeepArticlesDays is per-feed retention for non-starred articles.
+	// 0 means use the global UIPrefs keepArticlesDays; otherwise [7, 365].
+	KeepArticlesDays int `json:"keepArticlesDays"`
 	// TitleUserSet is true when the user renamed the feed; refresh must not overwrite title.
 	TitleUserSet bool `json:"titleUserSet"`
 	// IsNsfw marks a sensitive feed. When UIPrefs.nsfwMode is false, UI hides this feed.

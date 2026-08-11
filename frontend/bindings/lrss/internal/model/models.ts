@@ -57,6 +57,12 @@ export interface Feed {
     "refreshIntervalMinutes": number;
 
     /**
+     * KeepArticlesDays is per-feed retention for non-starred articles.
+     * 0 means use the global UIPrefs keepArticlesDays; otherwise [7, 365].
+     */
+    "keepArticlesDays": number;
+
+    /**
      * TitleUserSet is true when the user renamed the feed; refresh must not overwrite title.
      */
     "titleUserSet": boolean;

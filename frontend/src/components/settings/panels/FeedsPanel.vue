@@ -55,6 +55,7 @@ const {
   purgeOldArticles,
   renameFeed,
   setFeedRefreshInterval,
+  setFeedKeepArticlesDays,
   setFeedPaused,
   moveFeedToFolder,
   refreshOneFeed,
@@ -77,6 +78,9 @@ const purging = ref(false);
 
 /** Interval presets (minutes). 0 = follow global default. */
 const INTERVAL_OPTIONS = [0, 5, 15, 30, 60, 120, 180] as const;
+
+/** Keep-days presets. 0 = follow global keepArticlesDays. */
+const KEEP_DAYS_OPTIONS = [0, 7, 14, 30, 60, 90, 180, 365] as const;
 
 const feedFilter = ref("");
 
@@ -112,6 +116,17 @@ function intervalOptionLabel(minutes: number): string {
     return t("settings.feeds.intervalDefault", { n: globalIntervalLabel.value });
   }
   return t("settings.feeds.intervalCustom", { n: formatIntervalMinutes(minutes) });
+}
+
+const globalKeepDaysLabel = computed(() =>
+  t("common.days", { n: settings.keepArticlesDays }),
+);
+
+function keepDaysOptionLabel(days: number): string {
+  if (days === 0) {
+    return t("settings.feeds.keepDaysDefault", { n: globalKeepDaysLabel.value });
+  }
+  return t("settings.feeds.keepDaysCustom", { n: t("common.days", { n: days }) });
 }
 
 function lastUpdatedLabel(feed: Feed): string {
@@ -203,6 +218,7 @@ const editOpen = ref(false);
 const editFeedId = ref<string | null>(null);
 const editTitle = ref("");
 const editInterval = ref("0");
+const editKeepDays = ref("0");
 const editFolderId = ref("none");
 const editPaused = ref(false);
 const editNsfw = ref(false);
@@ -220,6 +236,7 @@ function openEdit(feed: Feed) {
   editFeedId.value = feed.id;
   editTitle.value = feed.title;
   editInterval.value = String(feed.refreshIntervalMinutes ?? 0);
+  editKeepDays.value = String(feed.keepArticlesDays ?? 0);
   editFolderId.value = feed.folderId ?? "none";
   editPaused.value = !!feed.isPaused;
   editNsfw.value = !!feed.isNsfw;
@@ -246,6 +263,10 @@ async function confirmEdit() {
     const minutes = Math.max(0, Math.floor(Number(editInterval.value) || 0));
     if (minutes !== (current.refreshIntervalMinutes ?? 0)) {
       await setFeedRefreshInterval(id, minutes);
+    }
+    const keepDays = Math.max(0, Math.floor(Number(editKeepDays.value) || 0));
+    if (keepDays !== (current.keepArticlesDays ?? 0)) {
+      await setFeedKeepArticlesDays(id, keepDays);
     }
     const folder = editFolderId.value === "none" ? null : editFolderId.value;
     const curFolder = current.folderId ?? null;
@@ -879,6 +900,26 @@ async function confirmClearAll(ev: Event) {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div class="grid gap-1.5">
+            <Label>{{ t("settings.feeds.keepDaysPerFeed") }}</Label>
+            <Select v-model="editKeepDays" :disabled="editSaving">
+              <SelectTrigger class="h-9 w-full text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+                <SelectItem
+                  v-for="opt in KEEP_DAYS_OPTIONS"
+                  :key="opt"
+                  :value="String(opt)"
+                >
+                  {{ keepDaysOptionLabel(opt) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-[11.5px] leading-relaxed text-muted-foreground">
+              {{ t("settings.feeds.keepDaysPerFeedDesc") }}
+            </p>
           </div>
           <div class="grid gap-1.5">
             <Label>{{ t("settings.feeds.folderLabel") }}</Label>
