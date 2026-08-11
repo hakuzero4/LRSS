@@ -26,6 +26,11 @@ func youtubeIDFromItem(item *gofeed.Item, linkURL string) string {
 	return youtubeIDFromURL(linkURL)
 }
 
+// YouTubeVideoID extracts a video id from a YouTube URL (watch, embed, shorts, youtu.be).
+func YouTubeVideoID(raw string) string {
+	return youtubeIDFromURL(raw)
+}
+
 // youtubeIDFromURL extracts a video id from a YouTube URL (watch, embed, shorts, youtu.be).
 func youtubeIDFromURL(raw string) string {
 	raw = strings.TrimSpace(raw)
@@ -128,6 +133,11 @@ func mediaGroupChildAttr(item *gofeed.Item, child, attr string) string {
 		}
 	}
 	return ""
+}
+
+// YouTubeEmbedHTML builds a privacy-friendly embed + optional description.
+func YouTubeEmbedHTML(videoID, description string) string {
+	return buildYouTubeContentHTML(videoID, description)
 }
 
 // buildYouTubeContentHTML builds a privacy-friendly embed + optional description.
