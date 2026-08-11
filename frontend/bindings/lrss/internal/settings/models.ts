@@ -14,6 +14,32 @@ export interface EmbeddingConfig {
 }
 
 /**
+ * LLMConfig is stored under settings keys llm.*.
+ * OpenAI-compatible Chat Completions API (OpenAI, DeepSeek, Ollama, etc.).
+ */
+export interface LLMConfig {
+    "provider": string;
+    "baseUrl": string;
+    "apiKey": string;
+    "model": string;
+
+    /**
+     * 0–2, default 0.3
+     */
+    "temperature": number;
+
+    /**
+     * completion budget; 0 = provider default
+     */
+    "maxTokens": number;
+
+    /**
+     * SystemPrompt is an optional default system message for future features.
+     */
+    "systemPrompt": string;
+}
+
+/**
  * LibraryConfig controls background refresh behaviour.
  */
 export interface LibraryConfig {

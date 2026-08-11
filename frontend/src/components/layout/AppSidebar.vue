@@ -8,6 +8,7 @@ import {
   Folder,
   FolderPlus,
   Inbox,
+  LoaderCircle,
   Plus,
   Settings,
   Sparkles,
@@ -78,6 +79,7 @@ const {
   openAddFeed,
   openAddFeedInFolder,
   openSettings,
+  aiDailyDigest,
   createFolder,
   renameFolder,
   deleteFolder,
@@ -95,6 +97,20 @@ const {
 } = useRssStore();
 
 const nsfwToggling = ref(false);
+const digestBusy = ref(false);
+
+async function onDailyDigest() {
+  if (digestBusy.value) return;
+  digestBusy.value = true;
+  try {
+    await aiDailyDigest(12);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("ai.failed"), { description: msg });
+  } finally {
+    digestBusy.value = false;
+  }
+}
 
 /** Office mode = hide NSFW (nsfwMode false). Button shows current office state. */
 const officeMode = computed(() => !settings.nsfwMode);
@@ -538,6 +554,18 @@ const smartItems = computed(() => [
               </button>
             </li>
           </ul>
+          <button
+            type="button"
+            class="nav-row mt-1 w-full"
+            :disabled="digestBusy"
+            :aria-label="t('ai.dailyDigest')"
+            :title="t('ai.dailyDigestDesc')"
+            @click="onDailyDigest"
+          >
+            <Sparkles class="nav-icon" />
+            <span class="min-w-0 flex-1 truncate text-left">{{ t("ai.dailyDigest") }}</span>
+            <LoaderCircle v-if="digestBusy" class="size-3.5 animate-spin opacity-70" />
+          </button>
         </section>
 
         <section>

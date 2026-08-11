@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"lrss/internal/db"
 	"lrss/internal/job"
+	"lrss/internal/llm"
 	"lrss/internal/notify"
 	"lrss/internal/search"
 	"lrss/internal/service"
@@ -108,6 +110,73 @@ func (s *SettingsService) SetEmbeddingConfig(cfg settings.EmbeddingConfig) error
 
 func containsMask(s string) bool {
 	return len(s) >= 3 && (s == "***" || (len(s) > 6 && s[3:6] == "***"))
+}
+
+// GetLLMConfig returns masked chat LLM settings.
+func (s *SettingsService) GetLLMConfig() (settings.LLMConfig, error) {
+	cfg, err := s.store.LoadLLMConfig(context.Background())
+	if err != nil {
+		return settings.LLMConfig{}, err
+	}
+	return cfg.Masked(), nil
+}
+
+// SetLLMConfig validates and saves chat LLM settings.
+// When the UI sends a masked API key, the previous key is kept.
+func (s *SettingsService) SetLLMConfig(cfg settings.LLMConfig) error {
+	ctx := context.Background()
+	old, err := s.store.LoadLLMConfig(ctx)
+	if err != nil {
+		return err
+	}
+	cfg = cfg.Normalize()
+	if cfg.APIKey == "" || cfg.APIKey == "***" || containsMask(cfg.APIKey) {
+		if old.APIKey != "" && (cfg.APIKey == "" || containsMask(cfg.APIKey)) {
+			cfg.APIKey = old.APIKey
+		}
+	}
+	return s.store.SaveLLMConfig(ctx, cfg)
+}
+
+// TestLLMConfig tries a minimal chat completion with the given config
+// (or saved config if fields are empty / key is masked). Returns a short reply snippet.
+func (s *SettingsService) TestLLMConfig(cfg settings.LLMConfig) (string, error) {
+	ctx := context.Background()
+	saved, err := s.store.LoadLLMConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	cfg = cfg.Normalize()
+	// Merge blanks from saved so the UI can test without re-typing the key.
+	if cfg.Provider == "" || cfg.Provider == settings.LLMProviderDisabled {
+		if saved.IsConfigured() {
+			cfg = saved
+		}
+	}
+	if cfg.APIKey == "" || cfg.APIKey == "***" || containsMask(cfg.APIKey) {
+		cfg.APIKey = saved.APIKey
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		cfg.BaseURL = saved.BaseURL
+	}
+	if strings.TrimSpace(cfg.Model) == "" {
+		cfg.Model = saved.Model
+	}
+	if cfg.Provider == "" || cfg.Provider == settings.LLMProviderDisabled {
+		cfg.Provider = settings.LLMProviderOpenAICompatible
+	}
+	cfg = cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		return "", err
+	}
+	if !cfg.IsConfigured() {
+		return "", fmt.Errorf("llm not configured")
+	}
+	cli, err := llm.NewClient(cfg)
+	if err != nil {
+		return "", err
+	}
+	return cli.TestConnection(ctx)
 }
 
 // GetSearchConfig returns search mode settings.

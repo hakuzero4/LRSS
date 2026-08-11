@@ -5,9 +5,14 @@ import {
   ExternalLink,
   FileCode2,
   Focus,
+  Languages,
   LoaderCircle,
+  MessageCircleQuestion,
   Newspaper,
+  ShieldAlert,
+  Sparkles,
   Star,
+  Tags,
 } from "@lucide/vue";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -21,6 +26,17 @@ import {
 } from "@/lib/readingSettings";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -43,12 +59,19 @@ const {
   backendReady,
   zenMode,
   toggleZenMode,
+  aiPanel,
+  aiSummarize,
+  aiTranslate,
+  aiAsk,
+  aiSuggest,
+  aiClassify,
 } = useRssStore();
 
 const scrollPaneRef = ref<HTMLElement | null>(null);
 /** Avoid repeated mark-read while sitting at the bottom. */
 const scrollEndMarkedForId = ref<string | null>(null);
 const fetchingFull = ref(false);
+const aiBusy = computed(() => aiPanel.busy);
 
 /**
  * Deck / standfirst under the title.
@@ -110,6 +133,47 @@ async function onFetchFullContent() {
   } finally {
     fetchingFull.value = false;
   }
+}
+
+async function runAI(action: () => Promise<void>) {
+  try {
+    await action();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("ai.failed"), { description: msg });
+  }
+}
+
+function onSummarize() {
+  const id = selectedArticle.value?.id;
+  if (!id) return;
+  void runAI(() => aiSummarize(id));
+}
+
+function onTranslate(lang: string) {
+  const id = selectedArticle.value?.id;
+  if (!id) return;
+  void runAI(() => aiTranslate(id, lang));
+}
+
+function onAsk() {
+  const id = selectedArticle.value?.id;
+  if (!id) return;
+  const q = window.prompt(t("ai.askPrompt"), t("ai.askDefault"));
+  if (q === null) return;
+  void runAI(() => aiAsk(id, q));
+}
+
+function onSuggest() {
+  const id = selectedArticle.value?.id;
+  if (!id) return;
+  void runAI(() => aiSuggest(id));
+}
+
+function onClassify() {
+  const id = selectedArticle.value?.id;
+  if (!id) return;
+  void runAI(() => aiClassify(id));
 }
 
 /** Intercept in-body links so they honor openLinksInBrowser (never leave the app shell). */
@@ -234,6 +298,68 @@ watch(
                 {{ selectedArticle.read ? t("article.markUnread") : t("article.markRead") }}
               </TooltipContent>
             </Tooltip>
+
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      :class="
+                        aiPanel.open || aiBusy
+                          ? 'text-primary bg-primary/10'
+                          : 'text-muted-foreground'
+                      "
+                      :disabled="!backendReady || aiBusy"
+                      :aria-label="t('ai.menu')"
+                    >
+                      <LoaderCircle
+                        v-if="aiBusy"
+                        class="size-4 animate-spin"
+                      />
+                      <Sparkles v-else class="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>{{ t("ai.menu") }}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" class="w-52">
+                <DropdownMenuLabel>{{ t("ai.menu") }}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem @click="onSummarize">
+                  <Sparkles class="mr-2 size-3.5" />
+                  {{ t("ai.summarize") }}
+                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Languages class="mr-2 size-3.5" />
+                    {{ t("ai.translate") }}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem @click="onTranslate('zh-CN')">
+                      {{ t("ai.langZh") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem @click="onTranslate('en')">
+                      {{ t("ai.langEn") }}
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuItem @click="onAsk">
+                  <MessageCircleQuestion class="mr-2 size-3.5" />
+                  {{ t("ai.ask") }}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem @click="onSuggest">
+                  <Tags class="mr-2 size-3.5" />
+                  {{ t("ai.suggest") }}
+                </DropdownMenuItem>
+                <DropdownMenuItem @click="onClassify">
+                  <ShieldAlert class="mr-2 size-3.5" />
+                  {{ t("ai.classify") }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <Tooltip>
               <TooltipTrigger as-child>

@@ -39,6 +39,13 @@ export function GetEmbeddingConfig(): $CancellablePromise<settings$0.EmbeddingCo
 }
 
 /**
+ * GetLLMConfig returns masked chat LLM settings.
+ */
+export function GetLLMConfig(): $CancellablePromise<settings$0.LLMConfig> {
+    return $Call.ByID(3544433808);
+}
+
+/**
  * GetLibraryConfig returns auto-refresh settings.
  */
 export function GetLibraryConfig(): $CancellablePromise<settings$0.LibraryConfig> {
@@ -105,6 +112,14 @@ export function SetEmbeddingConfig(cfg: settings$0.EmbeddingConfig): $Cancellabl
 }
 
 /**
+ * SetLLMConfig validates and saves chat LLM settings.
+ * When the UI sends a masked API key, the previous key is kept.
+ */
+export function SetLLMConfig(cfg: settings$0.LLMConfig): $CancellablePromise<void> {
+    return $Call.ByID(1617502588, cfg);
+}
+
+/**
  * SetLibraryConfig validates (clamps interval) and saves library settings.
  */
 export function SetLibraryConfig(cfg: settings$0.LibraryConfig): $CancellablePromise<void> {
@@ -124,6 +139,14 @@ export function SetSearchConfig(cfg: settings$0.SearchConfig): $CancellablePromi
  */
 export function SetUIPrefs(cfg: settings$0.UIPrefs): $CancellablePromise<void> {
     return $Call.ByID(3151085653, cfg);
+}
+
+/**
+ * TestLLMConfig tries a minimal chat completion with the given config
+ * (or saved config if fields are empty / key is masked). Returns a short reply snippet.
+ */
+export function TestLLMConfig(cfg: settings$0.LLMConfig): $CancellablePromise<string> {
+    return $Call.ByID(2869665982, cfg);
 }
 
 /**

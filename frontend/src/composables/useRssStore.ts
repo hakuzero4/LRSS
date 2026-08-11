@@ -56,6 +56,135 @@ const refreshing = ref(false);
 const backendReady = ref(false);
 const bootstrapError = ref("");
 
+/** Right-side AI result panel (summarize / translate / ask / digest / …). */
+export type AIPanelState = {
+  open: boolean;
+  busy: boolean;
+  title: string;
+  markdown: string;
+  feature: string;
+  model: string;
+  cached: boolean;
+  folderId: string;
+  folderName: string;
+  verdict: string;
+};
+
+const aiPanel = reactive<AIPanelState>({
+  open: false,
+  busy: false,
+  title: "",
+  markdown: "",
+  feature: "",
+  model: "",
+  cached: false,
+  folderId: "",
+  folderName: "",
+  verdict: "",
+});
+
+function closeAIPanel() {
+  aiPanel.open = false;
+  aiPanel.busy = false;
+}
+
+function openAIPanelShell(title: string, feature: string) {
+  aiPanel.open = true;
+  aiPanel.busy = true;
+  aiPanel.title = title;
+  aiPanel.feature = feature;
+  aiPanel.markdown = "";
+  aiPanel.model = "";
+  aiPanel.cached = false;
+  aiPanel.folderId = "";
+  aiPanel.folderName = "";
+  aiPanel.verdict = "";
+}
+
+function applyAIResult(raw: any, title: string, feature: string) {
+  const r = raw ?? {};
+  aiPanel.open = true;
+  aiPanel.busy = false;
+  aiPanel.title = title;
+  aiPanel.feature = feature;
+  aiPanel.markdown = String(r.markdown ?? r.Markdown ?? "");
+  aiPanel.model = String(r.model ?? r.Model ?? "");
+  aiPanel.cached = !!(r.cached ?? r.Cached);
+  aiPanel.folderId = String(r.folderId ?? r.FolderID ?? "");
+  aiPanel.folderName = String(r.folderName ?? r.FolderName ?? "");
+  aiPanel.verdict = String(r.verdict ?? r.Verdict ?? "");
+}
+
+async function runAIFeature(
+  title: string,
+  feature: string,
+  call: (api: any) => Promise<any>,
+): Promise<void> {
+  openAIPanelShell(title, feature);
+  try {
+    if (!backendReady.value) {
+      throw new Error(t("ai.backendUnavailable"));
+    }
+    const api = await loadAppsvc();
+    if (!api?.AIService) {
+      throw new Error(t("ai.unavailable"));
+    }
+    const raw = await call(api);
+    applyAIResult(raw, title, feature);
+  } catch (e) {
+    aiPanel.busy = false;
+    aiPanel.markdown = "";
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(msg);
+  }
+}
+
+async function aiSummarize(articleId: string) {
+  await runAIFeature(t("ai.summarize"), "summarize", (api) =>
+    api.AIService.Summarize(articleId),
+  );
+}
+
+async function aiTranslate(articleId: string, targetLang: string) {
+  const lang = (targetLang || "zh-CN").trim();
+  await runAIFeature(t("ai.translateTo", { lang }), "translate", (api) =>
+    api.AIService.Translate(articleId, lang),
+  );
+}
+
+async function aiAsk(articleId: string, question: string) {
+  await runAIFeature(t("ai.ask"), "ask", (api) =>
+    api.AIService.Ask(articleId, question ?? ""),
+  );
+}
+
+async function aiDailyDigest(limit = 12) {
+  await runAIFeature(t("ai.dailyDigest"), "digest", (api) =>
+    api.AIService.DailyDigest(limit),
+  );
+}
+
+async function aiSuggest(articleId: string) {
+  await runAIFeature(t("ai.suggest"), "suggest", (api) =>
+    api.AIService.SuggestFolders(articleId),
+  );
+}
+
+async function aiClassify(articleId: string) {
+  await runAIFeature(t("ai.classify"), "classify", (api) =>
+    api.AIService.ClassifyPromo(articleId),
+  );
+}
+
+async function aiApplyFolder(articleId: string, folderId: string) {
+  if (!backendReady.value) throw new Error(t("ai.backendUnavailable"));
+  const api = await loadAppsvc();
+  const fn = api?.AIService?.ApplySuggestedFolder;
+  if (typeof fn !== "function") throw new Error(t("ai.unavailable"));
+  await fn(articleId, folderId);
+  await reloadLibrary();
+}
+
 const settings = reactive<AppSettings>({
   autoRefresh: true,
   refreshIntervalMinutes: 30,
@@ -1750,6 +1879,7 @@ export function useRssStore() {
     addFeedTargetFolderId,
     settingsOpen,
     zenMode,
+    aiPanel,
     refreshing,
     backendReady,
     bootstrapError,
@@ -1774,6 +1904,14 @@ export function useRssStore() {
     closeSettings,
     toggleZenMode,
     setZenMode,
+    closeAIPanel,
+    aiSummarize,
+    aiTranslate,
+    aiAsk,
+    aiDailyDigest,
+    aiSuggest,
+    aiClassify,
+    aiApplyFolder,
     addFeed,
     addFeedFromURL,
     addFeedsFromURLs,

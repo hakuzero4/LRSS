@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { Brain, Loader2 } from "@lucide/vue";
+import { Brain, Loader2, Sparkles } from "@lucide/vue";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,16 @@ type EmbeddingConfig = {
   batchSize: number;
 };
 
+type LLMConfig = {
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  systemPrompt: string;
+};
+
 type Caps = {
   fts: boolean;
   vectorExtension: boolean;
@@ -39,6 +49,16 @@ const form = reactive<EmbeddingConfig>({
   batchSize: 16,
 });
 
+const llmForm = reactive<LLMConfig>({
+  provider: "disabled",
+  baseUrl: "",
+  apiKey: "",
+  model: "",
+  temperature: 0.3,
+  maxTokens: 2048,
+  systemPrompt: "",
+});
+
 const caps = ref<Caps>({
   fts: true,
   vectorExtension: false,
@@ -48,8 +68,12 @@ const caps = ref<Caps>({
 });
 const vectorStatus = ref("");
 const saving = ref(false);
+const llmSaving = ref(false);
+const llmTesting = ref(false);
 const loading = ref(true);
 const enabled = ref(false);
+const llmEnabled = ref(false);
+const llmConfigured = ref(false);
 
 async function loadSettingsModule(): Promise<any> {
   try {
@@ -70,6 +94,20 @@ async function load() {
       enabled.value = cfg.provider === "openai_compatible";
     } else {
       caps.value.reason = t("settings.searchAi.previewReason");
+    }
+    if (Settings?.GetLLMConfig) {
+      const cfg = await Settings.GetLLMConfig();
+      Object.assign(llmForm, {
+        provider: cfg.provider ?? "disabled",
+        baseUrl: cfg.baseUrl ?? cfg.BaseURL ?? "",
+        apiKey: cfg.apiKey ?? cfg.APIKey ?? "",
+        model: cfg.model ?? "",
+        temperature: Number(cfg.temperature ?? cfg.Temperature ?? 0.3),
+        maxTokens: Number(cfg.maxTokens ?? cfg.MaxTokens ?? 2048),
+        systemPrompt: cfg.systemPrompt ?? cfg.SystemPrompt ?? "",
+      });
+      llmEnabled.value = (cfg.provider ?? cfg.Provider) === "openai_compatible";
+      llmConfigured.value = llmEnabled.value && !!(llmForm.model && llmForm.baseUrl);
     }
     if (Settings?.GetSearchCapabilities) {
       caps.value = await Settings.GetSearchCapabilities();
@@ -119,6 +157,67 @@ async function save() {
     toast.error(t("settings.searchAi.saveFailed"), { description: e?.message || String(e) });
   } finally {
     saving.value = false;
+  }
+}
+
+async function saveLLM() {
+  llmSaving.value = true;
+  try {
+    const Settings = await loadSettingsModule();
+    if (!Settings?.SetLLMConfig) {
+      toast.message(t("settings.searchAi.previewMode"), {
+        description: t("settings.searchAi.backendDisconnected"),
+      });
+      return;
+    }
+    const payload = {
+      provider: llmEnabled.value ? "openai_compatible" : "disabled",
+      baseUrl: llmForm.baseUrl,
+      apiKey: llmForm.apiKey,
+      model: llmForm.model,
+      temperature: Number(llmForm.temperature) || 0,
+      maxTokens: Number(llmForm.maxTokens) || 0,
+      systemPrompt: llmForm.systemPrompt,
+    };
+    await Settings.SetLLMConfig(payload);
+    toast.success(t("settings.searchAi.llmSaved"), {
+      description: llmEnabled.value
+        ? t("settings.searchAi.llmSavedEnabled")
+        : t("settings.searchAi.llmSavedDisabled"),
+    });
+    await load();
+  } catch (e: any) {
+    toast.error(t("settings.searchAi.saveFailed"), { description: e?.message || String(e) });
+  } finally {
+    llmSaving.value = false;
+  }
+}
+
+async function testLLM() {
+  llmTesting.value = true;
+  try {
+    const Settings = await loadSettingsModule();
+    if (!Settings?.TestLLMConfig) {
+      toast.message(t("settings.searchAi.previewMode"));
+      return;
+    }
+    const payload = {
+      provider: "openai_compatible",
+      baseUrl: llmForm.baseUrl,
+      apiKey: llmForm.apiKey,
+      model: llmForm.model,
+      temperature: Number(llmForm.temperature) || 0,
+      maxTokens: Number(llmForm.maxTokens) || 16,
+      systemPrompt: llmForm.systemPrompt,
+    };
+    const reply = await Settings.TestLLMConfig(payload);
+    toast.success(t("settings.searchAi.testOk"), {
+      description: typeof reply === "string" ? reply : String(reply ?? ""),
+    });
+  } catch (e: any) {
+    toast.error(t("settings.searchAi.testFailed"), { description: e?.message || String(e) });
+  } finally {
+    llmTesting.value = false;
   }
 }
 
@@ -195,11 +294,123 @@ onMounted(load);
             })
           }}
         </p>
+        <p>
+          {{
+            t("settings.searchAi.llmStatus", {
+              status: llmConfigured ? t("common.enabled") : t("common.notEnabled"),
+            })
+          }}
+        </p>
         <p v-if="caps.reason">{{ caps.reason }}</p>
         <p class="mt-1 font-mono text-[11px] opacity-80">{{ vectorStatus }}</p>
       </template>
     </div>
 
+    <!-- —— LLM (chat) —— -->
+    <SettingsGroup
+      :title="t('settings.searchAi.llmGroup')"
+      :description="t('settings.searchAi.llmGroupDesc')"
+    >
+      <div class="py-2.5">
+        <SettingsRow
+          :title="t('settings.searchAi.enableLlm')"
+          :description="t('settings.searchAi.enableLlmDesc')"
+        >
+          <Switch
+            :checked="llmEnabled"
+            @update:checked="(v: boolean) => (llmEnabled = v)"
+          />
+        </SettingsRow>
+      </div>
+
+      <div class="space-y-3 py-3" :class="!llmEnabled && 'opacity-50 pointer-events-none'">
+        <div class="space-y-1.5">
+          <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.baseUrl") }}</Label>
+          <Input
+            v-model="llmForm.baseUrl"
+            placeholder="https://api.openai.com/v1"
+            class="h-9 text-[13px]"
+          />
+        </div>
+        <div class="space-y-1.5">
+          <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.apiKey") }}</Label>
+          <Input
+            v-model="llmForm.apiKey"
+            type="password"
+            placeholder="sk-…（本地模型可留空）"
+            class="h-9 text-[13px]"
+            autocomplete="off"
+          />
+        </div>
+        <div class="space-y-1.5">
+          <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.llmModel") }}</Label>
+          <Input
+            v-model="llmForm.model"
+            :placeholder="t('settings.searchAi.llmModelPlaceholder')"
+            class="h-9 text-[13px]"
+          />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.temperature") }}</Label>
+            <Input
+              v-model.number="llmForm.temperature"
+              type="number"
+              min="0"
+              max="2"
+              step="0.1"
+              class="h-9 text-[13px]"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.maxTokens") }}</Label>
+            <Input
+              v-model.number="llmForm.maxTokens"
+              type="number"
+              min="0"
+              max="128000"
+              class="h-9 text-[13px]"
+            />
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <Label class="text-[12px] text-muted-foreground">{{ t("settings.searchAi.systemPrompt") }}</Label>
+          <textarea
+            v-model="llmForm.systemPrompt"
+            rows="3"
+            :placeholder="t('settings.searchAi.systemPromptPlaceholder')"
+            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 py-3">
+        <Button size="sm" :disabled="llmSaving" @click="saveLLM">
+          <Sparkles class="mr-1.5 size-3.5" />
+          {{ llmSaving ? t("settings.searchAi.saving") : t("settings.searchAi.saveConfig") }}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          :disabled="!llmEnabled || llmTesting"
+          @click="testLLM"
+        >
+          <Loader2 v-if="llmTesting" class="mr-1.5 size-3.5 animate-spin" />
+          {{ llmTesting ? t("settings.searchAi.testing") : t("settings.searchAi.testConnection") }}
+        </Button>
+      </div>
+    </SettingsGroup>
+
+    <SettingsGroup :title="t('settings.searchAi.llmNotesTitle')">
+      <div class="space-y-2 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
+        <p>{{ t("settings.searchAi.llmNoteCompat") }}</p>
+        <p>{{ t("settings.searchAi.llmNoteSeparate") }}</p>
+        <p>{{ t("settings.searchAi.llmNoteRoadmap") }}</p>
+        <p>{{ t("settings.searchAi.llmNotePrivacy") }}</p>
+      </div>
+    </SettingsGroup>
+
+    <!-- —— Embedding (vector) —— -->
     <SettingsGroup
       :title="t('settings.searchAi.vectorGroup')"
       :description="t('settings.searchAi.vectorGroupDesc')"

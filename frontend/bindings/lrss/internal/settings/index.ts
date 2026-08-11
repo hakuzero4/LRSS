@@ -3,6 +3,7 @@
 
 export type {
     EmbeddingConfig,
+    LLMConfig,
     LibraryConfig,
     SearchConfig,
     UIPrefs

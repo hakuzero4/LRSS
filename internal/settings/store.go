@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// Keys for embedding / search.
+// Keys for embedding / search / LLM.
 const (
 	KeyEmbeddingProvider   = "embedding.provider"
 	KeyEmbeddingBaseURL    = "embedding.base_url"
@@ -19,6 +19,14 @@ const (
 	KeySearchMode          = "search.mode"
 	KeySearchVectorTopK    = "search.vector_top_k"
 	KeySearchFTSLimit      = "search.fts_limit"
+
+	KeyLLMProvider     = "llm.provider"
+	KeyLLMBaseURL      = "llm.base_url"
+	KeyLLMAPIKey       = "llm.api_key"
+	KeyLLMModel        = "llm.model"
+	KeyLLMTemperature  = "llm.temperature"
+	KeyLLMMaxTokens    = "llm.max_tokens"
+	KeyLLMSystemPrompt = "llm.system_prompt"
 )
 
 // Store reads and writes the settings table.
@@ -186,4 +194,80 @@ func (s *Store) SaveSearchConfig(ctx context.Context, cfg SearchConfig) error {
 		}
 	}
 	return nil
+}
+
+// LoadLLMConfig loads chat LLM settings with defaults.
+func (s *Store) LoadLLMConfig(ctx context.Context) (LLMConfig, error) {
+	cfg := DefaultLLMConfig()
+	if v, err := s.Get(ctx, KeyLLMProvider); err != nil {
+		return cfg, err
+	} else if v != "" {
+		cfg.Provider = v
+	}
+	if v, err := s.Get(ctx, KeyLLMBaseURL); err != nil {
+		return cfg, err
+	} else {
+		cfg.BaseURL = v
+	}
+	if v, err := s.Get(ctx, KeyLLMAPIKey); err != nil {
+		return cfg, err
+	} else {
+		cfg.APIKey = v
+	}
+	if v, err := s.Get(ctx, KeyLLMModel); err != nil {
+		return cfg, err
+	} else {
+		cfg.Model = v
+	}
+	if v, err := s.Get(ctx, KeyLLMTemperature); err != nil {
+		return cfg, err
+	} else if v != "" {
+		var t float64
+		if _, err := fmt.Sscanf(v, "%f", &t); err == nil {
+			cfg.Temperature = t
+		}
+	}
+	if v, err := s.Get(ctx, KeyLLMMaxTokens); err != nil {
+		return cfg, err
+	} else if v != "" {
+		fmt.Sscanf(v, "%d", &cfg.MaxTokens)
+	}
+	if v, err := s.Get(ctx, KeyLLMSystemPrompt); err != nil {
+		return cfg, err
+	} else {
+		cfg.SystemPrompt = v
+	}
+	return cfg.Normalize(), nil
+}
+
+// SaveLLMConfig validates and persists LLM settings.
+func (s *Store) SaveLLMConfig(ctx context.Context, cfg LLMConfig) error {
+	cfg = cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	pairs := []struct {
+		k, v string
+	}{
+		{KeyLLMProvider, cfg.Provider},
+		{KeyLLMBaseURL, cfg.BaseURL},
+		{KeyLLMAPIKey, cfg.APIKey},
+		{KeyLLMModel, cfg.Model},
+		{KeyLLMTemperature, fmt.Sprintf("%g", cfg.Temperature)},
+		{KeyLLMMaxTokens, fmt.Sprintf("%d", cfg.MaxTokens)},
+		{KeyLLMSystemPrompt, cfg.SystemPrompt},
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, p := range pairs {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO settings (key, value) VALUES (?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`, p.k, p.v); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
