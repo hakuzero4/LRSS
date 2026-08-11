@@ -56,25 +56,6 @@ function patchBool(
           />
         </SettingsRow>
       </div>
-      <div class="py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        <p>{{ t("settings.searchAi.translateKeepBoth") }}</p>
-        <p class="mt-1.5">{{ t("settings.aiFeatures.needModelHint") }}</p>
-      </div>
-    </SettingsGroup>
-
-    <SettingsGroup
-      :title="t('settings.aiFeatures.catalogGroup')"
-      :description="t('settings.aiFeatures.catalogGroupDesc')"
-    >
-      <div class="space-y-2.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
-        <p>{{ t("settings.aiFeatures.llmFeatureAutoFetchFull") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureSummarize") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureSelectTranslate") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureTranslate") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureAsk") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureSuggest") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureClassify") }}</p>
-      </div>
     </SettingsGroup>
   </div>
 </template>

@@ -693,12 +693,21 @@
   overflow: hidden;
 }
 
-/* —— Settings → Reading: font size + column width —— */
+/* —— Settings → Reading: font size + column width + family —— */
 .reader-shell {
   width: 100%;
   transition:
     max-width 160ms ease-out,
     font-size 120ms ease-out;
+  /* Optional --reader-font-family set inline from Settings → Reading. */
+  font-family: var(--reader-font-family, inherit);
+}
+
+.reader-shell .reader-title,
+.reader-shell .reader-summary-text,
+.reader-shell .reader-body,
+.reader-shell .bilingual-view {
+  font-family: var(--reader-font-family, inherit);
 }
 
 .reader-shell.reader-width-narrow {

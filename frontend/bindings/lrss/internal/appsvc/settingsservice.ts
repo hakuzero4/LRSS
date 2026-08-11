@@ -95,6 +95,14 @@ export function LLMCacheCount(): $CancellablePromise<number> {
 }
 
 /**
+ * ListSystemFonts returns installed / common font family names for the reading
+ * typography picker (sorted, unique). Safe for CSS font-family selection.
+ */
+export function ListSystemFonts(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2348298818);
+}
+
+/**
  * PurgeOldArticles deletes non-starred articles older than the current keepArticlesDays.
  */
 export function PurgeOldArticles(): $CancellablePromise<$models.PurgeResult> {

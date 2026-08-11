@@ -101,6 +101,12 @@ export interface UIPrefs {
      * sm|md|lg
      */
     "fontSize": string;
+
+    /**
+     * ReaderFontFamily is a CSS font family name for article body/title.
+     * Empty or "system" uses the app default sans stack.
+     */
+    "readerFontFamily": string;
     "showUnreadOnly": boolean;
     "openLinksInBrowser": boolean;
 

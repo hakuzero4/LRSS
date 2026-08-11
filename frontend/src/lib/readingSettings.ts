@@ -29,6 +29,30 @@ export function readerShellClasses(
 }
 
 /**
+ * Build a safe CSS `font-family` value for the article reader.
+ * Empty / system / default → "" (use app stack via CSS inherit).
+ * Rejects characters that could break style injection.
+ */
+export function readerFontFamilyCSS(
+  family: string | null | undefined,
+): string {
+  const raw = String(family ?? "").trim();
+  if (!raw) return "";
+  if (/^(system|default|system-ui)$/i.test(raw)) {
+    // system-ui is a valid CSS generic — allow as a real stack starter.
+    if (raw.toLowerCase() === "system-ui") {
+      return `system-ui, ui-sans-serif, sans-serif`;
+    }
+    return "";
+  }
+  if (/[/\\<>|{};\n\r]/.test(raw) || raw.length > 80) return "";
+  // Escape double quotes in family name for CSS string.
+  const safe = raw.replace(/\\/g, "").replace(/"/g, "");
+  if (!safe) return "";
+  return `"${safe}", ui-sans-serif, system-ui, sans-serif`;
+}
+
+/**
  * Hide read articles when showUnreadOnly is on.
  * Starred collection is exempt (product rule).
  */

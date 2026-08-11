@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 )
 
 // Key for UI preferences JSON blob.
@@ -51,6 +52,9 @@ type UIPrefs struct {
 	Accent                  string `json:"accent"` // blue|purple|teal|orange
 	CompactSidebar          bool   `json:"compactSidebar"`
 	FontSize                string `json:"fontSize"` // sm|md|lg
+	// ReaderFontFamily is a CSS font family name for article body/title.
+	// Empty or "system" uses the app default sans stack.
+	ReaderFontFamily        string `json:"readerFontFamily"`
 	ShowUnreadOnly          bool   `json:"showUnreadOnly"`
 	OpenLinksInBrowser      bool   `json:"openLinksInBrowser"`
 	ReaderWidth             string `json:"readerWidth"`     // narrow|medium|wide|fill
@@ -92,6 +96,7 @@ func DefaultUIPrefs() UIPrefs {
 		Accent:                  "purple",
 		CompactSidebar:          false,
 		FontSize:                "md",
+		ReaderFontFamily:        "", // system / app default
 		ShowUnreadOnly:          false,
 		OpenLinksInBrowser:      true,
 		ReaderWidth:             "medium",
@@ -135,6 +140,19 @@ func (c UIPrefs) Normalize() UIPrefs {
 	}
 	if c.FontSize == "" {
 		c.FontSize = "md"
+	}
+	// Normalize reader font: "system" / whitespace → empty (app default).
+	c.ReaderFontFamily = strings.TrimSpace(c.ReaderFontFamily)
+	if strings.EqualFold(c.ReaderFontFamily, "system") ||
+		strings.EqualFold(c.ReaderFontFamily, "default") {
+		c.ReaderFontFamily = ""
+	}
+	// Reject characters that break CSS font-family injection.
+	if strings.ContainsAny(c.ReaderFontFamily, `/\<>|{};`) {
+		c.ReaderFontFamily = ""
+	}
+	if len(c.ReaderFontFamily) > 80 {
+		c.ReaderFontFamily = ""
 	}
 	if c.ReaderWidth == "" {
 		c.ReaderWidth = "medium"

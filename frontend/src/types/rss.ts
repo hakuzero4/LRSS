@@ -148,6 +148,8 @@ export interface UIPrefs {
   accent: string;
   compactSidebar: boolean;
   fontSize: string; // sm|md|lg
+  /** CSS font family for article body; empty = app default. */
+  readerFontFamily: string;
   showUnreadOnly: boolean;
   openLinksInBrowser: boolean;
   readerWidth: string; // narrow|medium|wide|fill
@@ -204,6 +206,8 @@ export interface AppSettings {
 
   // 阅读
   fontSize: "sm" | "md" | "lg";
+  /** CSS font family for article body/title; empty = app default. */
+  readerFontFamily: string;
   showUnreadOnly: boolean;
   openLinksInBrowser: boolean;
   readerWidth: "narrow" | "medium" | "wide" | "fill";

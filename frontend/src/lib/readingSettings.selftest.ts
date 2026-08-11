@@ -9,6 +9,7 @@ import { openExternalLink } from "./openLink";
 import {
   applyShowUnreadOnly,
   normalizeOpenableUrl,
+  readerFontFamilyCSS,
   readerShellClasses,
   shouldMarkReadOnScrollEnd,
 } from "./readingSettings";
@@ -32,6 +33,17 @@ assert(fill.width === "reader-width-fill", "fill width class");
 const def = readerShellClasses("nope", undefined);
 assert(def.font === "reader-font-md" && def.width === "reader-width-medium", "defaults");
 
+// —— readerFontFamilyCSS (safe CSS injection for body font) ——
+assert(readerFontFamilyCSS("") === "", "empty family");
+assert(readerFontFamilyCSS("system") === "", "system → default stack");
+assert(readerFontFamilyCSS("default") === "", "default → empty");
+assert(readerFontFamilyCSS("system-ui").includes("system-ui"), "system-ui generic ok");
+const arial = readerFontFamilyCSS("Arial");
+assert(arial.includes('"Arial"') && arial.includes("sans-serif"), "Arial stack");
+assert(readerFontFamilyCSS('Bad; color:red') === "", "reject injection");
+assert(readerFontFamilyCSS("Foo{bar}") === "", "reject braces");
+assert(readerFontFamilyCSS("Microsoft YaHei").includes("Microsoft YaHei"), "CJK family");
+
 // CSS must define those class tokens with visible size/width
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const css = readFileSync(join(root, "style.css"), "utf8");
@@ -44,6 +56,7 @@ for (const token of [
   "reader-width-wide",
   "reader-width-fill",
   "--reader-body-size",
+  "--reader-font-family",
 ]) {
   assert(css.includes(token), `css defines ${token}`);
 }
@@ -199,6 +212,7 @@ const store = readFileSync(join(root, "composables/useRssStore.ts"), "utf8");
 const shortcuts = readFileSync(join(root, "composables/useKeyboardShortcuts.ts"), "utf8");
 
 assert(reader.includes("readerShellClasses"), "reader uses readerShellClasses");
+assert(reader.includes("readerFontFamilyCSS"), "reader uses readerFontFamilyCSS");
 assert(reader.includes("shouldMarkReadOnScrollEnd"), "reader uses scroll helper");
 assert(reader.includes("openExternalLink"), "reader uses openExternalLink");
 assert(reader.includes("onBodyClick"), "body click intercept");
@@ -210,9 +224,17 @@ assert(shortcuts.includes("openExternalLink"), "shortcut uses openExternalLink")
 
 // persist UIPrefs includes reading fields
 assert(store.includes("fontSize: settings.fontSize"), "persist fontSize");
+assert(store.includes("readerFontFamily"), "persist/read readerFontFamily");
 assert(store.includes("readerWidth: settings.readerWidth"), "persist readerWidth");
 assert(store.includes("showUnreadOnly: settings.showUnreadOnly"), "persist showUnreadOnly");
 assert(store.includes("openLinksInBrowser: settings.openLinksInBrowser"), "persist openLinks");
 assert(store.includes("markAsReadOnScrollEnd: settings.markAsReadOnScrollEnd"), "persist scroll end");
+
+const readingPanel = readFileSync(
+  join(root, "components/settings/panels/ReadingPanel.vue"),
+  "utf8",
+);
+assert(readingPanel.includes("ListSystemFonts"), "reading panel loads system fonts");
+assert(readingPanel.includes("fontFamilyModel"), "reading panel font picker");
 
 console.log("readingSettings.selftest: OK");

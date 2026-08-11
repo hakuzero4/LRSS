@@ -616,6 +616,7 @@ const settings = reactive<AppSettings>({
   accent: "purple",
   compactSidebar: false,
   fontSize: "md",
+  readerFontFamily: "",
   showUnreadOnly: false,
   openLinksInBrowser: true,
   readerWidth: "medium",
@@ -921,6 +922,7 @@ function buildUIPrefs(): UIPrefs {
     accent: settings.accent,
     compactSidebar: settings.compactSidebar,
     fontSize: settings.fontSize,
+    readerFontFamily: settings.readerFontFamily ?? "",
     showUnreadOnly: settings.showUnreadOnly,
     openLinksInBrowser: settings.openLinksInBrowser,
     readerWidth: settings.readerWidth,
@@ -1010,6 +1012,23 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
   const fontSize = p.fontSize ?? p.FontSize;
   if (typeof fontSize === "string" && FONT_SIZES.has(fontSize)) {
     settings.fontSize = fontSize as AppSettings["fontSize"];
+  }
+
+  const readerFontFamily = p.readerFontFamily ?? p.ReaderFontFamily;
+  if (typeof readerFontFamily === "string") {
+    const fam = readerFontFamily.trim();
+    if (
+      !fam ||
+      fam.toLowerCase() === "system" ||
+      fam.toLowerCase() === "default"
+    ) {
+      settings.readerFontFamily = "";
+    } else if (
+      fam.length <= 80 &&
+      !/[/\\<>|{};\n\r]/.test(fam)
+    ) {
+      settings.readerFontFamily = fam;
+    }
   }
 
   const showUnread = pickBool(p, "showUnreadOnly", "ShowUnreadOnly");
@@ -2293,6 +2312,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     accent: "purple",
     compactSidebar: false,
     fontSize: "md",
+    readerFontFamily: "",
     showUnreadOnly: false,
     openLinksInBrowser: true,
     readerWidth: "medium",

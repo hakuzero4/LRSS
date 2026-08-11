@@ -13,6 +13,7 @@ import (
 	"lrss/internal/search"
 	"lrss/internal/service"
 	"lrss/internal/settings"
+	"lrss/internal/sysfont"
 	"lrss/internal/vector"
 )
 
@@ -197,6 +198,12 @@ func (s *SettingsService) GetLibraryConfig() (settings.LibraryConfig, error) {
 // SetLibraryConfig validates (clamps interval) and saves library settings.
 func (s *SettingsService) SetLibraryConfig(cfg settings.LibraryConfig) error {
 	return s.store.SetLibraryConfig(context.Background(), cfg)
+}
+
+// ListSystemFonts returns installed / common font family names for the reading
+// typography picker (sorted, unique). Safe for CSS font-family selection.
+func (s *SettingsService) ListSystemFonts() []string {
+	return sysfont.List()
 }
 
 // GetUIPrefs returns UI / reading / retention preferences (defaults when unset).

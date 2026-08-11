@@ -24,6 +24,7 @@ import { useRssStore } from "@/composables/useRssStore";
 import { formatAbsolute, plainText } from "@/lib/format";
 import { openExternalLink } from "@/lib/openLink";
 import {
+  readerFontFamilyCSS,
   readerShellClasses,
   shouldMarkReadOnScrollEnd,
 } from "@/lib/readingSettings";
@@ -177,6 +178,13 @@ const hasBody = computed(() => {
 const readerShellClass = computed(() => {
   const { className } = readerShellClasses(settings.fontSize, settings.readerWidth);
   return className;
+});
+
+/** Inline CSS vars: article font family from Settings → Reading. */
+const readerShellStyle = computed(() => {
+  const fam = readerFontFamilyCSS(settings.readerFontFamily);
+  if (!fam) return undefined;
+  return { "--reader-font-family": fam } as Record<string, string>;
 });
 
 async function openOriginal() {
@@ -796,8 +804,10 @@ watch(
               readerShellClass,
             )
           "
+          :style="readerShellStyle"
           :data-font-size="settings.fontSize"
           :data-reader-width="settings.readerWidth"
+          :data-reader-font="settings.readerFontFamily || 'system'"
           @mouseup="onReaderMouseUp"
         >
           <header class="reader-header-block">
