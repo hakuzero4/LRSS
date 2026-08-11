@@ -2327,15 +2327,52 @@ async function resetUIPrefsToDefaults(): Promise<void> {
 
 /** Download a small diagnostics JSON for support. */
 async function exportDiagnostics(): Promise<void> {
-  const payload = {
+  const payload: Record<string, unknown> = {
     exportedAt: new Date().toISOString(),
     backendReady: backendReady.value,
     bootstrapError: bootstrapError.value,
     feedCount: feeds.value.length,
     folderCount: folders.value.length,
     smartCounts: { ...smartCounts },
+    collectionId: collectionId.value,
+    selectedArticleId: selectedArticleId.value,
     settings: JSON.parse(JSON.stringify(settings)),
   };
+  if (settings.developerMode) {
+    payload.developer = true;
+    payload.userAgent =
+      typeof navigator !== "undefined" ? navigator.userAgent : "";
+    payload.locale =
+      typeof navigator !== "undefined" ? navigator.language : "";
+    payload.zenMode = zenMode.value;
+    payload.summaryStream = { ...summaryStream };
+    payload.translateView = {
+      articleId: translateView.articleId,
+      active: translateView.active,
+      busy: translateView.busy,
+      pairCount: translateView.pairs.length,
+      error: translateView.error,
+    };
+    try {
+      const api = await loadAppsvc();
+      if (typeof api?.SettingsService?.LLMCacheCount === "function") {
+        payload.llmCacheCount = await api.SettingsService.LLMCacheCount();
+      }
+      if (typeof api?.SettingsService?.GetSearchCapabilities === "function") {
+        payload.searchCapabilities =
+          await api.SettingsService.GetSearchCapabilities();
+      }
+      if (typeof api?.AIService?.IsLLMConfigured === "function") {
+        payload.llmConfigured = await api.AIService.IsLLMConfigured();
+      }
+    } catch (e) {
+      payload.developerProbeError =
+        e instanceof Error ? e.message : String(e);
+    }
+    if (settings.developerMode) {
+      console.info("[lrss] diagnostics export", payload);
+    }
+  }
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json;charset=utf-8",
   });

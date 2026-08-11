@@ -9,6 +9,7 @@ import (
 	"lrss/internal/appsvc"
 	"lrss/internal/db"
 	"lrss/internal/job"
+	"lrss/internal/llm"
 	"lrss/internal/notify"
 	"lrss/internal/repo"
 	"lrss/internal/rss"
@@ -49,6 +50,13 @@ func main() {
 	settingsAPI := appsvc.NewSettings(store, searchSvc, embedWorker)
 	searchAPI := appsvc.NewSearch(searchSvc)
 
+	// Load UI prefs early for hardware acceleration / quit cleanup.
+	uiPrefs, err := store.LoadUIPrefs(ctx)
+	if err != nil {
+		log.Printf("load UI prefs at startup: %v", err)
+		uiPrefs = settings.DefaultUIPrefs()
+	}
+
 	// Desktop notifications (Windows toast / macOS / Linux).
 	ns := notifications.New()
 	notifier := notify.New(ns, store)
@@ -70,7 +78,7 @@ func main() {
 	// Delayed retention purge so startup is not contending on SQLite.
 	go runStartupPurge(ctx, library, store)
 
-	app := application.New(application.Options{
+	appOpts := application.Options{
 		Name:        "LRSS",
 		Description: "Local-first RSS reader with optional vector search",
 		Services: []application.Service{
@@ -88,7 +96,17 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
-	})
+	}
+	// Hardware acceleration off → disable GPU compositing (takes effect this launch).
+	if !uiPrefs.HardwareAcceleration {
+		appOpts.Windows.AdditionalBrowserArgs = append(
+			appOpts.Windows.AdditionalBrowserArgs,
+			"--disable-gpu",
+			"--disable-gpu-compositing",
+		)
+		log.Printf("hardware acceleration disabled (WebView2 --disable-gpu)")
+	}
+	app := application.New(appOpts)
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "LRSS",
@@ -113,6 +131,22 @@ func main() {
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
+	}
+
+	// After UI exits: optional AI cache cleanup (Settings → Advanced).
+	quitPrefs, err := store.LoadUIPrefs(context.Background())
+	if err != nil {
+		log.Printf("quit: load UI prefs: %v", err)
+		return
+	}
+	if quitPrefs.ClearCacheOnQuit {
+		cache := &llm.Cache{DB: database.SQL}
+		n, cerr := cache.Clear(context.Background())
+		if cerr != nil {
+			log.Printf("quit: clear LLM cache: %v", cerr)
+		} else {
+			log.Printf("quit: cleared LLM cache (%d rows)", n)
+		}
 	}
 }
 

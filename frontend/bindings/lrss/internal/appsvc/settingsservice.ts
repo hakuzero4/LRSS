@@ -25,6 +25,13 @@ import * as settings$0 from "../settings/models.js";
 import * as $models from "./models.js";
 
 /**
+ * ClearLLMCache wipes AI feature result cache (summarize/translate/etc.).
+ */
+export function ClearLLMCache(): $CancellablePromise<$models.CacheClearResult> {
+    return $Call.ByID(3052885573);
+}
+
+/**
  * EnsureNotificationPermission requests OS notification permission when needed.
  */
 export function EnsureNotificationPermission(): $CancellablePromise<boolean> {
@@ -78,6 +85,13 @@ export function GetUIPrefs(): $CancellablePromise<settings$0.UIPrefs> {
  */
 export function GetVectorStatus(): $CancellablePromise<db$0.VectorStatus> {
     return $Call.ByID(3325615142);
+}
+
+/**
+ * LLMCacheCount returns how many rows are in llm_feature_cache (diagnostics).
+ */
+export function LLMCacheCount(): $CancellablePromise<number> {
+    return $Call.ByID(2097275073);
 }
 
 /**

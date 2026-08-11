@@ -238,6 +238,38 @@ type PurgeResult struct {
 	Deleted int `json:"deleted"`
 }
 
+// CacheClearResult is returned by ClearLLMCache.
+type CacheClearResult struct {
+	Deleted int64 `json:"deleted"`
+}
+
+// ClearLLMCache wipes AI feature result cache (summarize/translate/etc.).
+func (s *SettingsService) ClearLLMCache() (CacheClearResult, error) {
+	if s.search == nil || s.search.SQL == nil {
+		return CacheClearResult{}, fmt.Errorf("database unavailable")
+	}
+	cache := &llm.Cache{DB: s.search.SQL}
+	n, err := cache.Clear(context.Background())
+	if err != nil {
+		return CacheClearResult{}, err
+	}
+	return CacheClearResult{Deleted: n}, nil
+}
+
+// LLMCacheCount returns how many rows are in llm_feature_cache (diagnostics).
+func (s *SettingsService) LLMCacheCount() (int64, error) {
+	if s.search == nil || s.search.SQL == nil {
+		return 0, fmt.Errorf("database unavailable")
+	}
+	var n int64
+	err := s.search.SQL.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM llm_feature_cache`).Scan(&n)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // PurgeOldArticles deletes non-starred articles older than the current keepArticlesDays.
 func (s *SettingsService) PurgeOldArticles() (PurgeResult, error) {
 	if s.library == nil {

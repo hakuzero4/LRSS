@@ -22,6 +22,13 @@ export interface AIResult {
 }
 
 /**
+ * CacheClearResult is returned by ClearLLMCache.
+ */
+export interface CacheClearResult {
+    "deleted": number;
+}
+
+/**
  * ClearAllResult is returned by ClearAllSubscriptions.
  */
 export interface ClearAllResult {

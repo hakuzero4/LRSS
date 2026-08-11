@@ -51,6 +51,19 @@ func (c *Cache) Get(ctx context.Context, key string) (CachedResult, bool, error)
 	return r, true, nil
 }
 
+// Clear deletes all cached feature results. Returns rows removed.
+func (c *Cache) Clear(ctx context.Context) (int64, error) {
+	if c == nil || c.DB == nil {
+		return 0, nil
+	}
+	res, err := c.DB.ExecContext(ctx, `DELETE FROM llm_feature_cache`)
+	if err != nil {
+		return 0, fmt.Errorf("llm cache clear: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // Put upserts a cache row.
 func (c *Cache) Put(ctx context.Context, r CachedResult) error {
 	if c == nil || c.DB == nil {
