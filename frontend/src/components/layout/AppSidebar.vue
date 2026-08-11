@@ -50,6 +50,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -447,6 +450,17 @@ async function onFolderNsfwToggle(folder: FeedFolder) {
   }
 }
 
+/** Folders a feed can be moved into (exclude current; sorted by name). */
+function moveFolderTargets(feed: Feed): FeedFolder[] {
+  const cur = feed.folderId ?? null;
+  return folders.value
+    .filter((f) => f.id !== cur)
+    .slice()
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+}
+
 async function onFeedMove(feed: Feed, folderId: string | null) {
   try {
     await moveFeedToFolder(feed.id, folderId);
@@ -705,16 +719,26 @@ const smartItems = computed(() => [
                       <ContextMenuItem @select="onFeedNsfwToggle(feed)">
                         {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
                       </ContextMenuItem>
-                      <ContextMenuItem @select="onFeedMove(feed, null)">
-                        {{ t("feedMenu.moveTo") }} → {{ t("feedMenu.unfiled") }}
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        v-for="f in folders.filter((x) => x.id !== folder.id)"
-                        :key="f.id"
-                        @select="onFeedMove(feed, f.id)"
-                      >
-                        {{ t("feedMenu.moveTo") }} → {{ f.name }}
-                      </ContextMenuItem>
+                      <ContextMenuSub v-if="folders.length > 0 || feed.folderId">
+                        <ContextMenuSubTrigger>
+                          {{ t("feedMenu.moveTo") }}
+                        </ContextMenuSubTrigger>
+                        <ContextMenuSubContent>
+                          <ContextMenuItem
+                            v-if="feed.folderId"
+                            @select="onFeedMove(feed, null)"
+                          >
+                            {{ t("feedMenu.unfiled") }}
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            v-for="f in moveFolderTargets(feed)"
+                            :key="f.id"
+                            @select="onFeedMove(feed, f.id)"
+                          >
+                            <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+                          </ContextMenuItem>
+                        </ContextMenuSubContent>
+                      </ContextMenuSub>
                       <ContextMenuSeparator />
                       <ContextMenuItem variant="destructive" @select="openDeleteFeed(feed)">
                         {{ t("feedMenu.delete") }}
@@ -780,13 +804,20 @@ const smartItems = computed(() => [
                   <ContextMenuItem @select="onFeedNsfwToggle(feed)">
                     {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
                   </ContextMenuItem>
-                  <ContextMenuItem
-                    v-for="f in folders"
-                    :key="f.id"
-                    @select="onFeedMove(feed, f.id)"
-                  >
-                    {{ t("feedMenu.moveTo") }} → {{ f.name }}
-                  </ContextMenuItem>
+                  <ContextMenuSub v-if="folders.length > 0">
+                    <ContextMenuSubTrigger>
+                      {{ t("feedMenu.moveTo") }}
+                    </ContextMenuSubTrigger>
+                    <ContextMenuSubContent>
+                      <ContextMenuItem
+                        v-for="f in moveFolderTargets(feed)"
+                        :key="f.id"
+                        @select="onFeedMove(feed, f.id)"
+                      >
+                        <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+                      </ContextMenuItem>
+                    </ContextMenuSubContent>
+                  </ContextMenuSub>
                   <ContextMenuSeparator />
                   <ContextMenuItem variant="destructive" @select="openDeleteFeed(feed)">
                     {{ t("feedMenu.delete") }}

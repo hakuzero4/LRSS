@@ -140,6 +140,10 @@ assert(sidebar.includes("feedMenu"), "feed menu i18n");
 assert(sidebar.includes("onFeedRefresh") || sidebar.includes("refreshOneFeed"), "feed refresh");
 assert(sidebar.includes("openDeleteFeed") || sidebar.includes("deleteFeed"), "feed delete");
 assert(sidebar.includes("onFeedMove") || sidebar.includes("moveFeedToFolder"), "feed move");
+assert(
+  sidebar.includes("ContextMenuSub") && sidebar.includes("moveFolderTargets"),
+  "feed move uses submenu",
+);
 assert(css.includes("sidebar-compact"), "css compact");
 
 // search UI
