@@ -89,7 +89,9 @@ export default {
   ai: {
     menu: "AI 助手",
     panelTitle: "AI 结果",
-    summarize: "摘要",
+    summarize: "生成摘要",
+    summarizeStarting: "正在生成摘要…",
+    summarizeDone: "摘要已更新到正文上方",
     translate: "翻译",
     translateTo: "翻译 · {lang}",
     translateAuto: "翻译（跟随界面语言）",

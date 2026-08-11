@@ -13,6 +13,7 @@ import {
   Sparkles,
   Star,
   Tags,
+  TextQuote,
 } from "@lucide/vue";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -71,6 +72,11 @@ const scrollPaneRef = ref<HTMLElement | null>(null);
 const scrollEndMarkedForId = ref<string | null>(null);
 const fetchingFull = ref(false);
 const aiBusy = computed(() => aiPanel.busy);
+const summarizeBusy = computed(
+  () =>
+    summaryStream.busy &&
+    summaryStream.articleId === selectedArticle.value?.id,
+);
 const translateBusy = computed(
   () =>
     translateView.busy &&
@@ -184,10 +190,26 @@ async function runAI(action: () => Promise<void>) {
   }
 }
 
-function onSummarize() {
+/** Manual deck summary (also available when auto-summarize is off). */
+async function onSummarize() {
   const id = selectedArticle.value?.id;
-  if (!id) return;
-  void runAI(() => aiSummarize(id));
+  if (!id) {
+    toast.message(t("ai.failed"), { description: t("article.selectTitle") });
+    return;
+  }
+  if (!backendReady.value) {
+    toast.error(t("ai.backendUnavailable"));
+    return;
+  }
+  if (summarizeBusy.value) return;
+  toast.message(t("ai.summarizeStarting"));
+  try {
+    await aiSummarize(id);
+    toast.success(t("ai.summarizeDone"));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("ai.failed"), { description: msg });
+  }
 }
 
 async function onTranslate(lang?: string) {
@@ -368,6 +390,40 @@ watch(
               </TooltipContent>
             </Tooltip>
 
+            <!-- Summarize: one-click deck summary (works when auto-summarize is off) -->
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  :class="
+                    summarizeBusy ||
+                    (summaryStream.articleId === selectedArticle.id &&
+                      !!summaryStream.text)
+                      ? 'text-primary bg-primary/10'
+                      : 'text-muted-foreground'
+                  "
+                  :disabled="summarizeBusy || !backendReady"
+                  :aria-label="t('ai.summarize')"
+                  @click="onSummarize"
+                >
+                  <LoaderCircle
+                    v-if="summarizeBusy"
+                    class="size-4 animate-spin"
+                  />
+                  <TextQuote v-else class="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {{
+                  summarizeBusy
+                    ? t("ai.summarizeStarting")
+                    : t("ai.summarize")
+                }}
+              </TooltipContent>
+            </Tooltip>
+
             <!-- Translate: direct click (nested Dropdown+Tooltip was swallowing clicks) -->
             <Tooltip>
               <TooltipTrigger as-child>
@@ -456,8 +512,11 @@ watch(
               <DropdownMenuContent align="end" class="w-52">
                 <DropdownMenuLabel>{{ t("ai.menu") }}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem @click="onSummarize">
-                  <Sparkles class="mr-2 size-3.5" />
+                <DropdownMenuItem
+                  :disabled="summarizeBusy"
+                  @click="onSummarize"
+                >
+                  <TextQuote class="mr-2 size-3.5" />
                   {{ t("ai.summarize") }}
                 </DropdownMenuItem>
                 <DropdownMenuItem @click="onAsk">

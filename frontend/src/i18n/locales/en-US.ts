@@ -90,6 +90,8 @@ export default {
     menu: "AI assistant",
     panelTitle: "AI result",
     summarize: "Summarize",
+    summarizeStarting: "Generating summary…",
+    summarizeDone: "Summary updated above the article",
     translate: "Translate",
     translateTo: "Translate · {lang}",
     translateAuto: "Translate (UI language)",
