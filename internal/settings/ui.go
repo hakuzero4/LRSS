@@ -9,6 +9,37 @@ import (
 // Key for UI preferences JSON blob.
 const KeyUIPrefs = "app.ui_prefs"
 
+// ReaderToolbarButtons controls which icons appear in the article reader header.
+// See DefaultReaderToolbarButtons. JSON keys match frontend settings.readerToolbar.
+type ReaderToolbarButtons struct {
+	Zen          bool `json:"zen"`
+	Star         bool `json:"star"`
+	Read         bool `json:"read"`
+	Summarize    bool `json:"summarize"`
+	Translate    bool `json:"translate"`
+	AI           bool `json:"ai"`
+	FetchFull    bool `json:"fetchFull"`
+	Markdown     bool `json:"markdown"`
+	OpenOriginal bool `json:"openOriginal"`
+}
+
+// DefaultReaderToolbarButtons is the out-of-box reader header set:
+// read, summarize, fetch full, markdown, open original.
+// Zen, star, translate, and AI menu stay available in settings but off by default.
+func DefaultReaderToolbarButtons() ReaderToolbarButtons {
+	return ReaderToolbarButtons{
+		Zen:          false,
+		Star:         false,
+		Read:         true,
+		Summarize:    true,
+		Translate:    false,
+		AI:           false,
+		FetchFull:    true,
+		Markdown:     true,
+		OpenOriginal: true,
+	}
+}
+
 // UIPrefs holds frontend UI / reading / retention preferences.
 // JSON keys match the frontend AppSettings fields (camelCase).
 type UIPrefs struct {
@@ -41,6 +72,8 @@ type UIPrefs struct {
 	// TranslateReplaceOriginal: when true, full-article translate overwrites content_html/text.
 	// When false, only the bilingual overlay is shown (no body replace).
 	TranslateReplaceOriginal bool `json:"translateReplaceOriginal"`
+	// ReaderToolbar: which header icons are visible in the article reader.
+	ReaderToolbar ReaderToolbarButtons `json:"readerToolbar"`
 }
 
 // DefaultUIPrefs matches frontend default settings in useRssStore.
@@ -71,6 +104,7 @@ func DefaultUIPrefs() UIPrefs {
 		NsfwMode:                 true, // show all until user enables office hide
 		AutoSummarize:            false,
 		TranslateReplaceOriginal: false, // keep original body; bilingual overlay only
+		ReaderToolbar:            DefaultReaderToolbarButtons(),
 	}
 }
 

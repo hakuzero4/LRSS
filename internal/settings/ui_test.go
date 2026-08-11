@@ -149,4 +149,41 @@ func TestUIPrefs_PartialJSONKeepsDefaults(t *testing.T) {
 	if !cfg.EnableKeyboardShortcuts {
 		t.Fatal("EnableKeyboardShortcuts should stay default true")
 	}
+	// Nested readerToolbar missing from partial JSON → all buttons visible.
+	defTB := settings.DefaultReaderToolbarButtons()
+	if cfg.ReaderToolbar != defTB {
+		t.Fatalf("ReaderToolbar = %+v want default %+v", cfg.ReaderToolbar, defTB)
+	}
+}
+
+func TestUIPrefs_ReaderToolbarRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "t.db")
+	database, err := db.Open(ctx, db.Options{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := settings.NewStore(database.SQL)
+
+	cfg := settings.DefaultUIPrefs()
+	cfg.ReaderToolbar.Summarize = false
+	cfg.ReaderToolbar.Translate = false
+	cfg.ReaderToolbar.AI = false
+	if err := store.SaveUIPrefs(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.LoadUIPrefs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ReaderToolbar.Summarize || got.ReaderToolbar.Translate || got.ReaderToolbar.AI {
+		t.Fatalf("hidden buttons still true: %+v", got.ReaderToolbar)
+	}
+	if !got.ReaderToolbar.Read || !got.ReaderToolbar.FetchFull || !got.ReaderToolbar.OpenOriginal {
+		t.Fatalf("visible buttons lost: %+v", got.ReaderToolbar)
+	}
+	if got.ReaderToolbar.Zen || got.ReaderToolbar.Star {
+		t.Fatalf("default-hidden buttons should stay false when not flipped: %+v", got.ReaderToolbar)
+	}
 }

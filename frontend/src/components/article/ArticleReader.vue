@@ -324,7 +324,7 @@ watch(
 
         <TooltipProvider :delay-duration="300">
           <div class="flex shrink-0 items-center gap-0.5">
-            <Tooltip>
+            <Tooltip v-if="settings.readerToolbar.zen">
               <TooltipTrigger as-child>
                 <Button
                   variant="ghost"
@@ -353,7 +353,7 @@ watch(
               </TooltipContent>
             </Tooltip>
 
-            <Tooltip>
+            <Tooltip v-if="settings.readerToolbar.star">
               <TooltipTrigger as-child>
                 <Button
                   variant="ghost"
@@ -373,7 +373,7 @@ watch(
               </TooltipContent>
             </Tooltip>
 
-            <Tooltip>
+            <Tooltip v-if="settings.readerToolbar.read">
               <TooltipTrigger as-child>
                 <Button
                   variant="ghost"
@@ -391,7 +391,7 @@ watch(
             </Tooltip>
 
             <!-- Summarize: one-click deck summary (works when auto-summarize is off) -->
-            <Tooltip>
+            <Tooltip v-if="settings.readerToolbar.summarize">
               <TooltipTrigger as-child>
                 <Button
                   type="button"
@@ -425,66 +425,68 @@ watch(
             </Tooltip>
 
             <!-- Translate: direct click (nested Dropdown+Tooltip was swallowing clicks) -->
-            <Tooltip>
-              <TooltipTrigger as-child>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  :class="
-                    showBilingual || translateBusy
-                      ? 'text-primary bg-primary/10'
-                      : 'text-muted-foreground'
-                  "
-                  :disabled="translateBusy"
-                  :aria-label="t('ai.translate')"
-                  :aria-pressed="showBilingual"
-                  @click="onTranslateClick"
-                >
-                  <LoaderCircle
-                    v-if="translateBusy"
-                    class="size-4 animate-spin"
-                  />
-                  <Languages v-else class="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {{
-                  showBilingual
-                    ? t("ai.translateShowOriginal")
-                    : t("ai.translate")
-                }}
-              </TooltipContent>
-            </Tooltip>
-            <DropdownMenu>
-              <DropdownMenuTrigger as-child>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  class="-ml-1.5 min-w-5 px-0.5 text-muted-foreground"
-                  :disabled="translateBusy"
-                  :aria-label="t('ai.translateMenu')"
-                >
-                  <span class="text-[10px] font-semibold leading-none">▾</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" class="w-48">
-                <DropdownMenuLabel>{{ t("ai.translate") }}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem @select="() => void onTranslate()">
-                  {{ t("ai.translateAuto") }}
-                </DropdownMenuItem>
-                <DropdownMenuItem @select="() => void onTranslate('zh-CN')">
-                  {{ t("ai.langZh") }}
-                </DropdownMenuItem>
-                <DropdownMenuItem @select="() => void onTranslate('en')">
-                  {{ t("ai.langEn") }}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <template v-if="settings.readerToolbar.translate">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    :class="
+                      showBilingual || translateBusy
+                        ? 'text-primary bg-primary/10'
+                        : 'text-muted-foreground'
+                    "
+                    :disabled="translateBusy"
+                    :aria-label="t('ai.translate')"
+                    :aria-pressed="showBilingual"
+                    @click="onTranslateClick"
+                  >
+                    <LoaderCircle
+                      v-if="translateBusy"
+                      class="size-4 animate-spin"
+                    />
+                    <Languages v-else class="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {{
+                    showBilingual
+                      ? t("ai.translateShowOriginal")
+                      : t("ai.translate")
+                  }}
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    class="-ml-1.5 min-w-5 px-0.5 text-muted-foreground"
+                    :disabled="translateBusy"
+                    :aria-label="t('ai.translateMenu')"
+                  >
+                    <span class="text-[10px] font-semibold leading-none">▾</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" class="w-48">
+                  <DropdownMenuLabel>{{ t("ai.translate") }}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem @select="() => void onTranslate()">
+                    {{ t("ai.translateAuto") }}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem @select="() => void onTranslate('zh-CN')">
+                    {{ t("ai.langZh") }}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem @select="() => void onTranslate('en')">
+                    {{ t("ai.langEn") }}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </template>
 
-            <DropdownMenu>
+            <DropdownMenu v-if="settings.readerToolbar.ai">
               <Tooltip>
                 <TooltipTrigger as-child>
                   <DropdownMenuTrigger as-child>
@@ -535,7 +537,7 @@ watch(
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Tooltip>
+            <Tooltip v-if="settings.readerToolbar.fetchFull">
               <TooltipTrigger as-child>
                 <Button
                   variant="ghost"
@@ -569,7 +571,7 @@ watch(
               </TooltipContent>
             </Tooltip>
 
-            <Tooltip>
+            <Tooltip v-if="settings.readerToolbar.markdown">
               <TooltipTrigger as-child>
                 <Button
                   variant="ghost"
@@ -599,7 +601,7 @@ watch(
               </TooltipContent>
             </Tooltip>
 
-            <Tooltip>
+            <Tooltip v-if="settings.readerToolbar.openOriginal">
               <TooltipTrigger as-child>
                 <Button
                   variant="ghost"

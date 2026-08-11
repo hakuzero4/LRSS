@@ -91,6 +91,47 @@ export interface LibraryConfig {
 }
 
 /**
+ * Which icons appear in the article reader header (Settings → Appearance).
+ * Defaults: read, summarize, fetchFull, markdown, openOriginal on; rest off.
+ */
+export interface ReaderToolbarButtons {
+  zen: boolean;
+  star: boolean;
+  read: boolean;
+  summarize: boolean;
+  translate: boolean;
+  ai: boolean;
+  fetchFull: boolean;
+  markdown: boolean;
+  openOriginal: boolean;
+}
+
+/** Default visible set: read, summarize, fetch full, markdown, open original. */
+export const DEFAULT_READER_TOOLBAR: ReaderToolbarButtons = {
+  zen: false,
+  star: false,
+  read: true,
+  summarize: true,
+  translate: false,
+  ai: false,
+  fetchFull: true,
+  markdown: true,
+  openOriginal: true,
+};
+
+export const READER_TOOLBAR_KEYS = [
+  "zen",
+  "star",
+  "read",
+  "summarize",
+  "translate",
+  "ai",
+  "fetchFull",
+  "markdown",
+  "openOriginal",
+] as const satisfies readonly (keyof ReaderToolbarButtons)[];
+
+/**
  * UI prefs persisted via SettingsService.GetUIPrefs / SetUIPrefs.
  * autoRefresh / refreshIntervalMinutes stay on LibraryConfig and are merged on load.
  * launchAtLogin is UI-only (system API out of scope for S6).
@@ -127,6 +168,8 @@ export interface UIPrefs {
    * Kept for prefs compatibility; no longer overwrites content_html.
    */
   translateReplaceOriginal?: boolean;
+  /** Reader header toolbar button visibility. */
+  readerToolbar: ReaderToolbarButtons;
 }
 
 export interface AppSettings {
@@ -189,4 +232,6 @@ export interface AppSettings {
   autoSummarize: boolean;
   /** @deprecated unused for overwrite; original body is always kept. */
   translateReplaceOriginal?: boolean;
+  /** Which icons show in the article reader top bar. */
+  readerToolbar: ReaderToolbarButtons;
 }

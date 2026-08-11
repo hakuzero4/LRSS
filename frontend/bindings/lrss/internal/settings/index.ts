@@ -5,6 +5,7 @@ export type {
     EmbeddingConfig,
     LLMConfig,
     LibraryConfig,
+    ReaderToolbarButtons,
     SearchConfig,
     UIPrefs
 } from "./models.js";

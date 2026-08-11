@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { AppSettings } from "@/types/rss";
+import type { AppSettings, ReaderToolbarButtons } from "@/types/rss";
+import { READER_TOOLBAR_KEYS } from "@/types/rss";
 
 const { settings, persistUIPrefs } = useRssStore();
 const { locale, setLocale, t } = useLocale();
@@ -46,6 +47,26 @@ const accentModel = computed({
 
 function onCompactSidebar(v: boolean) {
   settings.compactSidebar = v;
+  persistUIPrefs();
+}
+
+const toolbarRows = computed(() =>
+  READER_TOOLBAR_KEYS.map((key) => ({
+    key,
+    title: t(`settings.appearance.toolbar.${key}`),
+    description: t(`settings.appearance.toolbar.${key}Desc`),
+  })),
+);
+
+function onToolbarToggle(key: keyof ReaderToolbarButtons, v: boolean) {
+  settings.readerToolbar[key] = v;
+  persistUIPrefs();
+}
+
+function showAllToolbar() {
+  for (const key of READER_TOOLBAR_KEYS) {
+    settings.readerToolbar[key] = true;
+  }
   persistUIPrefs();
 }
 </script>
@@ -102,6 +123,33 @@ function onCompactSidebar(v: boolean) {
               <SelectItem value="en-US">{{ t("settings.appearance.langEnUS") }}</SelectItem>
             </SelectContent>
           </Select>
+        </SettingsRow>
+      </div>
+    </SettingsGroup>
+
+    <SettingsGroup
+      :title="t('settings.appearance.toolbarGroup')"
+      :description="t('settings.appearance.toolbarGroupDesc')"
+    >
+      <div class="flex items-center justify-end py-1">
+        <button
+          type="button"
+          class="text-[12px] font-medium text-primary hover:underline"
+          @click="showAllToolbar"
+        >
+          {{ t("settings.appearance.toolbarShowAll") }}
+        </button>
+      </div>
+      <div
+        v-for="row in toolbarRows"
+        :key="row.key"
+        class="py-2.5"
+      >
+        <SettingsRow :title="row.title" :description="row.description">
+          <Switch
+            :checked="settings.readerToolbar[row.key]"
+            @update:checked="(v: boolean) => onToolbarToggle(row.key, v)"
+          />
         </SettingsRow>
       </div>
     </SettingsGroup>

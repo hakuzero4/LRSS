@@ -48,6 +48,22 @@ export interface LibraryConfig {
 }
 
 /**
+ * ReaderToolbarButtons controls which icons appear in the article reader header.
+ * See DefaultReaderToolbarButtons. JSON keys match frontend settings.readerToolbar.
+ */
+export interface ReaderToolbarButtons {
+    "zen": boolean;
+    "star": boolean;
+    "read": boolean;
+    "summarize": boolean;
+    "translate": boolean;
+    "ai": boolean;
+    "fetchFull": boolean;
+    "markdown": boolean;
+    "openOriginal": boolean;
+}
+
+/**
  * SearchConfig controls search mode defaults.
  */
 export interface SearchConfig {
@@ -127,4 +143,9 @@ export interface UIPrefs {
      * When false, only the bilingual overlay is shown (no body replace).
      */
     "translateReplaceOriginal": boolean;
+
+    /**
+     * ReaderToolbar: which header icons are visible in the article reader.
+     */
+    "readerToolbar": ReaderToolbarButtons;
 }

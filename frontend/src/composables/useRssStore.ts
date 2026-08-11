@@ -22,8 +22,13 @@ import type {
   LibraryConfig,
   OPMLImportProgress,
   OPMLImportResult,
+  ReaderToolbarButtons,
   SmartCollectionId,
   UIPrefs,
+} from "@/types/rss";
+import {
+  DEFAULT_READER_TOOLBAR,
+  READER_TOOLBAR_KEYS,
 } from "@/types/rss";
 
 /** Translate outside setup (module-level store). Depends on locale for reactivity. */
@@ -547,6 +552,7 @@ const settings = reactive<AppSettings>({
   nsfwMode: true,
   autoSummarize: false,
   translateReplaceOriginal: false,
+  readerToolbar: { ...DEFAULT_READER_TOOLBAR },
 });
 
 function isToday(iso: string): boolean {
@@ -847,6 +853,7 @@ function buildUIPrefs(): UIPrefs {
     nsfwMode: settings.nsfwMode,
     autoSummarize: settings.autoSummarize,
     translateReplaceOriginal: settings.translateReplaceOriginal,
+    readerToolbar: { ...settings.readerToolbar },
   };
 }
 
@@ -977,6 +984,28 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const trReplace = pickBool(p, "translateReplaceOriginal", "TranslateReplaceOriginal");
   if (trReplace !== undefined) settings.translateReplaceOriginal = trReplace;
+
+  applyReaderToolbar(p.readerToolbar ?? p.ReaderToolbar);
+}
+
+/** Merge reader toolbar flags; missing keys keep current defaults. */
+function applyReaderToolbar(raw: unknown) {
+  if (!raw || typeof raw !== "object") return;
+  const o = raw as Record<string, unknown>;
+  const next: ReaderToolbarButtons = { ...settings.readerToolbar };
+  for (const key of READER_TOOLBAR_KEYS) {
+    const pascal =
+      key === "ai"
+        ? "AI"
+        : key === "fetchFull"
+          ? "FetchFull"
+          : key === "openOriginal"
+            ? "OpenOriginal"
+            : key.charAt(0).toUpperCase() + key.slice(1);
+    const b = coerceBool(o[key] ?? o[pascal]);
+    if (b !== undefined) next[key] = b;
+  }
+  Object.assign(settings.readerToolbar, next);
 }
 
 async function loadUIPrefs() {
@@ -2179,8 +2208,10 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     nsfwMode: true,
     autoSummarize: false,
     translateReplaceOriginal: false,
+    readerToolbar: { ...DEFAULT_READER_TOOLBAR },
   };
   applyUIPrefs(defaults);
+  Object.assign(settings.readerToolbar, DEFAULT_READER_TOOLBAR);
   settings.autoRefresh = true;
   settings.refreshIntervalMinutes = 30;
   settings.launchAtLogin = false;
