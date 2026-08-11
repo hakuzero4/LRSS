@@ -637,3 +637,60 @@ func feedDue(t *testing.T, f model.Feed, defaultMin int, now time.Time) bool {
 	}
 	return !now.Before(tt.Add(time.Duration(interval) * time.Minute))
 }
+
+type stubFulltext struct {
+	html, text string
+	err        error
+	calls      int
+	lastURL    string
+}
+
+func (s *stubFulltext) Fetch(ctx context.Context, pageURL string) (string, string, error) {
+	s.calls++
+	s.lastURL = pageURL
+	return s.html, s.text, s.err
+}
+
+func TestLibrary_FetchFullContent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(sampleRSS))
+	}))
+	t.Cleanup(srv.Close)
+
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	stub := &stubFulltext{
+		html: `<p>Expanded full article body with more detail.</p>`,
+		text: `Expanded full article body with more detail.`,
+	}
+	lib.Fulltext = stub
+
+	ctx := context.Background()
+	feed, err := lib.AddFeed(ctx, srv.URL+"/rss.xml", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arts, err := lib.ListArticles(ctx, "feed:"+feed.ID, 10, 0, false)
+	if err != nil || len(arts) == 0 {
+		t.Fatalf("articles: %v %#v", err, arts)
+	}
+	id := arts[0].ID
+	// Force a partial body so we can see replacement.
+	_ = repos.Articles.UpdateContent(ctx, id, "<p>partial</p>", "partial")
+
+	updated, err := lib.FetchFullContent(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.calls != 1 {
+		t.Fatalf("fulltext calls = %d", stub.calls)
+	}
+	if !strings.Contains(stub.lastURL, "example.com") {
+		t.Fatalf("fetched url = %q", stub.lastURL)
+	}
+	if updated.ContentHTML == nil || !strings.Contains(*updated.ContentHTML, "Expanded full") {
+		t.Fatalf("content = %#v", updated.ContentHTML)
+	}
+}

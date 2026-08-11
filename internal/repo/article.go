@@ -271,6 +271,46 @@ func (r *ArticleRepo) UpsertFromParsed(ctx context.Context, feedID string, items
 	return res, nil
 }
 
+// UpdateContent replaces content_html / content_text (e.g. after full-text fetch)
+// and refreshes FTS. Optionally marks embedding pending when enabled.
+func (r *ArticleRepo) UpdateContent(ctx context.Context, articleID, contentHTML, contentText string) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("update content: article id required")
+	}
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE articles
+		SET content_html = ?, content_text = ?, fetched_at = ?
+		WHERE id = ?`,
+		nullStr(&contentHTML), nullStr(&contentText), nowUTC(), articleID,
+	)
+	if err != nil {
+		return fmt.Errorf("update content: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("article not found: %s", articleID)
+	}
+
+	// Reload title/summary for FTS document.
+	var title, summary sql.NullString
+	err = r.DB.QueryRowContext(ctx,
+		`SELECT title, summary FROM articles WHERE id = ?`, articleID,
+	).Scan(&title, &summary)
+	if err != nil {
+		return fmt.Errorf("update content fts load: %w", err)
+	}
+	if err := search.UpsertFTS(ctx, r.DB, articleID, title.String, summary.String, contentText); err != nil {
+		return fmt.Errorf("update content fts: %w", err)
+	}
+	if r.embeddingEnabled != nil && r.embeddingEnabled(ctx) && r.vec != nil {
+		if err := r.vec.MarkPending(ctx, articleID); err != nil {
+			return fmt.Errorf("update content mark pending: %w", err)
+		}
+	}
+	return nil
+}
+
 // SetRead updates is_read.
 func (r *ArticleRepo) SetRead(ctx context.Context, articleID string, read bool) error {
 	res, err := r.DB.ExecContext(ctx, `UPDATE articles SET is_read = ? WHERE id = ?`, boolToInt(read), articleID)

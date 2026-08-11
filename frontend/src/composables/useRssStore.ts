@@ -996,6 +996,39 @@ async function toggleRead(id: string) {
   await syncAfterReadChange();
 }
 
+/**
+ * Fetch original page HTML for an article (when feed only has partial content).
+ * Uses backend ArticleService.FetchFullContent (surf fingerprint HTTP + readability).
+ * Returns the updated mapped article, or throws with a message.
+ */
+async function fetchFullContent(id: string): Promise<Article> {
+  if (!backendReady.value) {
+    throw new Error("backend unavailable");
+  }
+  const api = await loadAppsvc();
+  const fn = api?.ArticleService?.FetchFullContent;
+  if (typeof fn !== "function") {
+    throw new Error("FetchFullContent unavailable");
+  }
+  const full = await fn(id);
+  if (!full) {
+    throw new Error("empty response");
+  }
+  const mapped = mapArticle(full) as Article;
+  const updated = mergeArticleIntoPools(mapped, articles.value, searchArticles.value);
+  if (!updated && searchArticles.value) {
+    const sidx = searchArticles.value.findIndex((a) => a.id === id);
+    if (sidx >= 0) {
+      searchArticles.value[sidx] = { ...searchArticles.value[sidx], ...mapped };
+    } else {
+      searchArticles.value = [...searchArticles.value, mapped];
+    }
+  } else if (!updated) {
+    articles.value = [...articles.value, mapped];
+  }
+  return mapped;
+}
+
 async function markAllRead() {
   if (backendReady.value) {
     const api = await loadAppsvc();
@@ -1718,6 +1751,7 @@ export function useRssStore() {
     selectArticle,
     toggleStar,
     toggleRead,
+    fetchFullContent,
     markAllRead,
     openAddFeed,
     openAddFeedInFolder,

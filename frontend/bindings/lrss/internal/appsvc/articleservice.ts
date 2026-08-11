@@ -18,6 +18,15 @@ import * as model$0 from "../model/models.js";
 import * as repo$0 from "../repo/models.js";
 
 /**
+ * FetchFullContent downloads the original article page (fingerprint HTTP / surf),
+ * extracts full HTML body, saves it, and returns the updated article.
+ * Use when the feed only ships a partial summary in XML.
+ */
+export function FetchFullContent(id: string): $CancellablePromise<model$0.Article> {
+    return $Call.ByID(2551682350, id);
+}
+
+/**
  * Get returns one article with sanitized HTML.
  */
 export function Get(id: string): $CancellablePromise<model$0.Article> {

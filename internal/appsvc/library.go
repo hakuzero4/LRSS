@@ -267,6 +267,13 @@ func (s *ArticleService) Get(id string) (model.Article, error) {
 	return s.lib.GetArticle(context.Background(), id)
 }
 
+// FetchFullContent downloads the original article page (fingerprint HTTP / surf),
+// extracts full HTML body, saves it, and returns the updated article.
+// Use when the feed only ships a partial summary in XML.
+func (s *ArticleService) FetchFullContent(id string) (model.Article, error) {
+	return s.lib.FetchFullContent(context.Background(), id)
+}
+
 // SetRead marks read state.
 func (s *ArticleService) SetRead(id string, read bool) error {
 	return s.lib.SetRead(context.Background(), id, read)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"lrss/internal/favicon"
+	"lrss/internal/fulltext"
 	"lrss/internal/htmltext"
 	"lrss/internal/model"
 	"lrss/internal/repo"
@@ -24,6 +25,10 @@ type Library struct {
 	Articles ArticleStore
 	Folders  FolderStore
 	RSS      RSSFetcher
+
+	// Fulltext fetches original article pages (surf fingerprint client).
+	// Optional; nil uses fulltext.Fetch defaults.
+	Fulltext FulltextFetcher
 
 	// Sanitizer for content_html (UGC policy). Lazily created if nil.
 	Sanitizer *bluemonday.Policy
@@ -502,6 +507,63 @@ func (lib *Library) normalizeArticleForUI(a *model.Article, full bool) {
 			a.Summary = nil
 		}
 	}
+}
+
+// FetchFullContent downloads the article's original URL (via fingerprint HTTP),
+// extracts readable HTML, persists it, and returns the updated article for UI.
+func (lib *Library) FetchFullContent(ctx context.Context, articleID string) (model.Article, error) {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return model.Article{}, fmt.Errorf("article id is required")
+	}
+	a, err := lib.Articles.Get(ctx, articleID)
+	if err != nil {
+		return model.Article{}, err
+	}
+	pageURL := strings.TrimSpace(a.URL)
+	if pageURL == "" {
+		return model.Article{}, fmt.Errorf("article has no url")
+	}
+	if err := validateArticleURL(pageURL); err != nil {
+		return model.Article{}, err
+	}
+
+	var html, text string
+	if lib.Fulltext != nil {
+		html, text, err = lib.Fulltext.Fetch(ctx, pageURL)
+	} else {
+		res, ferr := fulltext.Fetch(ctx, pageURL, fulltext.Options{})
+		html, text, err = res.HTML, res.Text, ferr
+	}
+	if err != nil {
+		return model.Article{}, err
+	}
+	html = lib.sanitizeHTML(html)
+	if text == "" {
+		text = htmltext.ToText(html)
+	}
+	if strings.TrimSpace(html) == "" {
+		return model.Article{}, fmt.Errorf("no readable content")
+	}
+
+	if err := lib.Articles.UpdateContent(ctx, articleID, html, text); err != nil {
+		return model.Article{}, err
+	}
+	return lib.GetArticle(ctx, articleID)
+}
+
+func validateArticleURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("invalid article url")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("article url must be http(s)")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("article url host is required")
+	}
+	return nil
 }
 
 // SetRead marks an article read/unread.

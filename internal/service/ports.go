@@ -33,11 +33,17 @@ type ArticleStore interface {
 	Get(ctx context.Context, articleID string) (model.Article, error)
 	CountByFeed(ctx context.Context, feedID string) (int, error)
 	UpsertFromParsed(ctx context.Context, feedID string, items []repo.ParsedItem) (repo.UpsertResult, error)
+	UpdateContent(ctx context.Context, articleID, contentHTML, contentText string) error
 	SetRead(ctx context.Context, articleID string, read bool) error
 	SetStarred(ctx context.Context, articleID string, starred bool) error
 	MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error
 	PurgeOlderThan(ctx context.Context, days int) (int, error)
 	CountSmart(ctx context.Context, excludeNsfw bool) (repo.SmartCounts, error)
+}
+
+// FulltextFetcher downloads a page and extracts readable HTML (tests can stub).
+type FulltextFetcher interface {
+	Fetch(ctx context.Context, pageURL string) (html string, text string, err error)
 }
 
 // FolderStore is the folder persistence port (satisfied by *repo.FolderRepo).

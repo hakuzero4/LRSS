@@ -4,10 +4,13 @@ import {
   Check,
   ExternalLink,
   FileCode2,
+  LoaderCircle,
+  Newspaper,
   Star,
 } from "@lucide/vue";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
 import { formatAbsolute, plainText } from "@/lib/format";
 import { openExternalLink } from "@/lib/openLink";
@@ -35,11 +38,14 @@ const {
   settings,
   toggleStar,
   toggleRead,
+  fetchFullContent,
+  backendReady,
 } = useRssStore();
 
 const scrollPaneRef = ref<HTMLElement | null>(null);
 /** Avoid repeated mark-read while sitting at the bottom. */
 const scrollEndMarkedForId = ref<string | null>(null);
+const fetchingFull = ref(false);
 
 /**
  * Deck / standfirst under the title.
@@ -81,6 +87,26 @@ async function openOriginal() {
 function toggleMarkdownPanel() {
   if (!selectedArticle.value) return;
   markdownOpen.value = !markdownOpen.value;
+}
+
+/** Download original page and replace partial feed body. */
+async function onFetchFullContent() {
+  const article = selectedArticle.value;
+  if (!article?.url || fetchingFull.value) return;
+  if (!backendReady.value) {
+    toast.error(t("article.fetchFullUnavailable"));
+    return;
+  }
+  fetchingFull.value = true;
+  try {
+    await fetchFullContent(article.id);
+    toast.success(t("article.fetchFullDone"));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("article.fetchFullFailed"), { description: msg });
+  } finally {
+    fetchingFull.value = false;
+  }
 }
 
 /** Intercept in-body links so they honor openLinksInBrowser (never leave the app shell). */
@@ -174,6 +200,40 @@ watch(
               </TooltipTrigger>
               <TooltipContent>
                 {{ selectedArticle.read ? t("article.markUnread") : t("article.markRead") }}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class="text-muted-foreground"
+                  :disabled="
+                    fetchingFull ||
+                    !selectedArticle.url ||
+                    !backendReady
+                  "
+                  :aria-label="
+                    fetchingFull
+                      ? t('article.fetchFullBusy')
+                      : t('article.fetchFull')
+                  "
+                  @click="onFetchFullContent"
+                >
+                  <LoaderCircle
+                    v-if="fetchingFull"
+                    class="size-4 animate-spin"
+                  />
+                  <Newspaper v-else class="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {{
+                  fetchingFull
+                    ? t("article.fetchFullBusy")
+                    : t("article.fetchFull")
+                }}
               </TooltipContent>
             </Tooltip>
 
