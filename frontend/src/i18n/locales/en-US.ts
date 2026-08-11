@@ -101,6 +101,10 @@ export default {
     selectEmpty: "Select some text to translate",
     selectEmptyResult: "No translation returned",
     selectTooLong: "Selection is too long — try a shorter phrase",
+    autoFetchStarting: "Partial article detected — fetching full text…",
+    autoFetchStartingDesc: "The body will be replaced with the original page content.",
+    autoFetchDone: "Replaced with full article",
+    autoFetchFailed: "Auto fetch full article failed",
     translate: "Translate",
     translateTo: "Translate · {lang}",
     translateAuto: "Translate (UI language)",
@@ -215,7 +219,8 @@ export default {
       reading: "Reading",
       feeds: "Feeds",
       filters: "Filters",
-      search_ai: "Search / AI",
+      search_ai: "Models",
+      ai_features: "AI features",
       sync: "Sync",
       shortcuts: "Shortcuts",
       notifications: "Notifications",
@@ -229,7 +234,8 @@ export default {
       reading: "Body font size, width, and list filters.",
       feeds: "Feed defaults and article retention.",
       filters: "Duplicate titles and keyword blocking.",
-      search_ai: "Vector models and semantic search (full-text if unconfigured).",
+      search_ai: "Chat and embedding model connection (API, keys, test).",
+      ai_features: "Toggles for auto-summarize, selection translate, and feature notes.",
       sync: "Cross-device sync (preview).",
       shortcuts: "Keyboard shortcuts overview.",
       notifications: "New article alerts.",
@@ -441,6 +447,21 @@ export default {
       blockKeywordsPlaceholder: "ads, promo, sponsored",
       keywordCount: "{n} keywords",
       applyHint: "Rules apply to the article list immediately; settings save automatically.",
+    },
+
+    aiFeatures: {
+      togglesGroup: "Feature toggles",
+      togglesGroupDesc:
+        "Control whether AI runs automatically while reading. Configure the chat model under Models first.",
+      needModelHint:
+        "· These features require an enabled chat model under Models (auto full-text also needs an article URL).",
+      catalogGroup: "What’s available",
+      catalogGroupDesc: "Where AI shows up in the reader (toolbar, sidebar, selection).",
+      autoFetchFull: "Auto fetch full article",
+      autoFetchFullDesc:
+        "When you open an article, AI judges if the body is only a teaser/excerpt; if so, fetch the original page. Off by default (uses the network).",
+      llmFeatureAutoFetchFull:
+        "· Auto fetch full — on open, AI detects partial body and fetches the page (Settings → AI features).",
     },
 
     searchAi: {

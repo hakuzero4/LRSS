@@ -2,7 +2,6 @@
 import { onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Brain, Loader2, Sparkles } from "@lucide/vue";
-import { useRssStore } from "@/composables/useRssStore";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,6 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "vue-sonner";
 
 const { t } = useI18n();
-const { settings, persistUIPrefs } = useRssStore();
 
 /** Bound at runtime when Wails services exist; UI stays usable in pure Vite. */
 type EmbeddingConfig = {
@@ -403,68 +401,6 @@ onMounted(load);
       </div>
     </SettingsGroup>
 
-    <SettingsGroup
-      :title="t('settings.searchAi.autoGroup')"
-      :description="t('settings.searchAi.autoGroupDesc')"
-    >
-      <div class="py-2.5">
-        <SettingsRow
-          :title="t('settings.searchAi.autoSummarize')"
-          :description="t('settings.searchAi.autoSummarizeDesc')"
-        >
-          <Switch
-            :checked="settings.autoSummarize"
-            @update:checked="
-              (v: boolean) => {
-                settings.autoSummarize = v;
-                persistUIPrefs();
-              }
-            "
-          />
-        </SettingsRow>
-      </div>
-      <div class="py-2.5">
-        <SettingsRow
-          :title="t('settings.searchAi.selectTranslate')"
-          :description="t('settings.searchAi.selectTranslateDesc')"
-        >
-          <Switch
-            :checked="settings.selectTranslate"
-            @update:checked="
-              (v: boolean) => {
-                settings.selectTranslate = v;
-                persistUIPrefs();
-              }
-            "
-          />
-        </SettingsRow>
-      </div>
-      <div class="py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        <p>{{ t("settings.searchAi.translateKeepBoth") }}</p>
-      </div>
-    </SettingsGroup>
-
-    <SettingsGroup :title="t('settings.searchAi.llmNotesTitle')">
-      <div class="space-y-2.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
-        <p class="text-[13px] font-medium text-foreground">
-          {{ t("settings.searchAi.llmFeaturesTitle") }}
-        </p>
-        <p>{{ t("settings.searchAi.llmFeatureSummarize") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureSelectTranslate") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureTranslate") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureAsk") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureDigest") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureSuggest") }}</p>
-        <p>{{ t("settings.searchAi.llmFeatureClassify") }}</p>
-        <div class="my-2 border-t border-border/60" />
-        <p>{{ t("settings.searchAi.llmNoteCompat") }}</p>
-        <p>{{ t("settings.searchAi.llmNoteSeparate") }}</p>
-        <p>{{ t("settings.searchAi.llmNoteCache") }}</p>
-        <p>{{ t("settings.searchAi.llmNoteLocale") }}</p>
-        <p>{{ t("settings.searchAi.llmNotePrivacy") }}</p>
-      </div>
-    </SettingsGroup>
-
     <!-- —— Embedding (vector) —— -->
     <SettingsGroup
       :title="t('settings.searchAi.vectorGroup')"
@@ -553,9 +489,13 @@ onMounted(load);
 
     <SettingsGroup :title="t('settings.searchAi.notesTitle')">
       <div class="space-y-2 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
+        <p>{{ t("settings.searchAi.llmNoteCompat") }}</p>
+        <p>{{ t("settings.searchAi.llmNoteSeparate") }}</p>
         <p>{{ t("settings.searchAi.noteCompat") }}</p>
         <p>{{ t("settings.searchAi.noteExtension") }}</p>
         <p>{{ t("settings.searchAi.noteModelChange") }}</p>
+        <p>{{ t("settings.searchAi.llmNoteCache") }}</p>
+        <p>{{ t("settings.searchAi.llmNotePrivacy") }}</p>
       </div>
     </SettingsGroup>
   </div>

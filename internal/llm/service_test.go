@@ -240,6 +240,33 @@ func TestService_HTTPError(t *testing.T) {
 	}
 }
 
+func TestService_DetectContentFullness(t *testing.T) {
+	store, database := testStore(t)
+	stub := &stubChat{model: "test-model", content: "VERDICT: partial\nends with read more"}
+	svc := &llm.Service{
+		Store: store,
+		Cache: &llm.Cache{DB: database.SQL},
+		NewChatter: func(cfg settings.LLMConfig) (llm.Chatter, error) {
+			return stub, nil
+		},
+	}
+	ctx := context.Background()
+	// empty body → local partial, no chat call
+	r0, err := svc.DetectContentFullness(ctx, llm.ArticleInput{ID: "a0", Body: "", URL: "https://x"})
+	if err != nil || r0.Verdict != llm.FullnessPartial || stub.calls != 0 {
+		t.Fatalf("empty: %+v calls=%d err=%v", r0, stub.calls, err)
+	}
+	r, err := svc.DetectContentFullness(ctx, llm.ArticleInput{
+		ID: "a1", Title: "T", Body: "Short teaser. Read more…", URL: "https://x",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Verdict != llm.FullnessPartial || stub.calls != 1 {
+		t.Fatalf("got %+v calls=%d", r, stub.calls)
+	}
+}
+
 func TestService_SelectTranslate(t *testing.T) {
 	store, database := testStore(t)
 	stub := &stubChat{model: "test-model", content: "  你好世界  "}

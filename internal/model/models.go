@@ -58,6 +58,9 @@ type Article struct {
 	FetchedAt       string  `json:"fetchedAt"`
 	IsRead          bool    `json:"isRead"`
 	IsStarred       bool    `json:"isStarred"`
+	// FullContentFetched is true after a successful full-page fetch replaced the body.
+	// Used to skip auto “partial body” detection on subsequent opens.
+	FullContentFetched bool `json:"fullContentFetched"`
 }
 
 // EmbeddingStatus for article_embeddings.status.

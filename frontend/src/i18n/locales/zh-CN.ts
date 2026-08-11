@@ -101,6 +101,10 @@ export default {
     selectEmpty: "请先选中要翻译的文字",
     selectEmptyResult: "未返回译文",
     selectTooLong: "选中内容过长，请缩短后再试",
+    autoFetchStarting: "检测到非全文，正在抓取原文…",
+    autoFetchStartingDesc: "即将用完整正文替换当前摘要内容。",
+    autoFetchDone: "已自动替换为全文",
+    autoFetchFailed: "自动抓取全文失败",
     translate: "翻译",
     translateTo: "翻译 · {lang}",
     translateAuto: "翻译（跟随界面语言）",
@@ -212,7 +216,8 @@ export default {
       reading: "阅读",
       feeds: "订阅",
       filters: "过滤规则",
-      search_ai: "搜索 / AI",
+      search_ai: "模型",
+      ai_features: "AI 功能",
       sync: "同步",
       shortcuts: "快捷键",
       notifications: "通知",
@@ -226,7 +231,8 @@ export default {
       reading: "正文字号、宽度与列表过滤。",
       feeds: "订阅默认项与文章保留。",
       filters: "重复标题与关键词屏蔽。",
-      search_ai: "向量模型与语义搜索（未配置则全文检索）。",
+      search_ai: "对话模型与向量模型连接配置（API、密钥、测试）。",
+      ai_features: "自动摘要、划词翻译等功能开关与能力说明。",
       sync: "跨设备同步（预览）。",
       shortcuts: "键盘操作一览。",
       notifications: "新文章提醒。",
@@ -434,6 +440,19 @@ export default {
       blockKeywordsPlaceholder: "广告, 促销, sponsored",
       keywordCount: "{n} 个词",
       applyHint: "规则立即作用于文章列表；设置会自动保存。",
+    },
+
+    aiFeatures: {
+      togglesGroup: "功能开关",
+      togglesGroupDesc: "控制阅读时是否自动调用 AI。需先在「模型」中配置对话接口。",
+      needModelHint: "· 以上功能均依赖「模型」页中已启用的大语言模型（自动请求全文还需文章有原文链接）。",
+      catalogGroup: "能力一览",
+      catalogGroupDesc: "阅读器里可用的 AI 入口说明（部分在工具栏，部分在侧栏）。",
+      autoFetchFull: "自动请求全文",
+      autoFetchFullDesc:
+        "打开文章时由 AI 判断正文是否只有摘要/截断；若不是全文则自动抓取原文页面。默认关闭（会访问外网）。",
+      llmFeatureAutoFetchFull:
+        "· 自动请求全文 — 打开文章时 AI 判断是否 partial，是则用指纹 HTTP 拉取全文（设置 → AI 功能）。",
     },
 
     searchAi: {

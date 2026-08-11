@@ -240,6 +240,88 @@ func (s *AIService) ClearTranslation(articleId string) error {
 	return s.lib.ClearArticleTranslation(context.Background(), articleId)
 }
 
+// DetectContentFullness judges whether the stored body looks complete or partial.
+// Verdict: full|partial|unclear|skipped_no_url|already_fetched. Does not fetch the page.
+func (s *AIService) DetectContentFullness(articleId string) (AIResult, error) {
+	ctx := context.Background()
+	// Prefer raw article so we can honor full_content_fetched without re-judging.
+	if s.lib != nil {
+		a, err := s.lib.GetArticle(ctx, articleId)
+		if err != nil {
+			return AIResult{}, err
+		}
+		if a.FullContentFetched {
+			return AIResult{
+				Feature:  llm.FeatureContentFullness,
+				Verdict:  "already_fetched",
+				Markdown: "VERDICT: full\nalready_fetched",
+				Cached:   true,
+			}, nil
+		}
+		in := mapArticleInput(a)
+		if strings.TrimSpace(in.URL) == "" {
+			return AIResult{
+				Feature:  llm.FeatureContentFullness,
+				Verdict:  "skipped_no_url",
+				Markdown: "VERDICT: skipped_no_url",
+			}, nil
+		}
+		det, err := s.feat.DetectContentFullness(ctx, in)
+		if err != nil {
+			return AIResult{}, err
+		}
+		out := toAIResult(det)
+		out.Verdict = det.Verdict
+		return out, nil
+	}
+
+	in, err := s.articleInput(ctx, articleId)
+	if err != nil {
+		return AIResult{}, err
+	}
+	if strings.TrimSpace(in.URL) == "" {
+		return AIResult{
+			Feature:  llm.FeatureContentFullness,
+			Verdict:  "skipped_no_url",
+			Markdown: "VERDICT: skipped_no_url",
+		}, nil
+	}
+	det, err := s.feat.DetectContentFullness(ctx, in)
+	if err != nil {
+		return AIResult{}, err
+	}
+	out := toAIResult(det)
+	out.Verdict = det.Verdict
+	return out, nil
+}
+
+// EnsureFullContent uses the LLM to judge whether the stored body is only a
+// partial excerpt; if partial (or empty), fetches the original page via fulltext.
+// Verdict: full|partial|fetched|skipped_no_url|skipped_unclear
+// Prefer frontend DetectContentFullness + FetchFullContent when UI needs a
+// “starting fetch” toast before body replacement.
+func (s *AIService) EnsureFullContent(articleId string) (AIResult, error) {
+	ctx := context.Background()
+	out, err := s.DetectContentFullness(articleId)
+	if err != nil {
+		return AIResult{}, err
+	}
+	if out.Verdict != llm.FullnessPartial {
+		// full or unclear → do not auto-fetch (avoid false positives).
+		return out, nil
+	}
+
+	if s.lib == nil {
+		return out, fmt.Errorf("library unavailable")
+	}
+	if _, ferr := s.lib.FetchFullContent(ctx, articleId); ferr != nil {
+		return out, ferr
+	}
+	out.Verdict = "fetched"
+	out.Markdown = strings.TrimSpace(out.Markdown) + "\n\nFETCHED: yes"
+	return out, nil
+}
+
 // TranslateSelection translates a short in-reader text selection (划词翻译).
 // Uses a fixed plain-translation prompt (not bilingual markers). targetLang e.g. zh-CN / en.
 func (s *AIService) TranslateSelection(text, targetLang string) (AIResult, error) {

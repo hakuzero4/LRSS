@@ -17,6 +17,8 @@ const props = withDefaults(defineProps<ToasterProps>(), {
   theme: "system",
   position: "top-center",
   closeButton: true,
+  // vue-sonner defaults to top-left; put dismiss control on the right.
+  closeButtonPosition: "top-right",
   richColors: true,
   expand: false,
   visibleToasts: 3,

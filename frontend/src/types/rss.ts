@@ -8,7 +8,8 @@ export type SettingsSectionId =
   | "reading"
   | "feeds"
   | "filters"
-  | "search_ai"
+  | "search_ai" // models: LLM + embedding connection
+  | "ai_features" // feature toggles (auto summarize, select translate, …)
   | "sync"
   | "shortcuts"
   | "notifications"
@@ -59,6 +60,8 @@ export interface Article {
   read: boolean;
   starred: boolean;
   imageUrl?: string;
+  /** True after full-page fetch replaced the body; skip auto re-fetch. */
+  fullContentFetched?: boolean;
 }
 
 export interface ReaderSelection {
@@ -166,6 +169,11 @@ export interface UIPrefs {
   /** When true, selecting text in the reader shows AI 划词翻译. */
   selectTranslate: boolean;
   /**
+   * When true, opening an article asks the LLM if the body is partial;
+   * if so, auto-fetch the original page full text.
+   */
+  autoFetchFull: boolean;
+  /**
    * @deprecated Prefer always-kept original + translationRaw.
    * Kept for prefs compatibility; no longer overwrites content_html.
    */
@@ -234,6 +242,8 @@ export interface AppSettings {
   autoSummarize: boolean;
   /** Select text in reader to AI-translate (划词翻译). */
   selectTranslate: boolean;
+  /** AI judges partial body on open and auto-fetches full page when needed. */
+  autoFetchFull: boolean;
   /** @deprecated unused for overwrite; original body is always kept. */
   translateReplaceOriginal?: boolean;
   /** Which icons show in the article reader top bar. */

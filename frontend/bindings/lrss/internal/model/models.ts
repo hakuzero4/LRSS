@@ -26,6 +26,12 @@ export interface Article {
     "fetchedAt": string;
     "isRead": boolean;
     "isStarred": boolean;
+
+    /**
+     * FullContentFetched is true after a successful full-page fetch replaced the body.
+     * Used to skip auto “partial body” detection on subsequent opens.
+     */
+    "fullContentFetched": boolean;
 }
 
 /**

@@ -142,7 +142,7 @@ func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts
 		SELECT id, feed_id, guid, url, title, author, summary,
 		       content_html, content_text, translation_raw, translation_lang,
 		       image_url, published_at,
-		       fetched_at, is_read, is_starred
+		       fetched_at, is_read, is_starred, full_content_fetched
 		FROM articles`
 	if len(where) > 0 {
 		sqlStr += ` WHERE ` + strings.Join(where, ` AND `)
@@ -179,7 +179,7 @@ func (r *ArticleRepo) Get(ctx context.Context, articleID string) (model.Article,
 		SELECT id, feed_id, guid, url, title, author, summary,
 		       content_html, content_text, translation_raw, translation_lang,
 		       image_url, published_at,
-		       fetched_at, is_read, is_starred
+		       fetched_at, is_read, is_starred, full_content_fetched
 		FROM articles WHERE id = ?`, articleID)
 	a, err := scanArticle(row)
 	if err == sql.ErrNoRows {
@@ -350,7 +350,8 @@ func (r *ArticleRepo) UpdateSummary(ctx context.Context, articleID, summary stri
 }
 
 // UpdateContent replaces content_html / content_text (e.g. after full-text fetch)
-// and refreshes FTS. Optionally marks embedding pending when enabled.
+// and refreshes FTS. Marks full_content_fetched so auto-fetch will not re-run.
+// Optionally marks embedding pending when enabled.
 func (r *ArticleRepo) UpdateContent(ctx context.Context, articleID, contentHTML, contentText string) error {
 	articleID = strings.TrimSpace(articleID)
 	if articleID == "" {
@@ -358,7 +359,7 @@ func (r *ArticleRepo) UpdateContent(ctx context.Context, articleID, contentHTML,
 	}
 	res, err := r.DB.ExecContext(ctx, `
 		UPDATE articles
-		SET content_html = ?, content_text = ?, fetched_at = ?
+		SET content_html = ?, content_text = ?, fetched_at = ?, full_content_fetched = 1
 		WHERE id = ?`,
 		nullStr(&contentHTML), nullStr(&contentText), nowUTC(), articleID,
 	)
@@ -582,12 +583,12 @@ func scanArticle(row scannable) (model.Article, error) {
 	var a model.Article
 	var guid, author, summary, contentHTML, contentText, translationRaw, translationLang sql.NullString
 	var imageURL, published sql.NullString
-	var read, starred int
+	var read, starred, fullFetched int
 	if err := row.Scan(
 		&a.ID, &a.FeedID, &guid, &a.URL, &a.Title, &author, &summary,
 		&contentHTML, &contentText, &translationRaw, &translationLang,
 		&imageURL, &published,
-		&a.FetchedAt, &read, &starred,
+		&a.FetchedAt, &read, &starred, &fullFetched,
 	); err != nil {
 		return model.Article{}, err
 	}
@@ -602,5 +603,6 @@ func scanArticle(row scannable) (model.Article, error) {
 	a.PublishedAt = strPtr(published)
 	a.IsRead = read != 0
 	a.IsStarred = starred != 0
+	a.FullContentFetched = fullFetched != 0
 	return a, nil
 }

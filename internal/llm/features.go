@@ -13,13 +13,21 @@ import (
 
 // Feature identifiers for cache keys and prompts.
 const (
-	FeatureSummarize       = "summarize"
-	FeatureTranslate       = "translate"
-	FeatureSelectTranslate = "select_translate"
-	FeatureAsk             = "ask"
-	FeatureDigest          = "digest"
-	FeatureSuggest         = "suggest"
-	FeatureClassify        = "classify"
+	FeatureSummarize        = "summarize"
+	FeatureTranslate        = "translate"
+	FeatureSelectTranslate  = "select_translate"
+	FeatureContentFullness  = "content_fullness"
+	FeatureAsk              = "ask"
+	FeatureDigest           = "digest"
+	FeatureSuggest          = "suggest"
+	FeatureClassify         = "classify"
+)
+
+// Content fullness verdicts (DetectContentFullness / EnsureFullContent).
+const (
+	FullnessFull    = "full"
+	FullnessPartial = "partial"
+	FullnessUnclear = "unclear"
 )
 
 // MaxSelectTranslateChars caps selection text sent to the model.
@@ -195,11 +203,13 @@ func SystemPromptFor(feature, locale string) string {
 		base = "You suggest tags and folder placement for RSS articles. Reply in compact Markdown with clear sections. Prefer short tags."
 	case FeatureClassify:
 		base = "You classify RSS items as organic editorial content vs ads/soft-promo/sponsored. Be conservative: only flag clear promotional content. Reply in Markdown with a clear verdict line."
+	case FeatureContentFullness:
+		base = "You judge whether an RSS item body is a full article or only a partial/truncated excerpt. Reply with a strict VERDICT line only—no long essays."
 	default:
 		base = "You are a helpful RSS reading assistant. Reply in Markdown."
 	}
-	// Translate features already target an explicit language.
-	if feature == FeatureTranslate || feature == FeatureSelectTranslate {
+	// Translate / fullness already use a fixed machine-readable format.
+	if feature == FeatureTranslate || feature == FeatureSelectTranslate || feature == FeatureContentFullness {
 		return base
 	}
 	return base + " " + lang
@@ -258,6 +268,79 @@ Rules:
 Article:
 %s
 `, label, label, bundle)
+}
+
+// UserPromptContentFullness asks whether the stored body is complete or partial.
+// Model must answer with VERDICT: full|partial|unclear.
+func UserPromptContentFullness(title, summary, body, pageURL string) string {
+	title = strings.TrimSpace(title)
+	summary = BudgetText(summary, 800)
+	body = BudgetText(body, 6000)
+	pageURL = strings.TrimSpace(pageURL)
+	return fmt.Sprintf(`Judge whether the RSS item body below is the FULL article text or only a PARTIAL excerpt (teaser / first paragraphs / "read more" cut-off).
+
+Reply with EXACTLY this shape (first line mandatory):
+VERDICT: full
+or
+VERDICT: partial
+or
+VERDICT: unclear
+
+Optional second line: one short reason in English.
+
+Signals of PARTIAL:
+- body ends mid-sentence or with "…", "..." , "read more", "继续阅读", "全文", "订阅后阅读"
+- only a lead paragraph / abstract while a full page URL exists
+- body is barely longer than the summary
+- obvious feed truncation
+
+Signals of FULL:
+- complete multi-paragraph article that finishes cleanly
+- body is substantially longer and self-contained
+
+Title: %s
+URL: %s
+Summary: %s
+
+Body:
+%s
+`, title, pageURL, summary, body)
+}
+
+// ParseFullnessVerdict extracts full|partial|unclear from model output.
+func ParseFullnessVerdict(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return FullnessUnclear
+	}
+	// Prefer explicit VERDICT: line.
+	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	for _, line := range lines {
+		l := strings.ToLower(strings.TrimSpace(line))
+		l = strings.TrimPrefix(l, "**")
+		l = strings.TrimSuffix(l, "**")
+		if strings.HasPrefix(l, "verdict:") {
+			v := strings.TrimSpace(strings.TrimPrefix(l, "verdict:"))
+			v = strings.Trim(v, "*`\"' ")
+			switch {
+			case strings.HasPrefix(v, "full"):
+				return FullnessFull
+			case strings.HasPrefix(v, "partial"), strings.HasPrefix(v, "excerpt"), strings.HasPrefix(v, "truncated"):
+				return FullnessPartial
+			default:
+				return FullnessUnclear
+			}
+		}
+	}
+	low := strings.ToLower(raw)
+	switch {
+	case strings.Contains(low, "partial"), strings.Contains(low, "excerpt"), strings.Contains(low, "truncated"):
+		return FullnessPartial
+	case strings.Contains(low, "full") && !strings.Contains(low, "not full"):
+		return FullnessFull
+	default:
+		return FullnessUnclear
+	}
 }
 
 // UserPromptSelectTranslate is the fixed prompt for in-reader selection translation.

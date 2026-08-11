@@ -144,6 +144,12 @@ export interface UIPrefs {
     "selectTranslate": boolean;
 
     /**
+     * AutoFetchFull: when true, opening an article asks the LLM if the body is
+     * partial; if so, automatically fetch the original page full text.
+     */
+    "autoFetchFull": boolean;
+
+    /**
      * TranslateReplaceOriginal: when true, full-article translate overwrites content_html/text.
      * When false, only the bilingual overlay is shown (no body replace).
      */

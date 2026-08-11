@@ -1,4 +1,5 @@
 import { computed, reactive, ref, watch } from "vue";
+import { toast } from "vue-sonner";
 import i18n from "@/i18n";
 import { applyArticleFilters } from "@/lib/articleFilters";
 import { loadAppsvc, mapArticle, mapFeed, mapFolder } from "@/lib/backend";
@@ -521,6 +522,8 @@ async function aiClassify(articleId: string) {
 
 /** Last article id we already auto-summarized this session (avoid loops). */
 let lastAutoSummarizeId: string | null = null;
+/** Article ids already checked for auto full-fetch this session (avoid re-toast). */
+const autoFetchFullCheckedIds = new Set<string>();
 
 async function maybeAutoSummarize(articleId: string) {
   if (!settings.autoSummarize) return;
@@ -534,6 +537,68 @@ async function maybeAutoSummarize(articleId: string) {
     // Quiet fail for auto path — user can retry from AI menu.
     // Allow retry on next open if failed.
     if (lastAutoSummarizeId === articleId) lastAutoSummarizeId = null;
+  }
+}
+
+/**
+ * Settings → AI 功能: on open, LLM judges if body is partial; if so, fetch full page.
+ * Shows toast before replacing the body so the swap is not surprising.
+ * Skips articles already full-fetched (persisted flag) or checked this session.
+ * Runs before auto-summarize so the deck can use the full text.
+ */
+async function maybeAutoFetchFull(articleId: string) {
+  if (!settings.autoFetchFull) return;
+  if (!backendReady.value) return;
+  if (!articleId || autoFetchFullCheckedIds.has(articleId)) return;
+
+  // Local pool may already know this was full-fetched (no toast / no LLM).
+  const local = resolveSelectedArticle(articleId, articles.value, searchArticles.value);
+  if (local?.fullContentFetched) {
+    autoFetchFullCheckedIds.add(articleId);
+    return;
+  }
+
+  autoFetchFullCheckedIds.add(articleId);
+  try {
+    const api = await loadAppsvc();
+    const detectFn =
+      api?.AIService?.DetectContentFullness ??
+      (api as any)?.default?.AIService?.DetectContentFullness;
+    if (typeof detectFn !== "function") {
+      autoFetchFullCheckedIds.delete(articleId);
+      return;
+    }
+    const det = await detectFn.call(api?.AIService ?? api, articleId);
+    if (selectedArticleId.value !== articleId) return;
+
+    const verdict = String(det?.verdict ?? det?.Verdict ?? "").toLowerCase();
+    // already_fetched / full / unclear / no url → silent skip (never toast).
+    if (verdict !== "partial") return;
+
+    // Tell the user *before* the body is replaced.
+    toast.message(t("ai.autoFetchStarting"), {
+      description: t("ai.autoFetchStartingDesc"),
+    });
+
+    try {
+      const mapped = await fetchFullContent(articleId);
+      // Ensure flag is set even if backend mapping missed it.
+      if (mapped) {
+        mapped.fullContentFetched = true;
+        mergeArticleIntoPools(mapped, articles.value, searchArticles.value);
+      }
+      if (selectedArticleId.value === articleId) {
+        toast.success(t("ai.autoFetchDone"));
+      }
+    } catch (e) {
+      if (selectedArticleId.value !== articleId) return;
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(t("ai.autoFetchFailed"), { description: msg });
+      // Allow retry next open after a failed fetch.
+      autoFetchFullCheckedIds.delete(articleId);
+    }
+  } catch {
+    autoFetchFullCheckedIds.delete(articleId);
   }
 }
 
@@ -577,6 +642,7 @@ const settings = reactive<AppSettings>({
   nsfwMode: true,
   autoSummarize: false,
   selectTranslate: true,
+  autoFetchFull: false,
   translateReplaceOriginal: false,
   readerToolbar: { ...DEFAULT_READER_TOOLBAR },
 });
@@ -879,6 +945,7 @@ function buildUIPrefs(): UIPrefs {
     nsfwMode: settings.nsfwMode,
     autoSummarize: settings.autoSummarize,
     selectTranslate: settings.selectTranslate,
+    autoFetchFull: settings.autoFetchFull,
     translateReplaceOriginal: settings.translateReplaceOriginal,
     readerToolbar: { ...settings.readerToolbar },
   };
@@ -1011,6 +1078,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const selTr = pickBool(p, "selectTranslate", "SelectTranslate");
   if (selTr !== undefined) settings.selectTranslate = selTr;
+
+  const autoFull = pickBool(p, "autoFetchFull", "AutoFetchFull");
+  if (autoFull !== undefined) settings.autoFetchFull = autoFull;
 
   const trReplace = pickBool(p, "translateReplaceOriginal", "TranslateReplaceOriginal");
   if (trReplace !== undefined) settings.translateReplaceOriginal = trReplace;
@@ -1488,8 +1558,14 @@ async function selectArticle(id: string | null) {
   }
   // Restore saved bilingual translation when reopening (do not leave user on English-only body).
   applySavedTranslationView(id);
-  // Settings → Search/AI: optional auto summarize (UI locale in prompts).
-  void maybeAutoSummarize(id);
+  // AI 功能: optional full-content ensure, then optional auto summarize.
+  void (async () => {
+    await maybeAutoFetchFull(id);
+    // Only summarize the still-selected article.
+    if (selectedArticleId.value === id) {
+      void maybeAutoSummarize(id);
+    }
+  })();
 }
 
 async function reloadLibraryFeedsOnly() {
@@ -1562,6 +1638,9 @@ async function fetchFullContent(id: string): Promise<Article> {
     throw new Error("empty response");
   }
   const mapped = mapArticle(full) as Article;
+  // Manual or auto full-text fetch always marks the body as full-fetched.
+  mapped.fullContentFetched = true;
+  autoFetchFullCheckedIds.add(id);
   const updated = mergeArticleIntoPools(mapped, articles.value, searchArticles.value);
   if (!updated && searchArticles.value) {
     const sidx = searchArticles.value.findIndex((a) => a.id === id);
@@ -2238,6 +2317,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     nsfwMode: true,
     autoSummarize: false,
     selectTranslate: true,
+    autoFetchFull: false,
     translateReplaceOriginal: false,
     readerToolbar: { ...DEFAULT_READER_TOOLBAR },
   };

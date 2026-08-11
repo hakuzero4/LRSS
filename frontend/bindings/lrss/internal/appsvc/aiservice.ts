@@ -52,6 +52,25 @@ export function DailyDigest(limit: number, locale: string): $CancellablePromise<
 }
 
 /**
+ * DetectContentFullness judges whether the stored body looks complete or partial.
+ * Verdict: full|partial|unclear|skipped_no_url|already_fetched. Does not fetch the page.
+ */
+export function DetectContentFullness(articleId: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(1923791988, articleId);
+}
+
+/**
+ * EnsureFullContent uses the LLM to judge whether the stored body is only a
+ * partial excerpt; if partial (or empty), fetches the original page via fulltext.
+ * Verdict: full|partial|fetched|skipped_no_url|skipped_unclear
+ * Prefer frontend DetectContentFullness + FetchFullContent when UI needs a
+ * “starting fetch” toast before body replacement.
+ */
+export function EnsureFullContent(articleId: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(643518686, articleId);
+}
+
+/**
  * IsLLMConfigured reports whether chat LLM is ready (for UI enablement).
  */
 export function IsLLMConfigured(): $CancellablePromise<boolean> {

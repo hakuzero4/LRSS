@@ -32,6 +32,7 @@ import FiltersPanel from "@/components/settings/panels/FiltersPanel.vue";
 import GeneralPanel from "@/components/settings/panels/GeneralPanel.vue";
 import NotificationsPanel from "@/components/settings/panels/NotificationsPanel.vue";
 import ReadingPanel from "@/components/settings/panels/ReadingPanel.vue";
+import AIFeaturesPanel from "@/components/settings/panels/AIFeaturesPanel.vue";
 import SearchAIPanel from "@/components/settings/panels/SearchAIPanel.vue";
 import ShortcutsPanel from "@/components/settings/panels/ShortcutsPanel.vue";
 import SyncPanel from "@/components/settings/panels/SyncPanel.vue";
@@ -67,6 +68,7 @@ const navItems = computed(() => {
     { id: "feeds", label: t("settings.nav.feeds"), icon: Rss },
     { id: "filters", label: t("settings.nav.filters"), icon: Filter },
     { id: "search_ai", label: t("settings.nav.search_ai"), icon: Brain },
+    { id: "ai_features", label: t("settings.nav.ai_features"), icon: Sparkles },
     { id: "sync", label: t("settings.nav.sync"), icon: RefreshCw },
     { id: "shortcuts", label: t("settings.nav.shortcuts"), icon: Keyboard },
     { id: "notifications", label: t("settings.nav.notifications"), icon: Bell },
@@ -149,6 +151,7 @@ const sectionHint = computed(() => {
               <FeedsPanel v-else-if="activeSection === 'feeds'" />
               <FiltersPanel v-else-if="activeSection === 'filters'" />
               <SearchAIPanel v-else-if="activeSection === 'search_ai'" />
+              <AIFeaturesPanel v-else-if="activeSection === 'ai_features'" />
               <SyncPanel v-else-if="activeSection === 'sync'" />
               <ShortcutsPanel v-else-if="activeSection === 'shortcuts'" />
               <NotificationsPanel v-else-if="activeSection === 'notifications'" />

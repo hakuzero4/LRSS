@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"lrss/internal/settings"
 )
@@ -322,6 +323,40 @@ func (s *Service) TranslateStream(ctx context.Context, a ArticleInput, targetLan
 		Model:    model,
 		Cached:   false,
 	}, nil
+}
+
+// DetectContentFullness judges whether the stored article body looks complete or partial.
+// Result.Verdict is full|partial|unclear; Markdown is the raw model reply.
+func (s *Service) DetectContentFullness(ctx context.Context, a ArticleInput) (FeatureResult, error) {
+	body := strings.TrimSpace(a.Body)
+	// Cheap local signal: empty body is always partial when a URL exists.
+	if body == "" {
+		return FeatureResult{
+			Markdown: "VERDICT: partial\nempty body",
+			Feature:  FeatureContentFullness,
+			Verdict:  FullnessPartial,
+		}, nil
+	}
+	// Very long self-contained body → skip model cost.
+	if utf8.RuneCountInString(body) >= 8000 {
+		return FeatureResult{
+			Markdown: "VERDICT: full\nlong body heuristic",
+			Feature:  FeatureContentFullness,
+			Verdict:  FullnessFull,
+			Cached:   true,
+		}, nil
+	}
+
+	hashInput := ArticleInput{Title: a.Title, Summary: a.Summary, Body: a.Body, URL: a.URL}
+	hash := ContentFingerprint(hashInput)
+	system := SystemPromptFor(FeatureContentFullness, "en")
+	user := UserPromptContentFullness(a.Title, a.Summary, a.Body, a.URL)
+	res, err := s.runCached(ctx, a.ID, FeatureContentFullness, "v1", hash, system, user)
+	if err != nil {
+		return FeatureResult{}, err
+	}
+	res.Verdict = ParseFullnessVerdict(res.Markdown)
+	return res, nil
 }
 
 // SelectTranslate translates a short user-selected snippet (fixed prompt, plain text only).

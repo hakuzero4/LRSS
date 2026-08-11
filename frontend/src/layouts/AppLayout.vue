@@ -85,6 +85,12 @@ async function onRetryBootstrap() {
 
     <AddFeedDialog />
     <SettingsDialog />
-    <Toaster class="pointer-events-auto" position="top-center" :rich-colors="true" :close-button="true" />
+    <Toaster
+      class="pointer-events-auto"
+      position="top-center"
+      close-button-position="top-right"
+      :rich-colors="true"
+      :close-button="true"
+    />
   </div>
 </template>

@@ -48,6 +48,22 @@ func TestUserPromptTranslate_HasMarkers(t *testing.T) {
 	}
 }
 
+func TestParseFullnessVerdict(t *testing.T) {
+	if llm.ParseFullnessVerdict("VERDICT: partial\ncut off") != llm.FullnessPartial {
+		t.Fatal("partial")
+	}
+	if llm.ParseFullnessVerdict("VERDICT: full") != llm.FullnessFull {
+		t.Fatal("full")
+	}
+	if llm.ParseFullnessVerdict("maybe?") != llm.FullnessUnclear {
+		t.Fatal("unclear")
+	}
+	p := llm.UserPromptContentFullness("T", "S", "Body…", "https://ex.com")
+	if !strings.Contains(p, "VERDICT:") || !strings.Contains(p, "Body…") {
+		t.Fatalf("prompt = %s", p)
+	}
+}
+
 func TestUserPromptSelectTranslate_PlainOnly(t *testing.T) {
 	p := llm.UserPromptSelectTranslate("hello world", "zh-CN")
 	if strings.Contains(p, "<<o>>") || strings.Contains(p, "<<t>>") {

@@ -48,6 +48,7 @@ export function mapArticle(a: any) {
     read: !!(a.isRead ?? a.read),
     starred: !!(a.isStarred ?? a.starred),
     imageUrl: a.imageUrl ?? a.ImageURL ?? undefined,
+    fullContentFetched: !!(a.fullContentFetched ?? a.FullContentFetched),
   };
 }
 
