@@ -92,6 +92,15 @@ export default {
     summarize: "Summarize",
     summarizeStarting: "Generating summary…",
     summarizeDone: "Summary updated above the article",
+    selectTranslate: "Selection translate",
+    selectTranslateHint: "Select text to translate",
+    selectSource: "Source",
+    selectResult: "Translation",
+    selectCopy: "Copy translation",
+    selectCopied: "Copied",
+    selectEmpty: "Select some text to translate",
+    selectEmptyResult: "No translation returned",
+    selectTooLong: "Selection is too long — try a shorter phrase",
     translate: "Translate",
     translateTo: "Translate · {lang}",
     translateAuto: "Translate (UI language)",
@@ -485,12 +494,17 @@ export default {
       autoSummarize: "Auto summarize",
       autoSummarizeDesc:
         "When you select an article, generate a summary in the deck above the body. Output language follows the UI language.",
+      selectTranslate: "Selection translate",
+      selectTranslateDesc:
+        "Selecting text in the reader shows an AI translation popup (fixed short-text prompt). Target language follows the UI. Requires LLM above.",
       translateKeepBoth:
-        "· Translation always keeps both: original body stays intact; bilingual text is stored separately and can be shown side-by-side anytime.",
+        "· Full-article translation always keeps both: original body stays intact; bilingual text is stored separately and can be shown side-by-side anytime.",
       llmNotesTitle: "AI features",
       llmFeaturesTitle: "Available now",
       llmFeatureSummarize:
         "· Summarize — ✨ or Auto summarize: streams into the deck above the body and replaces the feed summary when done.",
+      llmFeatureSelectTranslate:
+        "· Selection translate — highlight text in the reader for a floating AI translation (Settings → Search/AI).",
       llmFeatureTranslate:
         "· Translate — Languages icon: streaming original+translation pairs; both are kept (original body is never deleted).",
       llmFeatureAsk:

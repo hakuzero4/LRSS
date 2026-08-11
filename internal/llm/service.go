@@ -324,6 +324,24 @@ func (s *Service) TranslateStream(ctx context.Context, a ArticleInput, targetLan
 	}, nil
 }
 
+// SelectTranslate translates a short user-selected snippet (fixed prompt, plain text only).
+func (s *Service) SelectTranslate(ctx context.Context, text, targetLang string) (FeatureResult, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return FeatureResult{}, fmt.Errorf("selection text is required")
+	}
+	text = BudgetText(text, MaxSelectTranslateChars)
+	targetLang = strings.TrimSpace(targetLang)
+	if targetLang == "" {
+		targetLang = "zh-CN"
+	}
+	hash := ContentFingerprint(ArticleInput{Body: text})
+	extra := "sel=1|lang=" + NormalizeUILocale(targetLang) + "|" + strings.TrimSpace(targetLang)
+	system := SystemPromptFor(FeatureSelectTranslate, targetLang)
+	user := UserPromptSelectTranslate(text, targetLang)
+	return s.runCached(ctx, "", FeatureSelectTranslate, extra, hash, system, user)
+}
+
 // Ask answers a question about the article.
 func (s *Service) Ask(ctx context.Context, a ArticleInput, question, locale string) (FeatureResult, error) {
 	bundle := BuildArticleBundle(a, DefaultMaxInputChars)

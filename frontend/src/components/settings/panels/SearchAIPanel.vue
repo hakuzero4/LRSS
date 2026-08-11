@@ -423,6 +423,22 @@ onMounted(load);
           />
         </SettingsRow>
       </div>
+      <div class="py-2.5">
+        <SettingsRow
+          :title="t('settings.searchAi.selectTranslate')"
+          :description="t('settings.searchAi.selectTranslateDesc')"
+        >
+          <Switch
+            :checked="settings.selectTranslate"
+            @update:checked="
+              (v: boolean) => {
+                settings.selectTranslate = v;
+                persistUIPrefs();
+              }
+            "
+          />
+        </SettingsRow>
+      </div>
       <div class="py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
         <p>{{ t("settings.searchAi.translateKeepBoth") }}</p>
       </div>
@@ -434,6 +450,7 @@ onMounted(load);
           {{ t("settings.searchAi.llmFeaturesTitle") }}
         </p>
         <p>{{ t("settings.searchAi.llmFeatureSummarize") }}</p>
+        <p>{{ t("settings.searchAi.llmFeatureSelectTranslate") }}</p>
         <p>{{ t("settings.searchAi.llmFeatureTranslate") }}</p>
         <p>{{ t("settings.searchAi.llmFeatureAsk") }}</p>
         <p>{{ t("settings.searchAi.llmFeatureDigest") }}</p>

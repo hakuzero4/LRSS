@@ -536,6 +536,115 @@
   color: color-mix(in srgb, var(--foreground) 48%, var(--muted-foreground));
 }
 
+/* 划词翻译 floating card */
+.select-translate-popup {
+  position: fixed;
+  z-index: 80;
+  width: min(320px, calc(100vw - 16px));
+  max-height: min(280px, 50vh);
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  background: color-mix(in srgb, var(--popover) 96%, var(--background));
+  color: var(--popover-foreground);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent),
+    0 12px 32px color-mix(in srgb, var(--foreground) 12%, transparent);
+  padding: 10px 12px 10px;
+  backdrop-filter: blur(10px);
+}
+
+.select-translate-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  margin-bottom: 6px;
+}
+
+.select-translate-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.select-translate-close:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.select-translate-source {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.select-translate-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 1.5em;
+  font-size: 13.5px;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.select-translate-result {
+  margin: 0;
+  white-space: pre-wrap;
+  text-wrap: pretty;
+  font-weight: 500;
+}
+
+.select-translate-error {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--destructive);
+}
+
+.select-translate-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.select-translate-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.select-translate-action:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
 .reader-body-rule {
   display: flex;
   align-items: center;

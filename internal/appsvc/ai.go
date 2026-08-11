@@ -240,6 +240,24 @@ func (s *AIService) ClearTranslation(articleId string) error {
 	return s.lib.ClearArticleTranslation(context.Background(), articleId)
 }
 
+// TranslateSelection translates a short in-reader text selection (划词翻译).
+// Uses a fixed plain-translation prompt (not bilingual markers). targetLang e.g. zh-CN / en.
+func (s *AIService) TranslateSelection(text, targetLang string) (AIResult, error) {
+	ctx := context.Background()
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return AIResult{}, fmt.Errorf("selection text is required")
+	}
+	if strings.TrimSpace(targetLang) == "" {
+		targetLang = "zh-CN"
+	}
+	r, err := s.feat.SelectTranslate(ctx, text, targetLang)
+	if err != nil {
+		return AIResult{}, err
+	}
+	return toAIResult(r), nil
+}
+
 // Ask answers a question about the article (empty question → default overview in UI locale).
 func (s *AIService) Ask(articleId, question, locale string) (AIResult, error) {
 	ctx := context.Background()

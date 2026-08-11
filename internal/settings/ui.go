@@ -69,6 +69,8 @@ type UIPrefs struct {
 	NsfwMode bool `json:"nsfwMode"`
 	// AutoSummarize: when true, opening an article requests an LLM summary (if LLM configured).
 	AutoSummarize bool `json:"autoSummarize"`
+	// SelectTranslate: when true, selecting text in the reader shows AI 划词翻译.
+	SelectTranslate bool `json:"selectTranslate"`
 	// TranslateReplaceOriginal: when true, full-article translate overwrites content_html/text.
 	// When false, only the bilingual overlay is shown (no body replace).
 	TranslateReplaceOriginal bool `json:"translateReplaceOriginal"`
@@ -103,6 +105,7 @@ func DefaultUIPrefs() UIPrefs {
 		DeveloperMode:           false,
 		NsfwMode:                 true, // show all until user enables office hide
 		AutoSummarize:            false,
+		SelectTranslate:          true,  // 划词翻译 on by default when LLM is configured
 		TranslateReplaceOriginal: false, // keep original body; bilingual overlay only
 		ReaderToolbar:            DefaultReaderToolbarButtons(),
 	}

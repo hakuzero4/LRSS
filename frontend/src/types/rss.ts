@@ -163,6 +163,8 @@ export interface UIPrefs {
   nsfwMode: boolean;
   /** When true, open article triggers LLM summarize (if LLM configured). */
   autoSummarize: boolean;
+  /** When true, selecting text in the reader shows AI 划词翻译. */
+  selectTranslate: boolean;
   /**
    * @deprecated Prefer always-kept original + translationRaw.
    * Kept for prefs compatibility; no longer overwrites content_html.
@@ -230,6 +232,8 @@ export interface AppSettings {
   nsfwMode: boolean;
   /** Auto-run LLM summarize when opening an article (if LLM configured). */
   autoSummarize: boolean;
+  /** Select text in reader to AI-translate (划词翻译). */
+  selectTranslate: boolean;
   /** @deprecated unused for overwrite; original body is always kept. */
   translateReplaceOriginal?: boolean;
   /** Which icons show in the article reader top bar. */

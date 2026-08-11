@@ -466,6 +466,31 @@ async function aiTranslate(articleId: string, targetLang?: string) {
   }
 }
 
+/**
+ * Translate a short selected snippet (划词翻译). Plain text only; does not
+ * touch article body. Target language follows UI locale when omitted.
+ */
+async function aiTranslateSelection(
+  text: string,
+  targetLang?: string,
+): Promise<string> {
+  const source = String(text ?? "").trim();
+  if (!source) throw new Error(t("ai.selectEmpty"));
+  if (!backendReady.value) throw new Error(t("ai.backendUnavailable"));
+  const api = await loadAppsvc();
+  const fn =
+    api?.AIService?.TranslateSelection ??
+    (api as any)?.default?.AIService?.TranslateSelection;
+  if (typeof fn !== "function") throw new Error(t("ai.unavailable"));
+  const lang =
+    (targetLang || "").trim() ||
+    (uiLocale().toLowerCase().startsWith("zh") ? "zh-CN" : "en");
+  const raw = await fn.call(api?.AIService ?? api, source, lang);
+  const out = String(raw?.markdown ?? raw?.Markdown ?? "").trim();
+  if (!out) throw new Error(t("ai.selectEmptyResult"));
+  return out;
+}
+
 async function aiAsk(articleId: string, question: string) {
   const locale = uiLocale();
   await runAIFeature(t("ai.ask"), "ask", (api) =>
@@ -551,6 +576,7 @@ const settings = reactive<AppSettings>({
   developerMode: false,
   nsfwMode: true,
   autoSummarize: false,
+  selectTranslate: true,
   translateReplaceOriginal: false,
   readerToolbar: { ...DEFAULT_READER_TOOLBAR },
 });
@@ -852,6 +878,7 @@ function buildUIPrefs(): UIPrefs {
     developerMode: settings.developerMode,
     nsfwMode: settings.nsfwMode,
     autoSummarize: settings.autoSummarize,
+    selectTranslate: settings.selectTranslate,
     translateReplaceOriginal: settings.translateReplaceOriginal,
     readerToolbar: { ...settings.readerToolbar },
   };
@@ -981,6 +1008,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const autoSum = pickBool(p, "autoSummarize", "AutoSummarize");
   if (autoSum !== undefined) settings.autoSummarize = autoSum;
+
+  const selTr = pickBool(p, "selectTranslate", "SelectTranslate");
+  if (selTr !== undefined) settings.selectTranslate = selTr;
 
   const trReplace = pickBool(p, "translateReplaceOriginal", "TranslateReplaceOriginal");
   if (trReplace !== undefined) settings.translateReplaceOriginal = trReplace;
@@ -2207,6 +2237,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     developerMode: false,
     nsfwMode: true,
     autoSummarize: false,
+    selectTranslate: true,
     translateReplaceOriginal: false,
     readerToolbar: { ...DEFAULT_READER_TOOLBAR },
   };
@@ -2300,6 +2331,7 @@ export function useRssStore() {
     closeAIPanel,
     aiSummarize,
     aiTranslate,
+    aiTranslateSelection,
     aiAsk,
     aiDailyDigest,
     aiSuggest,

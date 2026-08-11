@@ -92,6 +92,15 @@ export default {
     summarize: "生成摘要",
     summarizeStarting: "正在生成摘要…",
     summarizeDone: "摘要已更新到正文上方",
+    selectTranslate: "划词翻译",
+    selectTranslateHint: "选中文字即可翻译",
+    selectSource: "原文",
+    selectResult: "译文",
+    selectCopy: "复制译文",
+    selectCopied: "已复制",
+    selectEmpty: "请先选中要翻译的文字",
+    selectEmptyResult: "未返回译文",
+    selectTooLong: "选中内容过长，请缩短后再试",
     translate: "翻译",
     translateTo: "翻译 · {lang}",
     translateAuto: "翻译（跟随界面语言）",
@@ -475,12 +484,17 @@ export default {
       autoSummarize: "自动摘要",
       autoSummarizeDesc:
         "选中文章后自动生成摘要，写在正文上方摘要区。输出语言跟随界面语言。",
+      selectTranslate: "划词翻译",
+      selectTranslateDesc:
+        "在阅读区选中文字后弹出 AI 翻译（固定短文本 prompt）。目标语言跟随界面语言。需先启用上方大模型。",
       translateKeepBoth:
-        "· 翻译会同时保留原文与译文：原文始终在 content 中，译文单独保存并可随时对照显示，不会只留译文。",
+        "· 全文翻译会同时保留原文与译文：原文始终在 content 中，译文单独保存并可随时对照显示，不会只留译文。",
       llmNotesTitle: "AI 功能说明",
       llmFeaturesTitle: "当前可用功能",
       llmFeatureSummarize:
         "· 摘要 — 阅读器 ✨ →「摘要」或「自动摘要」：在正文上方流式生成，完成后替换原文摘要（不再用右侧面板）。",
+      llmFeatureSelectTranslate:
+        "· 划词翻译 — 在正文中选中文字弹出 AI 译文（设置 → 搜索/AI 开关；固定短文本 prompt）。",
       llmFeatureTranslate:
         "· 翻译 — 工具栏语言图标：原文+译文对照（流式）；完成后两者都保留，原文不会被删掉。",
       llmFeatureAsk: "· 问答 / 解释 — ✨ →「问答」，针对当前文章提问（可改默认问题）。",

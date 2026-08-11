@@ -13,13 +13,17 @@ import (
 
 // Feature identifiers for cache keys and prompts.
 const (
-	FeatureSummarize = "summarize"
-	FeatureTranslate = "translate"
-	FeatureAsk       = "ask"
-	FeatureDigest    = "digest"
-	FeatureSuggest   = "suggest"
-	FeatureClassify  = "classify"
+	FeatureSummarize       = "summarize"
+	FeatureTranslate       = "translate"
+	FeatureSelectTranslate = "select_translate"
+	FeatureAsk             = "ask"
+	FeatureDigest          = "digest"
+	FeatureSuggest         = "suggest"
+	FeatureClassify        = "classify"
 )
+
+// MaxSelectTranslateChars caps selection text sent to the model.
+const MaxSelectTranslateChars = 4000
 
 // Default budget ≈ 6k tokens × 4 chars (heuristic).
 const DefaultMaxInputChars = 24000
@@ -181,6 +185,8 @@ func SystemPromptFor(feature, locale string) string {
 		base = "You are an RSS reading assistant. Write concise deck/standfirst summaries for the reader UI (plain text + optional • bullets). Be faithful and avoid markdown headings or bold."
 	case FeatureTranslate:
 		base = "You are a precise literary translator for RSS articles. Preserve meaning, names, and tone. Output only bilingual segment pairs in the required marker format—no commentary."
+	case FeatureSelectTranslate:
+		base = "You are a precise translator for short selected phrases and sentences from RSS articles. Preserve meaning, names, and tone. Output only the translation—no commentary, labels, or quotes."
 	case FeatureAsk:
 		base = "You are a careful reading assistant. Answer only from the provided article context. If unknown, say so. Prefer short Markdown answers."
 	case FeatureDigest:
@@ -192,8 +198,8 @@ func SystemPromptFor(feature, locale string) string {
 	default:
 		base = "You are a helpful RSS reading assistant. Reply in Markdown."
 	}
-	// Translate already targets an explicit language; still keep a short style line.
-	if feature == FeatureTranslate {
+	// Translate features already target an explicit language.
+	if feature == FeatureTranslate || feature == FeatureSelectTranslate {
 		return base
 	}
 	return base + " " + lang
@@ -252,6 +258,36 @@ Rules:
 Article:
 %s
 `, label, label, bundle)
+}
+
+// UserPromptSelectTranslate is the fixed prompt for in-reader selection translation.
+// Output is plain translation only (no bilingual markers).
+func UserPromptSelectTranslate(text, targetLang string) string {
+	targetLang = strings.TrimSpace(targetLang)
+	if targetLang == "" {
+		targetLang = "zh-CN"
+	}
+	label := targetLang
+	switch NormalizeUILocale(targetLang) {
+	case "zh":
+		label = "Simplified Chinese (简体中文)"
+	default:
+		if strings.HasPrefix(strings.ToLower(targetLang), "en") {
+			label = "English"
+		}
+	}
+	text = BudgetText(text, MaxSelectTranslateChars)
+	return fmt.Sprintf(`Translate the selected text into %s.
+
+Rules:
+- Output ONLY the translation.
+- Do not repeat the source text.
+- Do not add quotes, labels, explanations, or markdown.
+- Keep proper names when natural; preserve numbers and URLs.
+
+Selected text:
+%s
+`, label, text)
 }
 
 // BilingualPair is one original + translation unit for the reader UI.

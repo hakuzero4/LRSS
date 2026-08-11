@@ -139,6 +139,11 @@ export interface UIPrefs {
     "autoSummarize": boolean;
 
     /**
+     * SelectTranslate: when true, selecting text in the reader shows AI 划词翻译.
+     */
+    "selectTranslate": boolean;
+
+    /**
      * TranslateReplaceOriginal: when true, full-article translate overwrites content_html/text.
      * When false, only the bilingual overlay is shown (no body replace).
      */

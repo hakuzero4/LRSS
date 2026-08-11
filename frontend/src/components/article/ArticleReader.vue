@@ -2,6 +2,7 @@
 import {
   BookOpenText,
   Check,
+  ClipboardCopy,
   ExternalLink,
   FileCode2,
   Focus,
@@ -14,8 +15,9 @@ import {
   Star,
   Tags,
   TextQuote,
+  X,
 } from "@lucide/vue";
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
@@ -62,15 +64,44 @@ const {
   translateView,
   aiSummarize,
   aiTranslate,
+  aiTranslateSelection,
   aiAsk,
   aiSuggest,
   aiClassify,
 } = useRssStore();
 
 const scrollPaneRef = ref<HTMLElement | null>(null);
+/** Content root used to scope selection translate (body / bilingual). */
+const readerContentRef = ref<HTMLElement | null>(null);
+const selectPopupEl = ref<HTMLElement | null>(null);
 /** Avoid repeated mark-read while sitting at the bottom. */
 const scrollEndMarkedForId = ref<string | null>(null);
 const fetchingFull = ref(false);
+
+const SELECT_MAX_CHARS = 2000;
+const SELECT_MIN_CHARS = 2;
+
+type SelectPopupState = {
+  open: boolean;
+  x: number;
+  y: number;
+  source: string;
+  result: string;
+  busy: boolean;
+  error: string;
+  seq: number;
+};
+
+const selectPopup = reactive<SelectPopupState>({
+  open: false,
+  x: 0,
+  y: 0,
+  source: "",
+  result: "",
+  busy: false,
+  error: "",
+  seq: 0,
+});
 const aiBusy = computed(() => aiPanel.busy);
 const summarizeBusy = computed(
   () =>
@@ -266,6 +297,136 @@ function onClassify() {
   if (!id) return;
   void runAI(() => aiClassify(id));
 }
+
+function closeSelectPopup() {
+  selectPopup.open = false;
+  selectPopup.source = "";
+  selectPopup.result = "";
+  selectPopup.busy = false;
+  selectPopup.error = "";
+  selectPopup.seq += 1;
+}
+
+function clampPopupPosition(left: number, top: number) {
+  const pad = 8;
+  const w = typeof window !== "undefined" ? window.innerWidth : 800;
+  const h = typeof window !== "undefined" ? window.innerHeight : 600;
+  const boxW = 320;
+  const boxH = 180;
+  return {
+    x: Math.min(Math.max(pad, left), Math.max(pad, w - boxW - pad)),
+    y: Math.min(Math.max(pad, top), Math.max(pad, h - boxH - pad)),
+  };
+}
+
+function selectionInsideReader(sel: Selection): boolean {
+  const root = readerContentRef.value;
+  if (!root) return false;
+  const a = sel.anchorNode;
+  const f = sel.focusNode;
+  if (!a || !f) return false;
+  return root.contains(a) && root.contains(f);
+}
+
+async function runSelectTranslate(text: string) {
+  const seq = ++selectPopup.seq;
+  selectPopup.busy = true;
+  selectPopup.error = "";
+  selectPopup.result = "";
+  try {
+    const out = await aiTranslateSelection(text);
+    if (seq !== selectPopup.seq) return;
+    selectPopup.result = out;
+  } catch (e) {
+    if (seq !== selectPopup.seq) return;
+    selectPopup.error = e instanceof Error ? e.message : String(e);
+  } finally {
+    if (seq === selectPopup.seq) selectPopup.busy = false;
+  }
+}
+
+/** 划词翻译: show floating card and auto-translate selected text. */
+function onReaderMouseUp(_ev: MouseEvent) {
+  if (!settings.selectTranslate || !backendReady.value) return;
+  // Let the browser finalize the selection first.
+  window.setTimeout(() => {
+    if (!settings.selectTranslate) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    if (!selectionInsideReader(sel)) return;
+    const text = sel.toString().replace(/\s+/g, " ").trim();
+    if (text.length < SELECT_MIN_CHARS) return;
+    if (text.length > SELECT_MAX_CHARS) {
+      toast.message(t("ai.selectTooLong"));
+      return;
+    }
+    // Same selection still open → keep popup (avoid re-fire while interacting).
+    if (
+      selectPopup.open &&
+      selectPopup.source === text &&
+      (selectPopup.busy || selectPopup.result || selectPopup.error)
+    ) {
+      return;
+    }
+    let rect: DOMRect;
+    try {
+      rect = sel.getRangeAt(0).getBoundingClientRect();
+    } catch {
+      return;
+    }
+    if (!rect || (rect.width === 0 && rect.height === 0)) return;
+    const pos = clampPopupPosition(rect.left, rect.bottom + 8);
+    selectPopup.open = true;
+    selectPopup.x = pos.x;
+    selectPopup.y = pos.y;
+    selectPopup.source = text;
+    selectPopup.result = "";
+    selectPopup.error = "";
+    void runSelectTranslate(text);
+  }, 10);
+}
+
+function onDocPointerDown(ev: PointerEvent) {
+  if (!selectPopup.open) return;
+  const t = ev.target as Node | null;
+  if (t && selectPopupEl.value?.contains(t)) return;
+  // Clicking elsewhere dismisses; keep selection if user re-selects.
+  closeSelectPopup();
+}
+
+function onDocKeydown(ev: KeyboardEvent) {
+  if (ev.key === "Escape" && selectPopup.open) {
+    closeSelectPopup();
+  }
+}
+
+async function copySelectResult() {
+  const text = selectPopup.result.trim();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(t("ai.selectCopied"));
+  } catch {
+    toast.error(t("ai.copyFailed"));
+  }
+}
+
+onMounted(() => {
+  document.addEventListener("pointerdown", onDocPointerDown, true);
+  document.addEventListener("keydown", onDocKeydown, true);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", onDocPointerDown, true);
+  document.removeEventListener("keydown", onDocKeydown, true);
+});
+
+watch(
+  () => selectedArticle.value?.id,
+  () => {
+    closeSelectPopup();
+  },
+);
 
 /** Intercept in-body links so they honor openLinksInBrowser (never leave the app shell). */
 function onBodyClick(ev: MouseEvent) {
@@ -625,6 +786,7 @@ watch(
         @scroll.passive="onReaderScroll"
       >
         <article
+          ref="readerContentRef"
           :class="
             cn(
               'reader-shell mx-auto px-6 py-8 sm:px-10 sm:py-10',
@@ -633,6 +795,7 @@ watch(
           "
           :data-font-size="settings.fontSize"
           :data-reader-width="settings.readerWidth"
+          @mouseup="onReaderMouseUp"
         >
           <header class="reader-header-block">
             <p class="text-[12px] font-medium tracking-[0.01em] text-muted-foreground">
@@ -773,6 +936,55 @@ watch(
       <p class="mt-1.5 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
         {{ t("article.selectHint") }}
       </p>
+    </div>
+
+    <!-- 划词翻译 floating card (fixed to viewport near selection) -->
+    <div
+      v-if="selectPopup.open && settings.selectTranslate"
+      ref="selectPopupEl"
+      class="select-translate-popup"
+      :style="{ left: `${selectPopup.x}px`, top: `${selectPopup.y}px` }"
+      role="dialog"
+      :aria-label="t('ai.selectTranslate')"
+      @mousedown.stop
+      @mouseup.stop
+    >
+      <div class="select-translate-head">
+        <Languages class="size-3.5 opacity-80" />
+        <span>{{ t("ai.selectTranslate") }}</span>
+        <button
+          type="button"
+          class="select-translate-close"
+          :aria-label="t('ai.closePanel')"
+          @click="closeSelectPopup"
+        >
+          <X class="size-3.5" />
+        </button>
+      </div>
+      <p v-if="selectPopup.source" class="select-translate-source">
+        {{ selectPopup.source }}
+      </p>
+      <div class="select-translate-body">
+        <template v-if="selectPopup.busy">
+          <LoaderCircle class="size-3.5 animate-spin opacity-70" />
+          <span>{{ t("ai.working") }}</span>
+        </template>
+        <p v-else-if="selectPopup.error" class="select-translate-error">
+          {{ selectPopup.error }}
+        </p>
+        <p v-else-if="selectPopup.result" class="select-translate-result">
+          {{ selectPopup.result }}
+        </p>
+      </div>
+      <div
+        v-if="selectPopup.result && !selectPopup.busy"
+        class="select-translate-actions"
+      >
+        <button type="button" class="select-translate-action" @click="copySelectResult">
+          <ClipboardCopy class="size-3.5" />
+          {{ t("ai.selectCopy") }}
+        </button>
+      </div>
     </div>
   </section>
 </template>

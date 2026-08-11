@@ -82,3 +82,11 @@ export function Summarize(articleId: string, locale: string): $CancellablePromis
 export function Translate(articleId: string, targetLang: string): $CancellablePromise<$models.AIResult> {
     return $Call.ByID(1790707048, articleId, targetLang);
 }
+
+/**
+ * TranslateSelection translates a short in-reader text selection (划词翻译).
+ * Uses a fixed plain-translation prompt (not bilingual markers). targetLang e.g. zh-CN / en.
+ */
+export function TranslateSelection(text: string, targetLang: string): $CancellablePromise<$models.AIResult> {
+    return $Call.ByID(3853920870, text, targetLang);
+}

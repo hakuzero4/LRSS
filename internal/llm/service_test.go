@@ -240,9 +240,43 @@ func TestService_HTTPError(t *testing.T) {
 	}
 }
 
+func TestService_SelectTranslate(t *testing.T) {
+	store, database := testStore(t)
+	stub := &stubChat{model: "test-model", content: "  你好世界  "}
+	svc := &llm.Service{
+		Store: store,
+		Cache: &llm.Cache{DB: database.SQL},
+		NewChatter: func(cfg settings.LLMConfig) (llm.Chatter, error) {
+			return stub, nil
+		},
+	}
+	ctx := context.Background()
+	r, err := svc.SelectTranslate(ctx, "hello world", "zh-CN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Feature != llm.FeatureSelectTranslate || r.Markdown != "你好世界" {
+		t.Fatalf("got %+v", r)
+	}
+	if !strings.Contains(stub.lastUser, "hello world") {
+		t.Fatalf("user prompt missing selection: %s", stub.lastUser)
+	}
+	// cache hit
+	r2, err := svc.SelectTranslate(ctx, "hello world", "zh-CN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r2.Cached {
+		t.Fatal("expected cache hit")
+	}
+	if stub.calls != 1 {
+		t.Fatalf("calls = %d want 1", stub.calls)
+	}
+}
+
 func TestPromptsNonEmpty(t *testing.T) {
 	for _, f := range []string{
-		llm.FeatureSummarize, llm.FeatureTranslate, llm.FeatureAsk,
+		llm.FeatureSummarize, llm.FeatureTranslate, llm.FeatureSelectTranslate, llm.FeatureAsk,
 		llm.FeatureDigest, llm.FeatureSuggest, llm.FeatureClassify,
 	} {
 		if strings.TrimSpace(llm.SystemPromptFor(f, "zh-CN")) == "" {

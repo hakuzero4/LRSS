@@ -48,6 +48,23 @@ func TestUserPromptTranslate_HasMarkers(t *testing.T) {
 	}
 }
 
+func TestUserPromptSelectTranslate_PlainOnly(t *testing.T) {
+	p := llm.UserPromptSelectTranslate("hello world", "zh-CN")
+	if strings.Contains(p, "<<o>>") || strings.Contains(p, "<<t>>") {
+		t.Fatalf("select translate must not use bilingual markers: %s", p)
+	}
+	if !strings.Contains(p, "hello world") {
+		t.Fatal("expected source text in prompt")
+	}
+	if !strings.Contains(p, "ONLY the translation") {
+		t.Fatal("expected output-only instruction")
+	}
+	sys := llm.SystemPromptFor(llm.FeatureSelectTranslate, "zh-CN")
+	if strings.TrimSpace(sys) == "" {
+		t.Fatal("empty system prompt")
+	}
+}
+
 func TestTranslatedBodyFromPairs(t *testing.T) {
 	html, plain := llm.TranslatedBodyFromPairs([]llm.BilingualPair{
 		{Original: "Hello.", Translation: "你好。"},
