@@ -137,6 +137,8 @@ assert(
 // sidebar
 assert(sidebar.includes("compactSidebarClass") || sidebar.includes("sidebar-compact") || sidebar.includes("sidebarDensityClass"), "compact sidebar");
 assert(sidebar.includes("feedMenu"), "feed menu i18n");
+assert(sidebar.includes("openFeedEdit"), "feed edit from context menu");
+assert(layout.includes("FeedEditDialog"), "shared feed edit dialog");
 assert(sidebar.includes("onFeedRefresh") || sidebar.includes("refreshOneFeed"), "feed refresh");
 assert(sidebar.includes("openDeleteFeed") || sidebar.includes("deleteFeed"), "feed delete");
 assert(sidebar.includes("onFeedMove") || sidebar.includes("moveFeedToFolder"), "feed move");

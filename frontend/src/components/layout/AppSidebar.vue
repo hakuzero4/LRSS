@@ -82,6 +82,7 @@ const {
   openAddFeed,
   openAddFeedInFolder,
   openSettings,
+  openFeedEdit,
   createFolder,
   renameFolder,
   deleteFolder,
@@ -710,6 +711,9 @@ const smartItems = computed(() => [
                         {{ t("feedMenu.markAllRead") }}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
+                      <ContextMenuItem @select="openFeedEdit(feed.id)">
+                        {{ t("feedMenu.edit") }}
+                      </ContextMenuItem>
                       <ContextMenuItem @select="openRenameFeed(feed)">
                         {{ t("feedMenu.rename") }}
                       </ContextMenuItem>
@@ -795,6 +799,9 @@ const smartItems = computed(() => [
                     {{ t("feedMenu.markAllRead") }}
                   </ContextMenuItem>
                   <ContextMenuSeparator />
+                  <ContextMenuItem @select="openFeedEdit(feed.id)">
+                    {{ t("feedMenu.edit") }}
+                  </ContextMenuItem>
                   <ContextMenuItem @select="openRenameFeed(feed)">
                     {{ t("feedMenu.rename") }}
                   </ContextMenuItem>

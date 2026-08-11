@@ -744,6 +744,7 @@ export default {
     markAllRead: "Mark all as read",
     markReadDone: "Marked all as read",
     markReadFailed: "Could not mark as read",
+    edit: "Edit subscription…",
     rename: "Rename…",
     renameTitle: "Rename feed",
     renameDesc: "Custom names are not overwritten by the remote title.",

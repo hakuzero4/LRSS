@@ -57,6 +57,9 @@ const addFeedOpen = ref(false);
 /** When set, AddFeed uses this folder id (from folder context menu). */
 const addFeedTargetFolderId = ref<string | null>(null);
 const settingsOpen = ref(false);
+/** Sidebar / settings: shared edit-subscription dialog. */
+const feedEditOpen = ref(false);
+const feedEditId = ref<string | null>(null);
 /** Zen mode: hide feed sidebar + article list (session-only). */
 const zenMode = ref(false);
 const refreshing = ref(false);
@@ -1855,6 +1858,19 @@ async function runBackendSearch(query: string, seq: number) {
 function openSettings() {
   settingsOpen.value = true;
 }
+
+/** Open the full subscription editor (name, interval, folder, pause, NSFW…). */
+function openFeedEdit(feedId: string) {
+  const id = String(feedId || "").trim();
+  if (!id) return;
+  feedEditId.value = id;
+  feedEditOpen.value = true;
+}
+
+function closeFeedEdit() {
+  feedEditOpen.value = false;
+  // Keep feedEditId until next open so close animation still has a title.
+}
 function closeSettings() {
   settingsOpen.value = false;
 }
@@ -2608,6 +2624,10 @@ export function useRssStore() {
     setSearchQuery,
     openSettings,
     closeSettings,
+    feedEditOpen,
+    feedEditId,
+    openFeedEdit,
+    closeFeedEdit,
     toggleZenMode,
     setZenMode,
     closeAIPanel,

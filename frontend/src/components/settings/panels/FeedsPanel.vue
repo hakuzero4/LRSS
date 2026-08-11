@@ -53,16 +53,10 @@ const {
   clearAllSubscriptions,
   persistUIPrefs,
   purgeOldArticles,
-  renameFeed,
-  setFeedRefreshInterval,
-  setFeedKeepArticlesDays,
-  setFeedPaused,
-  moveFeedToFolder,
-  refreshOneFeed,
   deleteFeed,
   deleteFailedFeeds,
-  setFeedNsfw,
   addFeedsFromURLs,
+  openFeedEdit,
 } = useRssStore();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -78,12 +72,6 @@ const clearStatus = ref("");
 const purging = ref(false);
 const deleteFailedOpen = ref(false);
 const deleteFailedBusy = ref(false);
-
-/** Interval presets (minutes). 0 = follow global default. */
-const INTERVAL_OPTIONS = [0, 5, 15, 30, 60, 120, 180] as const;
-
-/** Keep-days presets. 0 = follow global keepArticlesDays. */
-const KEEP_DAYS_OPTIONS = [0, 7, 14, 30, 60, 90, 180, 365] as const;
 
 const feedFilter = ref("");
 /** When true, only show feeds with a non-empty lastError. */
@@ -118,33 +106,6 @@ const sortedFeeds = computed(() => {
 const listFilterActive = computed(
   () => feedErrorsOnly.value || !!feedFilter.value.trim(),
 );
-
-const globalIntervalLabel = computed(() => formatIntervalMinutes(settings.refreshIntervalMinutes));
-
-function formatIntervalMinutes(m: number): string {
-  if (m < 60) return t("common.minutes", { n: m });
-  if (m === 60) return t("common.oneHour");
-  if (m % 60 === 0) return t("common.hours", { n: m / 60 });
-  return t("common.minutes", { n: m });
-}
-
-function intervalOptionLabel(minutes: number): string {
-  if (minutes === 0) {
-    return t("settings.feeds.intervalDefault", { n: globalIntervalLabel.value });
-  }
-  return t("settings.feeds.intervalCustom", { n: formatIntervalMinutes(minutes) });
-}
-
-const globalKeepDaysLabel = computed(() =>
-  t("common.days", { n: settings.keepArticlesDays }),
-);
-
-function keepDaysOptionLabel(days: number): string {
-  if (days === 0) {
-    return t("settings.feeds.keepDaysDefault", { n: globalKeepDaysLabel.value });
-  }
-  return t("settings.feeds.keepDaysCustom", { n: t("common.days", { n: days }) });
-}
 
 function lastUpdatedLabel(feed: Feed): string {
   const iso = feed.lastFetchedAt?.trim();
@@ -266,114 +227,29 @@ async function confirmAddFeeds() {
   }
 }
 
-// ── Edit subscription dialog ───────────────────────────────────
-const editOpen = ref(false);
-const editFeedId = ref<string | null>(null);
-const editTitle = ref("");
-const editInterval = ref("0");
-const editKeepDays = ref("0");
-const editFolderId = ref("none");
-const editPaused = ref(false);
-const editNsfw = ref(false);
-const editSaving = ref(false);
-const editRefreshing = ref(false);
-const editFeedUrl = ref("");
+// ── Row unsubscribe (full edit dialog is shared FeedEditDialog) ─
 const deleteFeedOpen = ref(false);
 const deleteFeedBusy = ref(false);
-
-const editFeed = computed(() =>
-  editFeedId.value ? feeds.value.find((f) => f.id === editFeedId.value) ?? null : null,
-);
+const deleteFeedId = ref<string | null>(null);
+const deleteFeedTitle = ref("");
 
 function openEdit(feed: Feed) {
-  editFeedId.value = feed.id;
-  editTitle.value = feed.title;
-  editInterval.value = String(feed.refreshIntervalMinutes ?? 0);
-  editKeepDays.value = String(feed.keepArticlesDays ?? 0);
-  editFolderId.value = feed.folderId ?? "none";
-  editPaused.value = !!feed.isPaused;
-  editNsfw.value = !!feed.isNsfw;
-  editFeedUrl.value = feed.feedUrl;
-  editOpen.value = true;
+  openFeedEdit(feed.id);
 }
 
-async function confirmEdit() {
-  if (!editFeedId.value || editSaving.value) return;
-  const title = editTitle.value.trim();
-  if (!title) {
-    toast.error(t("settings.feeds.renameEmpty"));
-    return;
-  }
-  editSaving.value = true;
-  const id = editFeedId.value;
-  try {
-    const current = feeds.value.find((f) => f.id === id);
-    if (!current) throw new Error("feed missing");
-
-    if (title !== current.title) {
-      await renameFeed(id, title);
-    }
-    const minutes = Math.max(0, Math.floor(Number(editInterval.value) || 0));
-    if (minutes !== (current.refreshIntervalMinutes ?? 0)) {
-      await setFeedRefreshInterval(id, minutes);
-    }
-    const keepDays = Math.max(0, Math.floor(Number(editKeepDays.value) || 0));
-    if (keepDays !== (current.keepArticlesDays ?? 0)) {
-      await setFeedKeepArticlesDays(id, keepDays);
-    }
-    const folder = editFolderId.value === "none" ? null : editFolderId.value;
-    const curFolder = current.folderId ?? null;
-    if ((folder ?? null) !== (curFolder ?? null)) {
-      await moveFeedToFolder(id, folder);
-    }
-    if (editPaused.value !== !!current.isPaused) {
-      await setFeedPaused(id, editPaused.value);
-    }
-    if (editNsfw.value !== !!current.isNsfw) {
-      await setFeedNsfw(id, editNsfw.value);
-    }
-    editOpen.value = false;
-    toast.success(t("settings.feeds.saved"));
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("settings.feeds.saveFailed"), { description: msg });
-  } finally {
-    editSaving.value = false;
-  }
-}
-
-async function onEditRefresh() {
-  if (!editFeedId.value || editRefreshing.value) return;
-  editRefreshing.value = true;
-  try {
-    const n = await refreshOneFeed(editFeedId.value);
-    toast.success(t("settings.feeds.refreshDone", { n }));
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("settings.feeds.refreshFailed"), { description: msg });
-  } finally {
-    editRefreshing.value = false;
-  }
-}
-
-/** Open unsubscribe confirm. Pass `feed` from the list row; omit when already in edit dialog. */
-function openDeleteFeed(feed?: Feed) {
-  if (feed) {
-    editFeedId.value = feed.id;
-    editTitle.value = feed.title;
-  }
-  if (!editFeedId.value) return;
+function openDeleteFeed(feed: Feed) {
+  deleteFeedId.value = feed.id;
+  deleteFeedTitle.value = feed.title;
   deleteFeedOpen.value = true;
 }
 
 async function confirmDeleteFeed(ev: Event) {
   ev.preventDefault();
-  if (!editFeedId.value || deleteFeedBusy.value) return;
+  if (!deleteFeedId.value || deleteFeedBusy.value) return;
   deleteFeedBusy.value = true;
   try {
-    await deleteFeed(editFeedId.value);
+    await deleteFeed(deleteFeedId.value);
     deleteFeedOpen.value = false;
-    editOpen.value = false;
     toast.success(t("settings.feeds.deleteFeedDone"));
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -982,152 +858,6 @@ async function confirmClearAll(ev: Event) {
       </DialogContent>
     </Dialog>
 
-    <!-- Edit subscription (name / interval / folder / pause / refresh / delete) -->
-    <Dialog :open="editOpen" @update:open="(v) => (editOpen = v)">
-      <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{{ t("settings.feeds.editTitle") }}</DialogTitle>
-          <DialogDescription>{{ t("settings.feeds.editDesc") }}</DialogDescription>
-        </DialogHeader>
-        <div class="grid gap-3.5 py-1">
-          <div class="grid gap-1.5">
-            <Label for="feed-edit-title">{{ t("settings.feeds.renameLabel") }}</Label>
-            <Input
-              id="feed-edit-title"
-              v-model="editTitle"
-              :placeholder="t('settings.feeds.renamePlaceholder')"
-              class="h-9"
-              :disabled="editSaving"
-            />
-          </div>
-          <div class="grid gap-1.5">
-            <Label>{{ t("settings.feeds.feedUrlLabel") }}</Label>
-            <p
-              class="truncate rounded-md border border-border/60 bg-muted/40 px-2.5 py-2 text-[12px] text-muted-foreground"
-              :title="editFeedUrl"
-            >
-              {{ editFeedUrl }}
-            </p>
-          </div>
-          <div class="grid gap-1.5">
-            <Label>{{ t("settings.feeds.refreshInterval") }}</Label>
-            <Select v-model="editInterval" :disabled="editSaving || editPaused">
-              <SelectTrigger class="h-9 w-full text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
-                <SelectItem
-                  v-for="opt in INTERVAL_OPTIONS"
-                  :key="opt"
-                  :value="String(opt)"
-                >
-                  {{ intervalOptionLabel(opt) }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div class="grid gap-1.5">
-            <Label>{{ t("settings.feeds.keepDaysPerFeed") }}</Label>
-            <Select v-model="editKeepDays" :disabled="editSaving">
-              <SelectTrigger class="h-9 w-full text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
-                <SelectItem
-                  v-for="opt in KEEP_DAYS_OPTIONS"
-                  :key="opt"
-                  :value="String(opt)"
-                >
-                  {{ keepDaysOptionLabel(opt) }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p class="text-[11.5px] leading-relaxed text-muted-foreground">
-              {{ t("settings.feeds.keepDaysPerFeedDesc") }}
-            </p>
-          </div>
-          <div class="grid gap-1.5">
-            <Label>{{ t("settings.feeds.folderLabel") }}</Label>
-            <Select v-model="editFolderId" :disabled="editSaving">
-              <SelectTrigger class="h-9 w-full text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
-                <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
-                <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
-                  {{ f.name }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div class="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2.5">
-            <div>
-              <p class="text-[13px] font-medium">{{ t("settings.feeds.pause") }}</p>
-              <p
-                v-if="editFeed?.lastError"
-                class="mt-0.5 line-clamp-2 text-[11px] text-destructive/90"
-              >
-                {{ editFeed.lastError }}
-              </p>
-            </div>
-            <Switch v-model:checked="editPaused" :disabled="editSaving" />
-          </div>
-          <div class="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2.5">
-            <div class="min-w-0">
-              <p class="text-[13px] font-medium">{{ t("settings.feeds.nsfw") }}</p>
-              <p class="mt-0.5 text-[11.5px] text-muted-foreground">
-                {{ t("settings.feeds.nsfwDesc") }}
-              </p>
-            </div>
-            <Switch v-model:checked="editNsfw" :disabled="editSaving" />
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              :disabled="editSaving || editRefreshing || !editFeedId"
-              @click="onEditRefresh"
-            >
-              {{
-                editRefreshing
-                  ? t("settings.feeds.refreshing")
-                  : t("settings.feeds.refreshNow")
-              }}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              :disabled="editSaving || deleteFeedBusy"
-              @click="openDeleteFeed"
-            >
-              {{ t("settings.feeds.deleteFeed") }}
-            </Button>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            :disabled="editSaving"
-            @click="editOpen = false"
-          >
-            {{ t("common.cancel") }}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            :disabled="editSaving || !editTitle.trim()"
-            @click="confirmEdit"
-          >
-            {{ editSaving ? t("common.saving") : t("common.save") }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
     <AlertDialog
       :open="deleteFeedOpen"
       @update:open="(v) => !deleteFeedBusy && (deleteFeedOpen = v)"
@@ -1141,7 +871,7 @@ async function confirmClearAll(ev: Event) {
           <AlertDialogDescription class="text-[13px] leading-relaxed">
             {{
               t("settings.feeds.deleteFeedConfirmBody", {
-                name: editTitle || editFeed?.title || "",
+                name: deleteFeedTitle,
               })
             }}
           </AlertDialogDescription>

@@ -726,6 +726,7 @@ export default {
     markAllRead: "全部标为已读",
     markReadDone: "已全部标为已读",
     markReadFailed: "标为已读失败",
+    edit: "编辑订阅…",
     rename: "改名…",
     renameTitle: "重命名订阅",
     renameDesc: "自定义名称不会被源站标题覆盖。",

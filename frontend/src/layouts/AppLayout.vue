@@ -3,6 +3,7 @@ import { onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import AppSidebar from "@/components/layout/AppSidebar.vue";
 import AddFeedDialog from "@/components/feed/AddFeedDialog.vue";
+import FeedEditDialog from "@/components/feed/FeedEditDialog.vue";
 import SettingsDialog from "@/components/settings/SettingsDialog.vue";
 import { useTheme } from "@/composables/useTheme";
 import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
@@ -84,6 +85,7 @@ async function onRetryBootstrap() {
     </ResizablePanelGroup>
 
     <AddFeedDialog />
+    <FeedEditDialog />
     <SettingsDialog />
     <Toaster
       class="pointer-events-auto"
