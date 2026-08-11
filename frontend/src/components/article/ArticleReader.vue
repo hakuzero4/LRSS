@@ -3,6 +3,7 @@ import {
   BookOpenText,
   Check,
   ExternalLink,
+  FileCode2,
   Star,
 } from "@lucide/vue";
 import { computed, nextTick, ref, watch } from "vue";
@@ -24,6 +25,9 @@ import {
 } from "@/components/ui/tooltip";
 
 const { t } = useI18n();
+
+/** Right-side Markdown preview panel (owned by ReaderView). */
+const markdownOpen = defineModel<boolean>("markdownOpen", { default: false });
 
 const {
   selectedArticle,
@@ -71,6 +75,12 @@ async function openOriginal() {
   await openExternalLink(selectedArticle.value.url, {
     forceBrowser: settings.openLinksInBrowser,
   });
+}
+
+/** Toggle right-side Markdown panel (does not copy). */
+function toggleMarkdownPanel() {
+  if (!selectedArticle.value) return;
+  markdownOpen.value = !markdownOpen.value;
 }
 
 /** Intercept in-body links so they honor openLinksInBrowser (never leave the app shell). */
@@ -164,6 +174,36 @@ watch(
               </TooltipTrigger>
               <TooltipContent>
                 {{ selectedArticle.read ? t("article.markUnread") : t("article.markRead") }}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  :class="
+                    markdownOpen
+                      ? 'text-primary bg-primary/10'
+                      : 'text-muted-foreground'
+                  "
+                  :aria-label="
+                    markdownOpen
+                      ? t('article.closeMarkdownPanel')
+                      : t('article.showMarkdown')
+                  "
+                  :aria-pressed="markdownOpen"
+                  @click="toggleMarkdownPanel"
+                >
+                  <FileCode2 class="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {{
+                  markdownOpen
+                    ? t("article.closeMarkdownPanel")
+                    : t("article.showMarkdown")
+                }}
               </TooltipContent>
             </Tooltip>
 
