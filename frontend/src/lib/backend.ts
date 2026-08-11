@@ -35,6 +35,14 @@ export function mapArticle(a: any) {
     })(),
     summary,
     contentHtml,
+    translationRaw: (() => {
+      const t = a.translationRaw ?? a.TranslationRaw ?? "";
+      return t ? String(t) : undefined;
+    })(),
+    translationLang: (() => {
+      const t = a.translationLang ?? a.TranslationLang ?? "";
+      return t ? String(t) : undefined;
+    })(),
     url: a.url ?? a.URL ?? "",
     publishedAt: a.publishedAt ?? a.PublishedAt ?? a.fetchedAt ?? a.FetchedAt ?? new Date().toISOString(),
     read: !!(a.isRead ?? a.read),

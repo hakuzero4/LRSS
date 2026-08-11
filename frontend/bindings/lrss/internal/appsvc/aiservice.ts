@@ -37,6 +37,13 @@ export function ClassifyPromo(articleId: string, locale: string): $CancellablePr
 }
 
 /**
+ * ClearTranslation removes saved bilingual text; original body is unchanged.
+ */
+export function ClearTranslation(articleId: string): $CancellablePromise<void> {
+    return $Call.ByID(2982864194, articleId);
+}
+
+/**
  * DailyDigest builds a Markdown digest of today's unread articles (Top N, default 12).
  * locale controls output language (app UI language).
  */
@@ -68,7 +75,9 @@ export function Summarize(articleId: string, locale: string): $CancellablePromis
 }
 
 /**
- * Translate translates an article into targetLang (e.g. zh-CN, en).
+ * Translate streams a bilingual interlinear translation (llm:stream, feature=translate).
+ * targetLang is e.g. zh-CN or en. Output uses <<o>>/<<t>> pairs.
+ * Always keeps the original content_html; bilingual text is saved on the article as translationRaw.
  */
 export function Translate(articleId: string, targetLang: string): $CancellablePromise<$models.AIResult> {
     return $Call.ByID(1790707048, articleId, targetLang);

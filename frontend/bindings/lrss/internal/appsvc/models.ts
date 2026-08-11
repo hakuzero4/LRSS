@@ -12,6 +12,13 @@ export interface AIResult {
     "folderId"?: string;
     "folderName"?: string;
     "verdict"?: string;
+
+    /**
+     * KeptOriginal is always true for translate: original body is never overwritten.
+     */
+    "keptOriginal"?: boolean;
+    "translationRaw"?: string;
+    "translationLang"?: string;
 }
 
 /**

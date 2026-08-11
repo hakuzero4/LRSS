@@ -35,6 +35,8 @@ type ArticleStore interface {
 	UpsertFromParsed(ctx context.Context, feedID string, items []repo.ParsedItem) (repo.UpsertResult, error)
 	UpdateContent(ctx context.Context, articleID, contentHTML, contentText string) error
 	UpdateSummary(ctx context.Context, articleID, summary string) error
+	UpdateTranslation(ctx context.Context, articleID, raw, lang string) error
+	ClearTranslation(ctx context.Context, articleID string) error
 	SetRead(ctx context.Context, articleID string, read bool) error
 	SetStarred(ctx context.Context, articleID string, starred bool) error
 	MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error

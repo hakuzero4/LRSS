@@ -140,7 +140,8 @@ func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts
 
 	sqlStr := `
 		SELECT id, feed_id, guid, url, title, author, summary,
-		       content_html, content_text, image_url, published_at,
+		       content_html, content_text, translation_raw, translation_lang,
+		       image_url, published_at,
 		       fetched_at, is_read, is_starred
 		FROM articles`
 	if len(where) > 0 {
@@ -176,7 +177,8 @@ func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts
 func (r *ArticleRepo) Get(ctx context.Context, articleID string) (model.Article, error) {
 	row := r.DB.QueryRowContext(ctx, `
 		SELECT id, feed_id, guid, url, title, author, summary,
-		       content_html, content_text, image_url, published_at,
+		       content_html, content_text, translation_raw, translation_lang,
+		       image_url, published_at,
 		       fetched_at, is_read, is_starred
 		FROM articles WHERE id = ?`, articleID)
 	a, err := scanArticle(row)
@@ -269,6 +271,46 @@ func (r *ArticleRepo) UpsertFromParsed(ctx context.Context, feedID string, items
 		}
 	}
 	return res, nil
+}
+
+// UpdateTranslation stores bilingual translation next to the original body (never overwrites content_*).
+func (r *ArticleRepo) UpdateTranslation(ctx context.Context, articleID, raw, lang string) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("update translation: article id required")
+	}
+	raw = strings.TrimSpace(raw)
+	lang = strings.TrimSpace(lang)
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE articles SET translation_raw = ?, translation_lang = ? WHERE id = ?`,
+		nullStr(&raw), nullStr(&lang), articleID,
+	)
+	if err != nil {
+		return fmt.Errorf("update translation: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("article not found: %s", articleID)
+	}
+	return nil
+}
+
+// ClearTranslation removes stored bilingual translation (original body unchanged).
+func (r *ArticleRepo) ClearTranslation(ctx context.Context, articleID string) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("clear translation: article id required")
+	}
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE articles SET translation_raw = NULL, translation_lang = NULL WHERE id = ?`, articleID)
+	if err != nil {
+		return fmt.Errorf("clear translation: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("article not found: %s", articleID)
+	}
+	return nil
 }
 
 // UpdateSummary replaces the article summary (e.g. after AI summarize) and refreshes FTS.
@@ -538,11 +580,13 @@ func collectionWhere(collection string) (where []string, args []any, err error) 
 
 func scanArticle(row scannable) (model.Article, error) {
 	var a model.Article
-	var guid, author, summary, contentHTML, contentText, imageURL, published sql.NullString
+	var guid, author, summary, contentHTML, contentText, translationRaw, translationLang sql.NullString
+	var imageURL, published sql.NullString
 	var read, starred int
 	if err := row.Scan(
 		&a.ID, &a.FeedID, &guid, &a.URL, &a.Title, &author, &summary,
-		&contentHTML, &contentText, &imageURL, &published,
+		&contentHTML, &contentText, &translationRaw, &translationLang,
+		&imageURL, &published,
 		&a.FetchedAt, &read, &starred,
 	); err != nil {
 		return model.Article{}, err
@@ -552,6 +596,8 @@ func scanArticle(row scannable) (model.Article, error) {
 	a.Summary = strPtr(summary)
 	a.ContentHTML = strPtr(contentHTML)
 	a.ContentText = strPtr(contentText)
+	a.TranslationRaw = strPtr(translationRaw)
+	a.TranslationLang = strPtr(translationLang)
 	a.ImageURL = strPtr(imageURL)
 	a.PublishedAt = strPtr(published)
 	a.IsRead = read != 0

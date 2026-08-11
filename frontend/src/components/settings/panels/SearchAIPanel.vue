@@ -423,6 +423,9 @@ onMounted(load);
           />
         </SettingsRow>
       </div>
+      <div class="py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
+        <p>{{ t("settings.searchAi.translateKeepBoth") }}</p>
+      </div>
     </SettingsGroup>
 
     <SettingsGroup :title="t('settings.searchAi.llmNotesTitle')">

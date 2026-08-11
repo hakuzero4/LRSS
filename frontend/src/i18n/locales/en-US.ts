@@ -92,8 +92,15 @@ export default {
     summarize: "Summarize",
     translate: "Translate",
     translateTo: "Translate · {lang}",
-    langZh: "Chinese",
-    langEn: "English",
+    translateAuto: "Translate (UI language)",
+    translateMenu: "Choose target language",
+    translateHint: "Click to translate",
+    translateStarting: "Translating…",
+    translateDone: "Translation saved (original kept; reopens in bilingual view)",
+    translateShowOriginal: "Show original",
+    bilingualTitle: "Bilingual",
+    langZh: "To Chinese",
+    langEn: "To English",
     ask: "Ask / explain",
     askPrompt: "Ask about this article:",
     askDefault: "What is this article about? Key claims and risks?",
@@ -451,13 +458,15 @@ export default {
       autoGroupDesc: "Whether to call AI when opening articles. Requires LLM config saved above.",
       autoSummarize: "Auto summarize",
       autoSummarizeDesc:
-        "When you select an article, generate a summary in the AI panel. Output language follows the UI language.",
+        "When you select an article, generate a summary in the deck above the body. Output language follows the UI language.",
+      translateKeepBoth:
+        "· Translation always keeps both: original body stays intact; bilingual text is stored separately and can be shown side-by-side anytime.",
       llmNotesTitle: "AI features",
       llmFeaturesTitle: "Available now",
       llmFeatureSummarize:
         "· Summarize — ✨ or Auto summarize: streams into the deck above the body and replaces the feed summary when done.",
       llmFeatureTranslate:
-        "· Translate — ✨ → Translate → Chinese / English for the current article.",
+        "· Translate — Languages icon: streaming original+translation pairs; both are kept (original body is never deleted).",
       llmFeatureAsk:
         "· Ask / explain — ✨ → Ask about this article (editable default question).",
       llmFeatureDigest:

@@ -237,13 +237,91 @@ type streamChatter interface {
 
 // Translate translates the article into targetLang (e.g. zh-CN, en).
 func (s *Service) Translate(ctx context.Context, a ArticleInput, targetLang string) (FeatureResult, error) {
+	return s.TranslateStream(ctx, a, targetLang, nil)
+}
+
+// TranslateStream streams bilingual marker output for interlinear UI.
+func (s *Service) TranslateStream(ctx context.Context, a ArticleInput, targetLang string, onChunk StreamHandler) (FeatureResult, error) {
 	targetLang = strings.TrimSpace(targetLang)
 	if targetLang == "" {
 		targetLang = "zh-CN"
 	}
+	// Fingerprint without summary noise; include target lang in extra.
+	hashInput := ArticleInput{Title: a.Title, Body: a.Body, URL: a.URL, Author: a.Author}
 	bundle := BuildArticleBundle(a, DefaultMaxInputChars)
-	hash := ContentFingerprint(a)
-	return s.runCached(ctx, a.ID, FeatureTranslate, targetLang, hash, SystemPromptFor(FeatureTranslate, targetLang), UserPromptTranslate(bundle, targetLang))
+	hash := ContentFingerprint(hashInput)
+	extra := "bilingual=1|lang=" + NormalizeUILocale(targetLang) + "|" + strings.TrimSpace(targetLang)
+	feature := FeatureTranslate
+	system := SystemPromptFor(feature, targetLang)
+	user := UserPromptTranslate(bundle, targetLang)
+
+	cfg, err := s.loadCfg(ctx)
+	if err != nil {
+		return FeatureResult{}, err
+	}
+	key := CacheKey(a.ID, feature, cfg.Model, hash, extra)
+	if s.Cache != nil {
+		if hit, ok, err := s.Cache.Get(ctx, key); err != nil {
+			return FeatureResult{}, err
+		} else if ok && strings.TrimSpace(hit.ResultMD) != "" {
+			if onChunk != nil {
+				onChunk(hit.ResultMD, hit.ResultMD)
+			}
+			return FeatureResult{
+				Markdown: hit.ResultMD,
+				Feature:  feature,
+				Model:    hit.Model,
+				Cached:   true,
+			}, nil
+		}
+	}
+
+	chat, err := s.chatter(cfg)
+	if err != nil {
+		return FeatureResult{}, err
+	}
+	var res ChatResponse
+	if sc, ok := chat.(streamChatter); ok {
+		res, err = sc.ChatStream(ctx, ChatRequest{
+			Messages: []Message{
+				{Role: "system", Content: system},
+				{Role: "user", Content: user},
+			},
+		}, onChunk)
+	} else {
+		res, err = chat.Chat(ctx, ChatRequest{
+			Messages: []Message{
+				{Role: "system", Content: system},
+				{Role: "user", Content: user},
+			},
+		})
+		if err == nil && onChunk != nil && res.Content != "" {
+			onChunk(res.Content, res.Content)
+		}
+	}
+	if err != nil {
+		return FeatureResult{}, err
+	}
+	md := strings.TrimSpace(res.Content)
+	if md == "" {
+		return FeatureResult{}, fmt.Errorf("llm returned empty content")
+	}
+	model := res.Model
+	if model == "" {
+		model = chat.ModelName()
+	}
+	if s.Cache != nil {
+		_ = s.Cache.Put(ctx, CachedResult{
+			Key: key, ArticleID: a.ID, Feature: feature,
+			Model: model, ContentHash: hash, ResultMD: md,
+		})
+	}
+	return FeatureResult{
+		Markdown: md,
+		Feature:  feature,
+		Model:    model,
+		Cached:   false,
+	}, nil
 }
 
 // Ask answers a question about the article.

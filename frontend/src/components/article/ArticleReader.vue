@@ -32,9 +32,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -61,6 +58,7 @@ const {
   toggleZenMode,
   aiPanel,
   summaryStream,
+  translateView,
   aiSummarize,
   aiTranslate,
   aiAsk,
@@ -73,6 +71,18 @@ const scrollPaneRef = ref<HTMLElement | null>(null);
 const scrollEndMarkedForId = ref<string | null>(null);
 const fetchingFull = ref(false);
 const aiBusy = computed(() => aiPanel.busy);
+const translateBusy = computed(
+  () =>
+    translateView.busy &&
+    translateView.articleId === selectedArticle.value?.id,
+);
+const showBilingual = computed(
+  () =>
+    !!selectedArticle.value &&
+    translateView.active &&
+    translateView.articleId === selectedArticle.value.id &&
+    (translateView.pairs.length > 0 || translateView.busy),
+);
 
 /** Live AI summary stream for the selected article. */
 const isStreamingSummary = computed(() => {
@@ -180,10 +190,39 @@ function onSummarize() {
   void runAI(() => aiSummarize(id));
 }
 
-function onTranslate(lang: string) {
+async function onTranslate(lang?: string) {
   const id = selectedArticle.value?.id;
-  if (!id) return;
-  void runAI(() => aiTranslate(id, lang));
+  if (!id) {
+    toast.message(t("ai.failed"), { description: t("article.selectTitle") });
+    return;
+  }
+  if (!backendReady.value) {
+    toast.error(t("ai.backendUnavailable"));
+    return;
+  }
+  // Toggling off an existing bilingual view — no success toast.
+  const togglingOff =
+    translateView.active &&
+    translateView.articleId === id &&
+    !translateView.busy &&
+    translateView.pairs.length > 0;
+  if (!togglingOff) {
+    toast.message(t("ai.translateStarting"));
+  }
+  try {
+    await aiTranslate(id, lang);
+    if (togglingOff) return;
+    // Always keep original + translation; never toast "replaced original".
+    toast.success(t("ai.translateDone"));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("ai.failed"), { description: msg });
+  }
+}
+
+/** One-click translate (target follows UI language). */
+function onTranslateClick() {
+  void onTranslate();
 }
 
 function onAsk() {
@@ -329,6 +368,66 @@ watch(
               </TooltipContent>
             </Tooltip>
 
+            <!-- Translate: direct click (nested Dropdown+Tooltip was swallowing clicks) -->
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  :class="
+                    showBilingual || translateBusy
+                      ? 'text-primary bg-primary/10'
+                      : 'text-muted-foreground'
+                  "
+                  :disabled="translateBusy"
+                  :aria-label="t('ai.translate')"
+                  :aria-pressed="showBilingual"
+                  @click="onTranslateClick"
+                >
+                  <LoaderCircle
+                    v-if="translateBusy"
+                    class="size-4 animate-spin"
+                  />
+                  <Languages v-else class="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {{
+                  showBilingual
+                    ? t("ai.translateShowOriginal")
+                    : t("ai.translate")
+                }}
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  class="-ml-1.5 min-w-5 px-0.5 text-muted-foreground"
+                  :disabled="translateBusy"
+                  :aria-label="t('ai.translateMenu')"
+                >
+                  <span class="text-[10px] font-semibold leading-none">▾</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="w-48">
+                <DropdownMenuLabel>{{ t("ai.translate") }}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem @select="() => void onTranslate()">
+                  {{ t("ai.translateAuto") }}
+                </DropdownMenuItem>
+                <DropdownMenuItem @select="() => void onTranslate('zh-CN')">
+                  {{ t("ai.langZh") }}
+                </DropdownMenuItem>
+                <DropdownMenuItem @select="() => void onTranslate('en')">
+                  {{ t("ai.langEn") }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger as-child>
@@ -361,20 +460,6 @@ watch(
                   <Sparkles class="mr-2 size-3.5" />
                   {{ t("ai.summarize") }}
                 </DropdownMenuItem>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <Languages class="mr-2 size-3.5" />
-                    {{ t("ai.translate") }}
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem @click="onTranslate('zh-CN')">
-                      {{ t("ai.langZh") }}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem @click="onTranslate('en')">
-                      {{ t("ai.langEn") }}
-                    </DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
                 <DropdownMenuItem @click="onAsk">
                   <MessageCircleQuestion class="mr-2 size-3.5" />
                   {{ t("ai.ask") }}
@@ -543,7 +628,54 @@ watch(
             </aside>
           </header>
 
-          <template v-if="hasBody">
+          <!-- Bilingual translation (interlinear pairs) -->
+          <section
+            v-if="showBilingual"
+            class="bilingual-view mt-8"
+            :aria-label="t('ai.translate')"
+            :data-streaming="translateBusy ? '1' : undefined"
+          >
+            <div class="bilingual-view-head">
+              <Languages class="size-3.5 opacity-80" />
+              <span>{{ t("ai.bilingualTitle") }}</span>
+              <span
+                v-if="translateBusy"
+                class="font-normal text-muted-foreground"
+              >
+                · {{ t("ai.streaming") }}
+              </span>
+            </div>
+            <div
+              v-if="translateView.pairs.length === 0 && translateBusy"
+              class="bilingual-loading text-muted-foreground"
+            >
+              {{ t("ai.streaming") }}…
+              <span class="summary-caret" aria-hidden="true" />
+            </div>
+            <div
+              v-for="(pair, i) in translateView.pairs"
+              :key="i"
+              class="bilingual-pair"
+            >
+              <p v-if="pair.original" class="bilingual-original">
+                {{ pair.original }}
+              </p>
+              <p
+                v-if="pair.translation"
+                class="bilingual-translation"
+              >
+                {{ pair.translation }}
+              </p>
+            </div>
+            <p
+              v-if="translateView.error"
+              class="mt-3 text-[12px] text-destructive"
+            >
+              {{ translateView.error }}
+            </p>
+          </section>
+
+          <template v-else-if="hasBody">
             <div
               v-if="showSummaryDeck"
               class="reader-body-rule"

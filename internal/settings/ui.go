@@ -38,6 +38,9 @@ type UIPrefs struct {
 	NsfwMode bool `json:"nsfwMode"`
 	// AutoSummarize: when true, opening an article requests an LLM summary (if LLM configured).
 	AutoSummarize bool `json:"autoSummarize"`
+	// TranslateReplaceOriginal: when true, full-article translate overwrites content_html/text.
+	// When false, only the bilingual overlay is shown (no body replace).
+	TranslateReplaceOriginal bool `json:"translateReplaceOriginal"`
 }
 
 // DefaultUIPrefs matches frontend default settings in useRssStore.
@@ -65,8 +68,9 @@ func DefaultUIPrefs() UIPrefs {
 		HardwareAcceleration:    true,
 		ClearCacheOnQuit:        false,
 		DeveloperMode:           false,
-		NsfwMode:                true, // show all until user enables office hide
-		AutoSummarize:           false,
+		NsfwMode:                 true, // show all until user enables office hide
+		AutoSummarize:            false,
+		TranslateReplaceOriginal: false, // keep original body; bilingual overlay only
 	}
 }
 

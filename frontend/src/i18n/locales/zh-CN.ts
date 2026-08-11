@@ -92,8 +92,15 @@ export default {
     summarize: "摘要",
     translate: "翻译",
     translateTo: "翻译 · {lang}",
-    langZh: "中文",
-    langEn: "English",
+    translateAuto: "翻译（跟随界面语言）",
+    translateMenu: "选择目标语言",
+    translateHint: "单击翻译",
+    translateStarting: "正在翻译…",
+    translateDone: "翻译完成（原文与译文均已保留，下次打开仍显示对照）",
+    translateShowOriginal: "显示原文",
+    bilingualTitle: "对照翻译",
+    langZh: "译为中文",
+    langEn: "译为 English",
     ask: "问答 / 解释",
     askPrompt: "针对这篇文章提问：",
     askDefault: "这篇文章在说什么？有哪些要点与风险？",
@@ -442,12 +449,15 @@ export default {
       autoGroupDesc: "打开文章时是否自动调用 AI。需先启用并保存上方大模型配置。",
       autoSummarize: "自动摘要",
       autoSummarizeDesc:
-        "选中文章后自动生成摘要，并在右侧 AI 面板展示。输出语言跟随界面语言（设置 → 外观/语言）。",
+        "选中文章后自动生成摘要，写在正文上方摘要区。输出语言跟随界面语言。",
+      translateKeepBoth:
+        "· 翻译会同时保留原文与译文：原文始终在 content 中，译文单独保存并可随时对照显示，不会只留译文。",
       llmNotesTitle: "AI 功能说明",
       llmFeaturesTitle: "当前可用功能",
       llmFeatureSummarize:
         "· 摘要 — 阅读器 ✨ →「摘要」或「自动摘要」：在正文上方流式生成，完成后替换原文摘要（不再用右侧面板）。",
-      llmFeatureTranslate: "· 翻译 — ✨ →「翻译」→ 中文 / English，将正文译为目标语言。",
+      llmFeatureTranslate:
+        "· 翻译 — 工具栏语言图标：原文+译文对照（流式）；完成后两者都保留，原文不会被删掉。",
       llmFeatureAsk: "· 问答 / 解释 — ✨ →「问答」，针对当前文章提问（可改默认问题）。",
       llmFeatureDigest: "· 每日简报 — 左侧边栏智能列表下方「每日简报」，汇总今日未读 Top N。",
       llmFeatureSuggest:

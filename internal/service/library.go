@@ -575,6 +575,37 @@ func (lib *Library) UpdateArticleSummary(ctx context.Context, articleID, summary
 	return lib.Articles.UpdateSummary(ctx, articleID, summary)
 }
 
+// UpdateArticleContent replaces body HTML/text (e.g. after full-text fetch) and refreshes FTS.
+// Not used for AI translate — translate keeps the original and stores bilingual text separately.
+func (lib *Library) UpdateArticleContent(ctx context.Context, articleID, contentHTML, contentText string) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("article id is required")
+	}
+	// Sanitize HTML for UI storage.
+	if contentHTML != "" {
+		contentHTML = lib.sanitizeHTML(contentHTML)
+	}
+	if contentText == "" && contentHTML != "" {
+		contentText = htmltext.ToText(contentHTML)
+	}
+	return lib.Articles.UpdateContent(ctx, articleID, contentHTML, contentText)
+}
+
+// SaveArticleTranslation stores bilingual <<o>>/<<t>> text next to the original body.
+func (lib *Library) SaveArticleTranslation(ctx context.Context, articleID, raw, lang string) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("article id is required")
+	}
+	return lib.Articles.UpdateTranslation(ctx, articleID, raw, lang)
+}
+
+// ClearArticleTranslation drops stored bilingual text; original body is unchanged.
+func (lib *Library) ClearArticleTranslation(ctx context.Context, articleID string) error {
+	return lib.Articles.ClearTranslation(ctx, articleID)
+}
+
 // SetRead marks an article read/unread.
 func (lib *Library) SetRead(ctx context.Context, articleID string, read bool) error {
 	return lib.Articles.SetRead(ctx, articleID, read)

@@ -51,6 +51,9 @@ export interface Article {
   author?: string;
   summary: string;
   contentHtml: string;
+  /** Bilingual <<o>>/<<t>> text; original contentHtml is always kept. */
+  translationRaw?: string;
+  translationLang?: string;
   url: string;
   publishedAt: string;
   read: boolean;
@@ -119,6 +122,11 @@ export interface UIPrefs {
   nsfwMode: boolean;
   /** When true, open article triggers LLM summarize (if LLM configured). */
   autoSummarize: boolean;
+  /**
+   * @deprecated Prefer always-kept original + translationRaw.
+   * Kept for prefs compatibility; no longer overwrites content_html.
+   */
+  translateReplaceOriginal?: boolean;
 }
 
 export interface AppSettings {
@@ -179,4 +187,6 @@ export interface AppSettings {
   nsfwMode: boolean;
   /** Auto-run LLM summarize when opening an article (if LLM configured). */
   autoSummarize: boolean;
+  /** @deprecated unused for overwrite; original body is always kept. */
+  translateReplaceOriginal?: boolean;
 }

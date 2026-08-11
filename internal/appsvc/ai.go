@@ -44,6 +44,10 @@ type AIResult struct {
 	FolderID   string `json:"folderId,omitempty"`
 	FolderName string `json:"folderName,omitempty"`
 	Verdict    string `json:"verdict,omitempty"`
+	// KeptOriginal is always true for translate: original body is never overwritten.
+	KeptOriginal    bool   `json:"keptOriginal,omitempty"`
+	TranslationRaw  string `json:"translationRaw,omitempty"`
+	TranslationLang string `json:"translationLang,omitempty"`
 }
 
 func toAIResult(r llm.FeatureResult) AIResult {
@@ -159,18 +163,81 @@ func (s *AIService) Summarize(articleId, locale string) (AIResult, error) {
 	return toAIResult(r), nil
 }
 
-// Translate translates an article into targetLang (e.g. zh-CN, en).
+// Translate streams a bilingual interlinear translation (llm:stream, feature=translate).
+// targetLang is e.g. zh-CN or en. Output uses <<o>>/<<t>> pairs.
+// Always keeps the original content_html; bilingual text is saved on the article as translationRaw.
 func (s *AIService) Translate(articleId, targetLang string) (AIResult, error) {
 	ctx := context.Background()
 	in, err := s.articleInput(ctx, articleId)
 	if err != nil {
 		return AIResult{}, err
 	}
-	r, err := s.feat.Translate(ctx, in, targetLang)
+	if strings.TrimSpace(targetLang) == "" {
+		targetLang = "zh-CN"
+	}
+
+	emitLLMStream(LLMStreamEvent{
+		ArticleID: articleId,
+		Feature:   llm.FeatureTranslate,
+		Done:      false,
+	})
+
+	r, err := s.feat.TranslateStream(ctx, in, targetLang, func(delta, full string) {
+		emitLLMStream(LLMStreamEvent{
+			ArticleID: articleId,
+			Feature:   llm.FeatureTranslate,
+			Delta:     delta,
+			Text:      full,
+			Done:      false,
+		})
+	})
 	if err != nil {
+		emitLLMStream(LLMStreamEvent{
+			ArticleID: articleId,
+			Feature:   llm.FeatureTranslate,
+			Done:      true,
+			Error:     err.Error(),
+		})
 		return AIResult{}, err
 	}
-	return toAIResult(r), nil
+
+	out := toAIResult(r)
+	// Persist bilingual next to original — never overwrite content_html / content_text.
+	if s.lib != nil && strings.TrimSpace(r.Markdown) != "" {
+		if uerr := s.lib.SaveArticleTranslation(ctx, articleId, r.Markdown, targetLang); uerr != nil {
+			emitLLMStream(LLMStreamEvent{
+				ArticleID: articleId,
+				Feature:   llm.FeatureTranslate,
+				Text:      r.Markdown,
+				Done:      true,
+				Model:     r.Model,
+				Cached:    r.Cached,
+				Error:     "save translation: " + uerr.Error(),
+			})
+			return out, uerr
+		}
+		out.TranslationRaw = r.Markdown
+		out.TranslationLang = targetLang
+		out.KeptOriginal = true
+	}
+
+	emitLLMStream(LLMStreamEvent{
+		ArticleID: articleId,
+		Feature:   llm.FeatureTranslate,
+		Text:      r.Markdown,
+		Done:      true,
+		Model:     r.Model,
+		Cached:    r.Cached,
+	})
+	return out, nil
+}
+
+// ClearTranslation removes saved bilingual text; original body is unchanged.
+func (s *AIService) ClearTranslation(articleId string) error {
+	if s.lib == nil {
+		return fmt.Errorf("library unavailable")
+	}
+	return s.lib.ClearArticleTranslation(context.Background(), articleId)
 }
 
 // Ask answers a question about the article (empty question → default overview in UI locale).

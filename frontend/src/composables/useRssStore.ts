@@ -2,6 +2,7 @@ import { computed, reactive, ref, watch } from "vue";
 import i18n from "@/i18n";
 import { applyArticleFilters } from "@/lib/articleFilters";
 import { loadAppsvc, mapArticle, mapFeed, mapFolder } from "@/lib/backend";
+import { parseBilingualPairs, type BilingualPair } from "@/lib/bilingual";
 import { feedIdsInFolder, folderCollectionId } from "@/lib/folderMenu";
 import { applyShowUnreadOnly } from "@/lib/readingSettings";
 import { filterArticlesByNsfwMode, filterFeedsForSidebar } from "@/lib/nsfw";
@@ -98,6 +99,28 @@ const summaryStream = reactive<SummaryStreamState>({
   error: "",
 });
 
+/** In-reader bilingual translation view (interlinear pairs). */
+export type TranslateViewState = {
+  articleId: string | null;
+  /** Whether user asked to show translation (may still be loading). */
+  active: boolean;
+  busy: boolean;
+  targetLang: string;
+  raw: string;
+  pairs: BilingualPair[];
+  error: string;
+};
+
+const translateView = reactive<TranslateViewState>({
+  articleId: null,
+  active: false,
+  busy: false,
+  targetLang: "zh-CN",
+  raw: "",
+  pairs: [],
+  error: "",
+});
+
 let llmStreamUnsub: (() => void) | null = null;
 
 async function ensureLLMStreamListener() {
@@ -106,46 +129,87 @@ async function ensureLLMStreamListener() {
     const { Events } = await import("@wailsio/runtime");
     llmStreamUnsub = Events.On("llm:stream", (ev: { data?: any }) => {
       const d = ev?.data ?? ev;
-      if (!d || d.feature !== "summarize") return;
+      if (!d) return;
+      const feature = String(d.feature ?? d.Feature ?? "");
       const articleId = String(d.articleId ?? d.ArticleID ?? "");
       if (!articleId) return;
-      // Ignore chunks for other articles if user navigated away mid-stream.
-      if (
-        summaryStream.articleId &&
-        summaryStream.articleId !== articleId &&
-        selectedArticleId.value !== articleId
-      ) {
+
+      if (feature === "summarize") {
+        handleSummarizeStream(d, articleId);
         return;
       }
-      if (selectedArticleId.value === articleId || summaryStream.articleId === articleId) {
-        summaryStream.articleId = articleId;
-      } else {
-        return;
-      }
-      const text = String(d.text ?? d.Text ?? "");
-      const done = !!(d.done ?? d.Done);
-      const err = String(d.error ?? d.Error ?? "");
-      if (text) summaryStream.text = text;
-      if (err && done) {
-        summaryStream.error = err.startsWith("save summary:") ? "" : err;
-        summaryStream.busy = false;
-      }
-      if (done) {
-        summaryStream.busy = false;
-        if (text && !err.startsWith("save summary:")) {
-          // Replace in-memory article summary so list + reader update.
-          patchArticleSummary(articleId, text);
-        } else if (text && err.startsWith("save summary:")) {
-          // Still show text even if persist failed.
-          patchArticleSummary(articleId, text);
-        }
-      } else {
-        summaryStream.busy = true;
-        summaryStream.error = "";
+      if (feature === "translate") {
+        handleTranslateStream(d, articleId);
       }
     });
   } catch {
     /* pure vite preview */
+  }
+}
+
+function handleSummarizeStream(d: any, articleId: string) {
+  if (
+    summaryStream.articleId &&
+    summaryStream.articleId !== articleId &&
+    selectedArticleId.value !== articleId
+  ) {
+    return;
+  }
+  if (selectedArticleId.value === articleId || summaryStream.articleId === articleId) {
+    summaryStream.articleId = articleId;
+  } else {
+    return;
+  }
+  const text = String(d.text ?? d.Text ?? "");
+  const done = !!(d.done ?? d.Done);
+  const err = String(d.error ?? d.Error ?? "");
+  if (text) summaryStream.text = text;
+  if (err && done) {
+    summaryStream.error = err.startsWith("save summary:") ? "" : err;
+    summaryStream.busy = false;
+  }
+  if (done) {
+    summaryStream.busy = false;
+    if (text) patchArticleSummary(articleId, text);
+  } else {
+    summaryStream.busy = true;
+    summaryStream.error = "";
+  }
+}
+
+function handleTranslateStream(d: any, articleId: string) {
+  if (
+    translateView.articleId &&
+    translateView.articleId !== articleId &&
+    selectedArticleId.value !== articleId
+  ) {
+    return;
+  }
+  if (selectedArticleId.value === articleId || translateView.articleId === articleId) {
+    translateView.articleId = articleId;
+    translateView.active = true;
+  } else {
+    return;
+  }
+  const text = String(d.text ?? d.Text ?? "");
+  const done = !!(d.done ?? d.Done);
+  const err = String(d.error ?? d.Error ?? "");
+  if (text) {
+    translateView.raw = text;
+    translateView.pairs = parseBilingualPairs(text);
+  }
+  if (done) {
+    translateView.busy = false;
+    // "replaced" is a success signal when body was overwritten with translation.
+    if (err === "replaced") {
+      translateView.error = "";
+      // Body patch comes from the RPC return in aiTranslate; stream may finish first.
+      return;
+    }
+    if (err) translateView.error = err;
+  } else {
+    translateView.busy = true;
+    translateView.error = "";
   }
 }
 
@@ -155,6 +219,22 @@ function patchArticleSummary(articleId: string, summary: string) {
     const idx = list.findIndex((a) => a.id === articleId);
     if (idx < 0) return;
     list[idx] = { ...list[idx], summary };
+  };
+  apply(articles.value);
+  apply(searchArticles.value);
+}
+
+function patchArticleTranslation(articleId: string, raw: string, lang: string) {
+  const apply = (list: Article[] | null) => {
+    if (!list) return;
+    const idx = list.findIndex((a) => a.id === articleId);
+    if (idx < 0) return;
+    list[idx] = {
+      ...list[idx],
+      translationRaw: raw,
+      translationLang: lang,
+      // contentHtml / original body intentionally unchanged
+    };
   };
   apply(articles.value);
   apply(searchArticles.value);
@@ -173,6 +253,49 @@ function clearSummaryStream() {
   summaryStream.text = "";
   summaryStream.busy = false;
   summaryStream.error = "";
+}
+
+function clearTranslateView() {
+  translateView.articleId = null;
+  translateView.active = false;
+  translateView.busy = false;
+  translateView.raw = "";
+  translateView.pairs = [];
+  translateView.error = "";
+}
+
+function beginTranslateView(articleId: string, targetLang: string) {
+  translateView.articleId = articleId;
+  translateView.active = true;
+  translateView.busy = true;
+  translateView.targetLang = targetLang;
+  translateView.raw = "";
+  translateView.pairs = [];
+  translateView.error = "";
+  void ensureLLMStreamListener();
+}
+
+/**
+ * When reopening an article that already has a saved bilingual translation,
+ * show the对照 view automatically (original contentHtml is still kept).
+ */
+function applySavedTranslationView(articleId: string) {
+  if (translateView.busy && translateView.articleId === articleId) return;
+  const a = resolveSelectedArticle(articleId, articles.value, searchArticles.value);
+  const raw = (a?.translationRaw ?? "").trim();
+  if (!raw) {
+    if (translateView.articleId === articleId && !translateView.busy) {
+      clearTranslateView();
+    }
+    return;
+  }
+  translateView.articleId = articleId;
+  translateView.active = true;
+  translateView.busy = false;
+  translateView.targetLang = a?.translationLang || uiLocale();
+  translateView.raw = raw;
+  translateView.pairs = parseBilingualPairs(raw);
+  translateView.error = "";
 }
 
 function closeAIPanel() {
@@ -268,11 +391,74 @@ async function aiSummarize(articleId: string) {
   }
 }
 
-async function aiTranslate(articleId: string, targetLang: string) {
-  const lang = (targetLang || "zh-CN").trim();
-  await runAIFeature(t("ai.translateTo", { lang }), "translate", (api) =>
-    api.AIService.Translate(articleId, lang),
-  );
+/**
+ * Translate streams bilingual pairs into the reader (original + translation).
+ * Original contentHtml is never overwritten. Translation is saved on the article.
+ * Click again while active → hide bilingual and show original HTML only.
+ */
+async function aiTranslate(articleId: string, targetLang?: string) {
+  const lang =
+    (targetLang || "").trim() ||
+    (uiLocale().toLowerCase().startsWith("zh") ? "zh-CN" : "en");
+
+  // Toggle off bilingual view (original stays in contentHtml).
+  if (
+    translateView.active &&
+    translateView.articleId === articleId &&
+    !translateView.busy &&
+    translateView.pairs.length > 0
+  ) {
+    clearTranslateView();
+    return;
+  }
+
+  // Re-show saved translation without re-calling the model.
+  const existing = resolveSelectedArticle(articleId, articles.value, searchArticles.value);
+  if (
+    existing?.translationRaw &&
+    (!targetLang || existing.translationLang === lang || !existing.translationLang)
+  ) {
+    beginTranslateView(articleId, existing.translationLang || lang);
+    translateView.raw = existing.translationRaw;
+    translateView.pairs = parseBilingualPairs(existing.translationRaw);
+    translateView.busy = false;
+    return;
+  }
+
+  if (!backendReady.value) throw new Error(t("ai.backendUnavailable"));
+  const api = await loadAppsvc();
+  const translateFn =
+    api?.AIService?.Translate ??
+    (api as any)?.default?.AIService?.Translate;
+  if (typeof translateFn !== "function") {
+    throw new Error(t("ai.unavailable"));
+  }
+
+  beginTranslateView(articleId, lang);
+  aiPanel.open = false;
+  try {
+    const raw = await translateFn.call(api?.AIService ?? api, articleId, lang);
+    const text = String(
+      raw?.translationRaw ??
+        raw?.TranslationRaw ??
+        raw?.markdown ??
+        raw?.Markdown ??
+        translateView.raw ??
+        "",
+    ).trim();
+    if (text) {
+      translateView.raw = text;
+      translateView.pairs = parseBilingualPairs(text);
+      // Keep original contentHtml; store bilingual separately.
+      patchArticleTranslation(articleId, text, lang);
+    }
+    translateView.busy = false;
+  } catch (e) {
+    translateView.busy = false;
+    const msg = e instanceof Error ? e.message : String(e);
+    translateView.error = msg;
+    throw e;
+  }
 }
 
 async function aiAsk(articleId: string, question: string) {
@@ -360,6 +546,7 @@ const settings = reactive<AppSettings>({
   developerMode: false,
   nsfwMode: true,
   autoSummarize: false,
+  translateReplaceOriginal: false,
 });
 
 function isToday(iso: string): boolean {
@@ -659,6 +846,7 @@ function buildUIPrefs(): UIPrefs {
     developerMode: settings.developerMode,
     nsfwMode: settings.nsfwMode,
     autoSummarize: settings.autoSummarize,
+    translateReplaceOriginal: settings.translateReplaceOriginal,
   };
 }
 
@@ -786,6 +974,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const autoSum = pickBool(p, "autoSummarize", "AutoSummarize");
   if (autoSum !== undefined) settings.autoSummarize = autoSum;
+
+  const trReplace = pickBool(p, "translateReplaceOriginal", "TranslateReplaceOriginal");
+  if (trReplace !== undefined) settings.translateReplaceOriginal = trReplace;
 }
 
 async function loadUIPrefs() {
@@ -1160,11 +1351,15 @@ async function selectArticle(id: string | null) {
   if (!id) {
     lastAutoSummarizeId = null;
     clearSummaryStream();
+    clearTranslateView();
     return;
   }
   // Clear in-progress stream UI when switching articles (backend may still finish).
   if (summaryStream.articleId && summaryStream.articleId !== id) {
     clearSummaryStream();
+  }
+  if (translateView.articleId && translateView.articleId !== id) {
+    clearTranslateView();
   }
   // Search hits may not be on the current collection page.
   let article =
@@ -1232,6 +1427,8 @@ async function selectArticle(id: string | null) {
   if (markedRead) {
     await syncAfterReadChange();
   }
+  // Restore saved bilingual translation when reopening (do not leave user on English-only body).
+  applySavedTranslationView(id);
   // Settings → Search/AI: optional auto summarize (UI locale in prompts).
   void maybeAutoSummarize(id);
 }
@@ -1981,6 +2178,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     developerMode: false,
     nsfwMode: true,
     autoSummarize: false,
+    translateReplaceOriginal: false,
   };
   applyUIPrefs(defaults);
   settings.autoRefresh = true;
@@ -2042,6 +2240,8 @@ export function useRssStore() {
     zenMode,
     aiPanel,
     summaryStream,
+    translateView,
+    clearTranslateView,
     refreshing,
     backendReady,
     bootstrapError,

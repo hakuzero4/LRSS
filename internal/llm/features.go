@@ -180,7 +180,7 @@ func SystemPromptFor(feature, locale string) string {
 	case FeatureSummarize:
 		base = "You are an RSS reading assistant. Write concise deck/standfirst summaries for the reader UI (plain text + optional • bullets). Be faithful and avoid markdown headings or bold."
 	case FeatureTranslate:
-		base = "You are a precise translator for RSS articles. Preserve meaning, names, and structure. Output Markdown only."
+		base = "You are a precise literary translator for RSS articles. Preserve meaning, names, and tone. Output only bilingual segment pairs in the required marker format—no commentary."
 	case FeatureAsk:
 		base = "You are a careful reading assistant. Answer only from the provided article context. If unknown, say so. Prefer short Markdown answers."
 	case FeatureDigest:
@@ -220,13 +220,14 @@ func UserPromptSummarize(bundle, locale string) string {
 		OutputLanguageInstruction(locale) + "\n\n" + bundle
 }
 
-// UserPromptTranslate builds the user message for translation.
+// UserPromptTranslate builds a bilingual interlinear translation prompt.
+// Output uses <<o>> / <<t>> markers so the reader can render source + target pairs
+// (like quote cards: original line, then translation under it).
 func UserPromptTranslate(bundle, targetLang string) string {
 	targetLang = strings.TrimSpace(targetLang)
 	if targetLang == "" {
 		targetLang = "zh-CN"
 	}
-	// Human-readable target for the model.
 	label := targetLang
 	switch NormalizeUILocale(targetLang) {
 	case "zh":
@@ -236,7 +237,147 @@ func UserPromptTranslate(bundle, targetLang string) string {
 			label = "English"
 		}
 	}
-	return fmt.Sprintf("Translate the following article into %s. Keep Markdown structure if useful. Output only the translation.\n\n%s", label, bundle)
+	return fmt.Sprintf(`Translate the article into %s for an elegant bilingual reading view.
+
+Output format ONLY (repeat for each segment; no intro/outro):
+<<o>> original sentence or short paragraph (source language, keep as-is)
+<<t>> translation into %s
+
+Rules:
+- Split into natural reading segments (usually one sentence, or a short paragraph).
+- Keep every meaningful sentence; do not skip content.
+- Do not wrap in markdown code fences; do not use **bold** or headings.
+- Proper names and code may stay in the original language inside <<t>> when natural.
+
+Article:
+%s
+`, label, label, bundle)
+}
+
+// BilingualPair is one original + translation unit for the reader UI.
+type BilingualPair struct {
+	Original    string `json:"original"`
+	Translation string `json:"translation"`
+}
+
+// ParseBilingualPairs extracts <<o>>/<<t>> pairs from model output.
+// Also accepts a loose fallback: alternating non-empty lines when markers are missing.
+// Uses Go RE2-safe patterns (no lookaheads).
+func ParseBilingualPairs(raw string) []BilingualPair {
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	// Split on <<o>> (case-insensitive via lowercase scan of tags).
+	// Normalize tags first.
+	norm := regexp.MustCompile(`(?i)<<\s*o\s*>>`).ReplaceAllString(raw, "\n<<O>>\n")
+	norm = regexp.MustCompile(`(?i)<<\s*t\s*>>`).ReplaceAllString(norm, "\n<<T>>\n")
+
+	parts := strings.Split(norm, "<<O>>")
+	var out []BilingualPair
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Each part after <<O>> should be: original <<T>> translation
+		idx := strings.Index(part, "<<T>>")
+		if idx < 0 {
+			continue
+		}
+		o := strings.TrimSpace(part[:idx])
+		tr := strings.TrimSpace(part[idx+len("<<T>>"):])
+		// Drop accidental next-tag leftovers.
+		if cut := strings.Index(tr, "<<O>>"); cut >= 0 {
+			tr = strings.TrimSpace(tr[:cut])
+		}
+		if o == "" && tr == "" {
+			continue
+		}
+		out = append(out, BilingualPair{Original: o, Translation: tr})
+	}
+	if len(out) > 0 {
+		return out
+	}
+
+	// Fallback: split on blank lines into blocks of 2 lines.
+	blocks := regexp.MustCompile(`\n\s*\n+`).Split(raw, -1)
+	for _, b := range blocks {
+		lines := nonEmptyLines(b)
+		if len(lines) >= 2 {
+			out = append(out, BilingualPair{Original: lines[0], Translation: lines[1]})
+			continue
+		}
+		if len(lines) == 1 && len(out) > 0 && out[len(out)-1].Translation == "" {
+			out[len(out)-1].Translation = lines[0]
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+
+	// Last resort: whole text as one translation-only block.
+	return []BilingualPair{{Original: "", Translation: raw}}
+}
+
+func nonEmptyLines(s string) []string {
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Strip accidental bullets / quotes.
+		line = strings.TrimPrefix(line, "> ")
+		line = strings.TrimPrefix(line, "- ")
+		out = append(out, line)
+	}
+	return out
+}
+
+// TranslatedBodyFromPairs builds HTML + plain text that fully replaces the article body
+// with the target-language translation (one <p> per segment).
+func TranslatedBodyFromPairs(pairs []BilingualPair) (htmlBody, plain string) {
+	if len(pairs) == 0 {
+		return "", ""
+	}
+	var html, text strings.Builder
+	for _, p := range pairs {
+		seg := strings.TrimSpace(p.Translation)
+		if seg == "" {
+			seg = strings.TrimSpace(p.Original)
+		}
+		if seg == "" {
+			continue
+		}
+		// Multi-line segment → multiple paragraphs.
+		for _, line := range strings.Split(seg, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			html.WriteString("<p>")
+			html.WriteString(htmlEscapeText(line))
+			html.WriteString("</p>\n")
+			if text.Len() > 0 {
+				text.WriteByte('\n')
+			}
+			text.WriteString(line)
+		}
+	}
+	return strings.TrimSpace(html.String()), strings.TrimSpace(text.String())
+}
+
+func htmlEscapeText(s string) string {
+	r := strings.NewReplacer(
+		`&`, "&amp;",
+		`<`, "&lt;",
+		`>`, "&gt;",
+		`"`, "&quot;",
+	)
+	return r.Replace(s)
 }
 
 // UserPromptAsk builds the user message for Q&A.

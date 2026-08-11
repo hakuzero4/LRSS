@@ -49,11 +49,15 @@ type Article struct {
 	Summary     *string `json:"summary,omitempty"`
 	ContentHTML *string `json:"contentHtml,omitempty"`
 	ContentText *string `json:"contentText,omitempty"`
-	ImageURL    *string `json:"imageUrl,omitempty"`
-	PublishedAt *string `json:"publishedAt,omitempty"`
-	FetchedAt   string  `json:"fetchedAt"`
-	IsRead      bool    `json:"isRead"`
-	IsStarred   bool    `json:"isStarred"`
+	// TranslationRaw is bilingual marker text (<<o>>/<<t>>) kept next to the original body.
+	// Original content_html is never replaced by translate.
+	TranslationRaw  *string `json:"translationRaw,omitempty"`
+	TranslationLang *string `json:"translationLang,omitempty"`
+	ImageURL        *string `json:"imageUrl,omitempty"`
+	PublishedAt     *string `json:"publishedAt,omitempty"`
+	FetchedAt       string  `json:"fetchedAt"`
+	IsRead          bool    `json:"isRead"`
+	IsStarred       bool    `json:"isStarred"`
 }
 
 // EmbeddingStatus for article_embeddings.status.

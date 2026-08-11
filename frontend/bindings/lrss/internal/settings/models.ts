@@ -121,4 +121,10 @@ export interface UIPrefs {
      * AutoSummarize: when true, opening an article requests an LLM summary (if LLM configured).
      */
     "autoSummarize": boolean;
+
+    /**
+     * TranslateReplaceOriginal: when true, full-article translate overwrites content_html/text.
+     * When false, only the bilingual overlay is shown (no body replace).
+     */
+    "translateReplaceOriginal": boolean;
 }

@@ -14,6 +14,13 @@ export interface Article {
     "summary"?: string | null;
     "contentHtml"?: string | null;
     "contentText"?: string | null;
+
+    /**
+     * TranslationRaw is bilingual marker text (<<o>>/<<t>>) kept next to the original body.
+     * Original content_html is never replaced by translate.
+     */
+    "translationRaw"?: string | null;
+    "translationLang"?: string | null;
     "imageUrl"?: string | null;
     "publishedAt"?: string | null;
     "fetchedAt": string;
