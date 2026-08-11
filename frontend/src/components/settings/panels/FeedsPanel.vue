@@ -40,7 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { parseFeedUrlsFromText } from "@/lib/feedUrls";
 import { relativeTime } from "@/lib/format";
 import type { Feed } from "@/types/rss";
-import { Pencil, Plus, Search, TriangleAlert } from "@lucide/vue";
+import { AlertCircle, Pencil, Plus, Search, TriangleAlert } from "@lucide/vue";
 
 const { t } = useI18n();
 
@@ -83,24 +83,38 @@ const INTERVAL_OPTIONS = [0, 5, 15, 30, 60, 120, 180] as const;
 const KEEP_DAYS_OPTIONS = [0, 7, 14, 30, 60, 90, 180, 365] as const;
 
 const feedFilter = ref("");
+/** When true, only show feeds with a non-empty lastError. */
+const feedErrorsOnly = ref(false);
 
 const subscriptionCount = computed(() => feeds.value.length);
+
+const errorFeedCount = computed(
+  () => feeds.value.filter((f) => !!f.lastError?.trim()).length,
+);
 
 const sortedFeeds = computed(() => {
   const q = feedFilter.value.trim().toLowerCase();
   let list = [...feeds.value];
+  if (feedErrorsOnly.value) {
+    list = list.filter((f) => !!f.lastError?.trim());
+  }
   if (q) {
     list = list.filter(
       (f) =>
         f.title.toLowerCase().includes(q) ||
         f.feedUrl.toLowerCase().includes(q) ||
-        (f.siteUrl?.toLowerCase().includes(q) ?? false),
+        (f.siteUrl?.toLowerCase().includes(q) ?? false) ||
+        (f.lastError?.toLowerCase().includes(q) ?? false),
     );
   }
   return list.sort((a, b) =>
     a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
   );
 });
+
+const listFilterActive = computed(
+  () => feedErrorsOnly.value || !!feedFilter.value.trim(),
+);
 
 const globalIntervalLabel = computed(() => formatIntervalMinutes(settings.refreshIntervalMinutes));
 
@@ -482,19 +496,47 @@ async function confirmClearAll(ev: Event) {
           <template v-if="subscriptionCount === 0">
             {{ t("settings.feeds.listEmpty") }}
           </template>
-          <template v-else-if="feedFilter.trim()">
+          <template v-else-if="listFilterActive">
             {{
               t("settings.feeds.listFiltered", {
                 shown: sortedFeeds.length,
                 n: subscriptionCount,
               })
             }}
+            <span v-if="feedErrorsOnly" class="text-destructive/80">
+              · {{ t("settings.feeds.listErrorsOnlyHint") }}
+            </span>
           </template>
           <template v-else>
             {{ t("settings.feeds.listCount", { n: subscriptionCount }) }}
+            <span v-if="errorFeedCount > 0" class="text-destructive/80">
+              · {{ t("settings.feeds.listErrorCount", { n: errorFeedCount }) }}
+            </span>
           </template>
         </p>
         <div class="flex flex-wrap items-center gap-2">
+          <Button
+            v-if="subscriptionCount > 0 && errorFeedCount > 0"
+            type="button"
+            size="sm"
+            variant="outline"
+            class="h-8 shrink-0 gap-1 px-2.5 text-[12px]"
+            :class="
+              feedErrorsOnly
+                ? 'border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive'
+                : 'text-muted-foreground'
+            "
+            :aria-pressed="feedErrorsOnly"
+            :aria-label="t('settings.feeds.filterErrors')"
+            @click="feedErrorsOnly = !feedErrorsOnly"
+          >
+            <AlertCircle class="size-3.5" />
+            {{
+              feedErrorsOnly
+                ? t("settings.feeds.filterErrorsOn", { n: errorFeedCount })
+                : t("settings.feeds.filterErrors", { n: errorFeedCount })
+            }}
+          </Button>
           <div v-if="subscriptionCount > 0" class="relative w-full max-w-[200px] sm:w-[200px]">
             <Search
               class="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
@@ -601,7 +643,13 @@ async function confirmClearAll(ev: Event) {
               v-if="sortedFeeds.length === 0"
               class="px-3 py-6 text-center text-[12px] text-muted-foreground"
             >
-              {{ t("settings.feeds.listEmpty") }}
+              {{
+                feedErrorsOnly
+                  ? t("settings.feeds.listNoErrors")
+                  : feedFilter.trim()
+                    ? t("settings.feeds.listNoMatch")
+                    : t("settings.feeds.listEmpty")
+              }}
             </li>
           </ul>
         </div>

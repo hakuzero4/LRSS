@@ -364,7 +364,13 @@ export default {
         "Paste one or more feed URLs (one per line), or use the sidebar / OPML import.",
       listCount: "{n} subscriptions",
       listFiltered: "Showing {shown} / {n}",
+      listErrorCount: "{n} failed",
+      listErrorsOnlyHint: "errors only",
       listSearchPlaceholder: "Filter by name or URL…",
+      filterErrors: "Errors only ({n})",
+      filterErrorsOn: "Errors only · on",
+      listNoErrors: "No failed subscriptions (or none match the search)",
+      listNoMatch: "No matching subscriptions",
       addFeeds: "Add feeds",
       addTitle: "Add feeds",
       addDesc:
