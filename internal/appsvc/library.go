@@ -3,6 +3,7 @@ package appsvc
 import (
 	"context"
 	"strings"
+	"time"
 
 	"lrss/internal/model"
 	"lrss/internal/repo"
@@ -187,6 +188,7 @@ func (s *FeedService) SetFeedKeepArticlesDays(id string, days int) error {
 type OPMLImportResult struct {
 	FoldersCreated int      `json:"foldersCreated"`
 	FeedsAdded     int      `json:"feedsAdded"`
+	FeedsUpdated   int      `json:"feedsUpdated"`
 	FeedsSkipped   int      `json:"feedsSkipped"`
 	FeedsFailed    int      `json:"feedsFailed"`
 	Errors         []string `json:"errors"`
@@ -197,6 +199,7 @@ type OPMLImportResult struct {
 // Prefer fetch=false from the UI so the call returns after writing subscriptions;
 // then refresh AddedFeedIDs with RefreshFeed for progress. fetch=true blocks until
 // every new feed is fetched (slow for large OPML files).
+// Existing feed URLs are merged (folder / unlocked title / empty site URL), not ignored.
 func (s *FeedService) ImportOPML(xml string, fetch bool) (OPMLImportResult, error) {
 	res, err := s.lib.ImportOPML(context.Background(), xml, fetch)
 	if err != nil {
@@ -209,6 +212,7 @@ func (s *FeedService) ImportOPML(xml string, fetch bool) (OPMLImportResult, erro
 	return OPMLImportResult{
 		FoldersCreated: res.FoldersCreated,
 		FeedsAdded:     res.FeedsAdded,
+		FeedsUpdated:   res.FeedsUpdated,
 		FeedsSkipped:   res.FeedsSkipped,
 		FeedsFailed:    res.FeedsFailed,
 		Errors:         res.Errors,
@@ -276,8 +280,11 @@ func (s *ArticleService) Get(id string) (model.Article, error) {
 // FetchFullContent downloads the original article page (fingerprint HTTP / surf),
 // extracts full HTML body, saves it, and returns the updated article.
 // Use when the feed only ships a partial summary in XML.
+// Bounded so a hung remote page cannot block other ArticleService calls forever.
 func (s *ArticleService) FetchFullContent(id string) (model.Article, error) {
-	return s.lib.FetchFullContent(context.Background(), id)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	defer cancel()
+	return s.lib.FetchFullContent(ctx, id)
 }
 
 // SetRead marks read state.

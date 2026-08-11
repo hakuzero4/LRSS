@@ -14,6 +14,7 @@ export default {
     newFolder: "新建文件夹",
     newFolderPrompt: "新建文件夹名称",
     noFolders: "暂无文件夹",
+    loadingLibrary: "正在加载订阅…",
     feedFallback: "订阅源",
     folderFallback: "文件夹",
     officeMode: "办公模式",
@@ -738,6 +739,8 @@ export default {
   },
 
   empty: {
+    loadingTitle: "正在加载…",
+    loadingHint: "正在拉取该订阅的文章列表。",
     noFeedsTitle: "还没有订阅",
     noFeedsHint: "添加 RSS/Atom 源，或从设置导入 OPML。",
     noFeedsAction: "添加订阅",
@@ -766,10 +769,11 @@ export default {
     exportEmpty: "导出结果为空",
     writtenRefreshing: "已写入 {n} 个源，正在全量刷新（无分项进度）…",
     complete:
-      "完成：新增 {added} · 跳过 {skipped} · 失败 {failed}",
+      "完成：新增 {added} · 更新 {updated} · 跳过 {skipped} · 失败 {failed}",
     completeRefresh:
-      "完成：新增 {added} · 跳过 {skipped} · 抓取失败 {failed}",
+      "完成：新增 {added} · 更新 {updated} · 跳过 {skipped} · 抓取失败 {failed}",
     noNewSkipped: "没有新增订阅（已跳过 {n} 个已存在源）",
+    noNewMerged: "没有新增订阅（更新 {updated} · 未变 {skipped}）",
     noNew: "没有新增订阅",
     addedNoRefresh: "已添加 {n} 个源（无法抓取文章：RefreshFeed 不可用）",
     fetching: "抓取文章 {current}/{total}：{label}",
@@ -781,6 +785,7 @@ export default {
     exportFailed: "导出失败：{msg}",
     partFolders: "文件夹 {n}",
     partAdded: "新增 {n}",
+    partUpdated: "更新 {n}",
     partSkipped: "跳过 {n}",
     partFailed: "抓取失败 {n}",
     progress: "{current}/{total}（{percent}%）",

@@ -75,6 +75,8 @@ export interface ReaderSelection {
 export interface OPMLImportResult {
   foldersCreated: number;
   feedsAdded: number;
+  /** Existing URL: folder/title/site synced from OPML */
+  feedsUpdated: number;
   feedsSkipped: number;
   feedsFailed: number;
   errors?: string[];

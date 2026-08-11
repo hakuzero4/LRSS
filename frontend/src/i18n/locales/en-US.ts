@@ -14,6 +14,7 @@ export default {
     newFolder: "New folder",
     newFolderPrompt: "New folder name",
     noFolders: "No folders yet",
+    loadingLibrary: "Loading subscriptions…",
     feedFallback: "Feed",
     folderFallback: "Folder",
     officeMode: "Office mode",
@@ -756,6 +757,8 @@ export default {
   },
 
   empty: {
+    loadingTitle: "Loading…",
+    loadingHint: "Fetching articles for this list.",
     noFeedsTitle: "No subscriptions yet",
     noFeedsHint: "Add an RSS/Atom feed, or import OPML from Settings.",
     noFeedsAction: "Add feed",
@@ -783,9 +786,12 @@ export default {
     exportUnavailable: "Backend ExportOPML is unavailable",
     exportEmpty: "Export result was empty",
     writtenRefreshing: "Wrote {n} feeds; full refresh in progress (no per-item progress)…",
-    complete: "Done: added {added} · skipped {skipped} · failed {failed}",
-    completeRefresh: "Done: added {added} · skipped {skipped} · fetch failed {failed}",
+    complete:
+      "Done: added {added} · updated {updated} · skipped {skipped} · failed {failed}",
+    completeRefresh:
+      "Done: added {added} · updated {updated} · skipped {skipped} · fetch failed {failed}",
     noNewSkipped: "No new feeds (skipped {n} existing)",
+    noNewMerged: "No new feeds (updated {updated} · unchanged {skipped})",
     noNew: "No new feeds",
     addedNoRefresh: "Added {n} feeds (cannot fetch articles: RefreshFeed unavailable)",
     fetching: "Fetching articles {current}/{total}: {label}",
@@ -797,6 +803,7 @@ export default {
     exportFailed: "Export failed: {msg}",
     partFolders: "folders {n}",
     partAdded: "added {n}",
+    partUpdated: "updated {n}",
     partSkipped: "skipped {n}",
     partFailed: "fetch failed {n}",
     progress: "{current}/{total} ({percent}%)",

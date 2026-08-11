@@ -60,7 +60,13 @@ const settingsOpen = ref(false);
 /** Zen mode: hide feed sidebar + article list (session-only). */
 const zenMode = ref(false);
 const refreshing = ref(false);
+/** True while ArticleService.List for the current collection is in flight. */
+const articlesLoading = ref(false);
+/** Bumps on each reloadArticles / collection switch so stale List responses are dropped. */
+let articlesLoadSeq = 0;
 const backendReady = ref(false);
+/** True from first bootstrap until ListFeeds/ListFolders succeed or hard-fail. */
+const libraryLoading = ref(true);
 const bootstrapError = ref("");
 
 /** Right-side AI result panel (ask / suggest / classify / … — not summarize). */
@@ -810,8 +816,11 @@ const sidebarFeeds = computed(() =>
   filterFeedsForSidebar(feeds.value, settings.nsfwMode, folders.value),
 );
 
-const emptyListReason = computed(() =>
-  resolveEmptyListReason({
+const emptyListReason = computed(() => {
+  if (articlesLoading.value && filteredArticles.value.length === 0) {
+    return "loading" as const;
+  }
+  return resolveEmptyListReason({
     feedCount: feeds.value.length,
     articleCountInView: filteredArticles.value.length,
     hasSearchQuery: searchQuery.value.trim().length > 0,
@@ -819,8 +828,8 @@ const emptyListReason = computed(() =>
     hasActiveFilters:
       !!settings.blockKeywords.trim() ||
       (settings.showUnreadOnly && collectionId.value !== "starred"),
-  }),
-);
+  });
+});
 
 /** Prefer collection page, then backend search hits (may not be in current page). */
 const selectedArticle = computed(() =>
@@ -837,7 +846,12 @@ async function reloadLibrary() {
   const api = await loadAppsvc();
   if (!api?.FeedService) {
     backendReady.value = false;
+    libraryLoading.value = false;
     return;
+  }
+  // Keep previous feeds visible during refresh; only the first open starts empty.
+  if (feeds.value.length === 0) {
+    libraryLoading.value = true;
   }
   try {
     const [rawFeeds, rawFolders] = await Promise.all([
@@ -849,20 +863,38 @@ async function reloadLibrary() {
     folders.value = (rawFolders ?? []).map((f: any) => mapFolder(f, mappedFeeds)) as FeedFolder[];
     backendReady.value = true;
     bootstrapError.value = "";
+    libraryLoading.value = false;
     await Promise.all([reloadArticles(), reloadSmartCounts()]);
   } catch (e: any) {
     bootstrapError.value = e?.message || String(e);
     backendReady.value = false;
+    libraryLoading.value = false;
   }
 }
 
 async function reloadArticles() {
   const api = await loadAppsvc();
   if (!api?.ArticleService) return;
-  const list = await api.ArticleService.List(collectionId.value, 200, 0);
-  articles.value = (list ?? []).map(mapArticle) as Article[];
-  // Do not recompute smartCounts here — list is paginated; counts stay stable
-  // across collection switches until an explicit reloadSmartCounts().
+  const seq = ++articlesLoadSeq;
+  const forCollection = collectionId.value;
+  articlesLoading.value = true;
+  try {
+    const list = await api.ArticleService.List(forCollection, 200, 0);
+    // Drop stale responses after a faster collection switch / concurrent reload.
+    if (seq !== articlesLoadSeq || collectionId.value !== forCollection) {
+      return;
+    }
+    articles.value = (list ?? []).map(mapArticle) as Article[];
+    // Do not recompute smartCounts here — list is paginated; counts stay stable
+    // across collection switches until an explicit reloadSmartCounts().
+  } catch (e) {
+    if (seq !== articlesLoadSeq) return;
+    console.warn("[lrss] reloadArticles failed", e);
+  } finally {
+    if (seq === articlesLoadSeq) {
+      articlesLoading.value = false;
+    }
+  }
 }
 
 async function loadLibraryConfig() {
@@ -1232,6 +1264,7 @@ async function importOPMLFile(
   const empty: OPMLImportResult = {
     foldersCreated: 0,
     feedsAdded: 0,
+    feedsUpdated: 0,
     feedsSkipped: 0,
     feedsFailed: 0,
     addedFeedIds: [],
@@ -1289,6 +1322,7 @@ async function importOPMLFile(
       phase: "done",
       message: t("opml.complete", {
         added: result.feedsAdded,
+        updated: result.feedsUpdated,
         skipped: result.feedsSkipped,
         failed: result.feedsFailed,
       }),
@@ -1301,8 +1335,11 @@ async function importOPMLFile(
     report({
       phase: "done",
       message:
-        result.feedsSkipped > 0
-          ? t("opml.noNewSkipped", { n: result.feedsSkipped })
+        result.feedsUpdated > 0 || result.feedsSkipped > 0
+          ? t("opml.noNewMerged", {
+              updated: result.feedsUpdated,
+              skipped: result.feedsSkipped,
+            })
           : t("opml.noNew"),
       current: 0,
       total: 0,
@@ -1359,6 +1396,7 @@ async function importOPMLFile(
     phase: "done",
     message: t("opml.completeRefresh", {
       added: result.feedsAdded,
+      updated: result.feedsUpdated,
       skipped: result.feedsSkipped,
       failed,
     }),
@@ -1377,6 +1415,7 @@ function normalizeImportResult(raw: unknown): OPMLImportResult {
   return {
     foldersCreated: Number(r.foldersCreated ?? 0) || 0,
     feedsAdded: Number(r.feedsAdded ?? 0) || 0,
+    feedsUpdated: Number(r.feedsUpdated ?? 0) || 0,
     feedsSkipped: Number(r.feedsSkipped ?? 0) || 0,
     feedsFailed: Number(r.feedsFailed ?? 0) || 0,
     errors: Array.isArray(r.errors)
@@ -1474,13 +1513,22 @@ async function bootstrap() {
 }
 
 function selectCollection(id: CollectionId) {
+  const same = collectionId.value === id;
   collectionId.value = id;
   selectedArticleId.value = null;
   searchQuery.value = "";
   searchArticles.value = null;
   searchSource.value = "none";
+  clearSummaryStream();
+  clearTranslateView();
+  lastAutoSummarizeId = null;
   if (backendReady.value) {
-    // Only reload the article list — smartCounts must stay put.
+    // Invalidate in-flight List calls and clear the middle pane immediately so
+    // a slow FetchFullContent / previous List cannot leave the old feed visible.
+    articlesLoadSeq++;
+    if (!same) {
+      articles.value = [];
+    }
     void reloadArticles();
   } else {
     applySmartCountsFromArticles();
@@ -1532,6 +1580,11 @@ async function selectArticle(id: string | null) {
     try {
       const api = await loadAppsvc();
       const full = await api?.ArticleService?.Get(id);
+      // User may have switched feed/article while Get was in flight.
+      if (selectedArticleId.value !== id) {
+        if (markedRead) void syncAfterReadChange();
+        return;
+      }
       if (full) {
         const mapped = mapArticle(full) as Article;
         // Preserve local read=true if we just marked it (avoids flash if Get races).
@@ -1541,22 +1594,22 @@ async function selectArticle(id: string | null) {
           articles.value,
           searchArticles.value,
         );
-        // Hit only in search results and Get succeeded — ensure search pool has full body.
-        if (!updated && searchArticles.value) {
-          const sidx = searchArticles.value.findIndex((a) => a.id === id);
-          if (sidx >= 0) {
-            searchArticles.value[sidx] = {
-              ...searchArticles.value[sidx],
-              ...mapped,
-            };
-          } else {
-            searchArticles.value = [...searchArticles.value, mapped];
-          }
-        } else if (!updated) {
-          // Neither pool had it (edge): drop onto search or articles so reader can show it.
+        // Only inject into pools when still selected — never append onto another
+        // collection's list after the user navigated away.
+        if (!updated && selectedArticleId.value === id) {
           if (searchArticles.value) {
-            searchArticles.value = [...searchArticles.value, mapped];
+            const sidx = searchArticles.value.findIndex((a) => a.id === id);
+            if (sidx >= 0) {
+              searchArticles.value[sidx] = {
+                ...searchArticles.value[sidx],
+                ...mapped,
+              };
+            } else {
+              searchArticles.value = [...searchArticles.value, mapped];
+            }
           } else {
+            // Keep reader able to show the article without polluting a foreign list:
+            // only append when this id is the current selection.
             articles.value = [...articles.value, mapped];
           }
         }
@@ -1567,6 +1620,9 @@ async function selectArticle(id: string | null) {
   }
   if (markedRead) {
     await syncAfterReadChange();
+  }
+  if (selectedArticleId.value !== id) {
+    return;
   }
   // Restore saved bilingual translation when reopening (do not leave user on English-only body).
   applySavedTranslationView(id);
@@ -1653,16 +1709,16 @@ async function fetchFullContent(id: string): Promise<Article> {
   // Manual or auto full-text fetch always marks the body as full-fetched.
   mapped.fullContentFetched = true;
   autoFetchFullCheckedIds.add(id);
+  // Merge only if the article is still present in a visible pool. Never append
+  // onto a different collection after the user switched feeds mid-fetch — that
+  // left the middle list stuck on mixed/stale rows.
   const updated = mergeArticleIntoPools(mapped, articles.value, searchArticles.value);
-  if (!updated && searchArticles.value) {
-    const sidx = searchArticles.value.findIndex((a) => a.id === id);
-    if (sidx >= 0) {
-      searchArticles.value[sidx] = { ...searchArticles.value[sidx], ...mapped };
-    } else {
-      searchArticles.value = [...searchArticles.value, mapped];
+  if (updated) {
+    // Ensure Vue notices in-place pool writes when the array ref is reused.
+    articles.value = articles.value.slice();
+    if (searchArticles.value) {
+      searchArticles.value = searchArticles.value.slice();
     }
-  } else if (!updated) {
-    articles.value = [...articles.value, mapped];
   }
   return mapped;
 }
@@ -2444,6 +2500,8 @@ export function useRssStore() {
     sidebarFolders,
     sidebarFeeds,
     articles,
+    articlesLoading,
+    libraryLoading,
     collectionId,
     selectedArticleId,
     searchQuery,

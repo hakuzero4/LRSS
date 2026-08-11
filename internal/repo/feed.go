@@ -21,50 +21,56 @@ func NewFeedRepo(db *sql.DB) *FeedRepo {
 	return &FeedRepo{DB: db}
 }
 
+// feedSelectCols is the shared column list for feed rows (without unread).
+const feedSelectCols = `
+	f.id, f.folder_id, f.title, f.site_url, f.feed_url, f.favicon_url,
+	f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.is_paused,
+	f.refresh_interval_minutes, f.keep_articles_days, f.title_user_set, f.is_nsfw,
+	f.created_at, f.updated_at`
+
+// feedSelect is for single-feed Get/GetByURL (one correlated unread count is fine).
 const feedSelect = `
-	SELECT f.id, f.folder_id, f.title, f.site_url, f.feed_url, f.favicon_url,
-	       f.etag, f.last_modified, f.last_fetched_at, f.last_error, f.is_paused,
-	       f.refresh_interval_minutes, f.keep_articles_days, f.title_user_set, f.is_nsfw,
-	       f.created_at, f.updated_at,
+	SELECT ` + feedSelectCols + `,
 	       (SELECT COUNT(*) FROM articles a WHERE a.feed_id = f.id AND a.is_read = 0) AS unread
 	FROM feeds f`
 
+// feedListSelect loads all feeds with unread counts in one pass.
+// A correlated COUNT per feed is O(feeds×articles) and takes ~1min at ~1k feeds / 16k
+// articles — long enough that the sidebar looks empty on open. Aggregate join is O(n).
+const feedListSelect = `
+	SELECT ` + feedSelectCols + `,
+	       COALESCE(u.unread, 0) AS unread
+	FROM feeds f
+	LEFT JOIN (
+		SELECT feed_id, COUNT(*) AS unread
+		FROM articles
+		WHERE is_read = 0
+		GROUP BY feed_id
+	) u ON u.feed_id = f.id`
+
 // List returns all feeds with UnreadCount.
 func (r *FeedRepo) List(ctx context.Context) ([]model.Feed, error) {
-	rows, err := r.DB.QueryContext(ctx, feedSelect+`
+	rows, err := r.DB.QueryContext(ctx, feedListSelect+`
 		ORDER BY f.title COLLATE NOCASE ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list feeds: %w", err)
 	}
-	defer rows.Close()
-
-	var out []model.Feed
-	for rows.Next() {
-		f, err := scanFeed(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if out == nil {
-		out = []model.Feed{}
-	}
-	return out, nil
+	return scanFeedRows(rows)
 }
 
 // ListActive returns non-paused feeds (for refresh-all).
 func (r *FeedRepo) ListActive(ctx context.Context) ([]model.Feed, error) {
-	rows, err := r.DB.QueryContext(ctx, feedSelect+`
+	rows, err := r.DB.QueryContext(ctx, feedListSelect+`
 		WHERE f.is_paused = 0
 		ORDER BY f.title COLLATE NOCASE ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list active feeds: %w", err)
 	}
-	defer rows.Close()
+	return scanFeedRows(rows)
+}
 
+func scanFeedRows(rows *sql.Rows) ([]model.Feed, error) {
+	defer rows.Close()
 	var out []model.Feed
 	for rows.Next() {
 		f, err := scanFeed(rows)
@@ -310,6 +316,25 @@ func (r *FeedRepo) SetTitle(ctx context.Context, feedID, title string) error {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("feed not found: %s", feedID)
+	}
+	return nil
+}
+
+// SetDisplayTitle updates the feed title only when the user has not locked it
+// (title_user_set = 0). Used by OPML re-import / feed document titles.
+// No-op when title is empty, feed missing, or title is user-locked.
+func (r *FeedRepo) SetDisplayTitle(ctx context.Context, feedID, title string) error {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil
+	}
+	now := nowUTC()
+	_, err := r.DB.ExecContext(ctx, `
+		UPDATE feeds SET title = ?, updated_at = ?
+		WHERE id = ? AND title_user_set = 0`,
+		title, now, feedID)
+	if err != nil {
+		return fmt.Errorf("set display title: %w", err)
 	}
 	return nil
 }

@@ -413,6 +413,7 @@ async function onImportFileChange(ev: Event) {
     const parts = [
       t("opml.partFolders", { n: result.foldersCreated }),
       t("opml.partAdded", { n: result.feedsAdded }),
+      t("opml.partUpdated", { n: result.feedsUpdated }),
       t("opml.partSkipped", { n: result.feedsSkipped }),
       t("opml.partFailed", { n: result.feedsFailed }),
     ];

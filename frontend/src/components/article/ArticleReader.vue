@@ -52,6 +52,7 @@ const markdownOpen = defineModel<boolean>("markdownOpen", { default: false });
 
 const {
   selectedArticle,
+  selectedArticleId,
   selectedFeed,
   settings,
   toggleStar,
@@ -208,13 +209,19 @@ async function onFetchFullContent() {
     toast.error(t("article.fetchFullUnavailable"));
     return;
   }
+  const id = article.id;
   fetchingFull.value = true;
   try {
-    await fetchFullContent(article.id);
-    toast.success(t("article.fetchFullDone"));
+    await fetchFullContent(id);
+    // User may have switched feed/article while the network fetch was in flight.
+    if (selectedArticleId.value === id) {
+      toast.success(t("article.fetchFullDone"));
+    }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("article.fetchFullFailed"), { description: msg });
+    if (selectedArticleId.value === id) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(t("article.fetchFullFailed"), { description: msg });
+    }
   } finally {
     fetchingFull.value = false;
   }

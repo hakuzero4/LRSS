@@ -16,7 +16,8 @@ const maxOPMLImportErrors = 20
 type OPMLImportResult struct {
 	FoldersCreated int      `json:"foldersCreated"`
 	FeedsAdded     int      `json:"feedsAdded"`
-	FeedsSkipped   int      `json:"feedsSkipped"`
+	FeedsUpdated   int      `json:"feedsUpdated"` // existing URL: folder/title/site synced from OPML
+	FeedsSkipped   int      `json:"feedsSkipped"` // existing URL unchanged
 	FeedsFailed    int      `json:"feedsFailed"`
 	Errors         []string `json:"errors"`
 	// AddedFeedIDs are newly inserted feed IDs (not skipped). Callers can refresh
@@ -25,7 +26,8 @@ type OPMLImportResult struct {
 }
 
 // ImportOPML parses OPML XML, creates folders/feeds, optionally refreshes new feeds.
-// Existing feed URLs are skipped (merge). Folders with the same name under the same
+// Existing feed URLs are merged: folder placement (and unlocked title / empty site URL)
+// are updated from the OPML outline. Folders with the same name under the same
 // parent are reused (case-insensitive) so re-import does not duplicate the tree.
 //
 // Prefer fetch=false from the UI, then refresh AddedFeedIDs with progress. When
@@ -141,17 +143,6 @@ func (lib *Library) importFeedOutline(
 		return
 	}
 
-	_, err := lib.Feeds.GetByURL(ctx, feedURL)
-	if err == nil {
-		res.FeedsSkipped++
-		return
-	}
-	if err != sql.ErrNoRows {
-		res.FeedsFailed++
-		res.appendError(fmt.Sprintf("lookup %s: %v", feedURL, err))
-		return
-	}
-
 	title := strings.TrimSpace(o.Text)
 	if title == "" {
 		title = strings.TrimSpace(o.Title)
@@ -169,6 +160,21 @@ func (lib *Library) importFeedOutline(
 		folder = folderID
 	}
 
+	existing, err := lib.Feeds.GetByURL(ctx, feedURL)
+	if err == nil {
+		if lib.mergeExistingFeedFromOPML(ctx, existing, folder, title, siteURL, res) {
+			res.FeedsUpdated++
+		} else {
+			res.FeedsSkipped++
+		}
+		return
+	}
+	if err != sql.ErrNoRows {
+		res.FeedsFailed++
+		res.appendError(fmt.Sprintf("lookup %s: %v", feedURL, err))
+		return
+	}
+
 	feed := &model.Feed{
 		FolderID: folder,
 		Title:    title,
@@ -183,6 +189,60 @@ func (lib *Library) importFeedOutline(
 	}
 	res.FeedsAdded++
 	*addedIDs = append(*addedIDs, feed.ID)
+}
+
+// mergeExistingFeedFromOPML syncs folder / unlocked title / empty site URL from an
+// OPML outline onto an already-subscribed feed. Returns true when anything changed.
+func (lib *Library) mergeExistingFeedFromOPML(
+	ctx context.Context,
+	existing model.Feed,
+	folder *string,
+	title string,
+	siteURL *string,
+	res *OPMLImportResult,
+) bool {
+	changed := false
+
+	if !sameOptionalID(existing.FolderID, folder) {
+		if err := lib.Feeds.SetFolder(ctx, existing.ID, folder); err != nil {
+			res.appendError(fmt.Sprintf("update folder %s: %v", existing.FeedURL, err))
+		} else {
+			changed = true
+		}
+	}
+
+	// Do not override a user-renamed title.
+	if !existing.TitleUserSet && title != "" && title != existing.Title {
+		if err := lib.Feeds.SetDisplayTitle(ctx, existing.ID, title); err != nil {
+			res.appendError(fmt.Sprintf("update title %s: %v", existing.FeedURL, err))
+		} else {
+			changed = true
+		}
+	}
+
+	// Fill site URL when local is empty and OPML provides htmlUrl.
+	if siteURL != nil && strings.TrimSpace(*siteURL) != "" {
+		if existing.SiteURL == nil || strings.TrimSpace(*existing.SiteURL) == "" {
+			if err := lib.Feeds.SetSiteURL(ctx, existing.ID, *siteURL); err != nil {
+				res.appendError(fmt.Sprintf("update site %s: %v", existing.FeedURL, err))
+			} else {
+				changed = true
+			}
+		}
+	}
+
+	return changed
+}
+
+func sameOptionalID(a, b *string) bool {
+	as, bs := "", ""
+	if a != nil {
+		as = strings.TrimSpace(*a)
+	}
+	if b != nil {
+		bs = strings.TrimSpace(*b)
+	}
+	return as == bs
 }
 
 func (res *OPMLImportResult) appendError(msg string) {

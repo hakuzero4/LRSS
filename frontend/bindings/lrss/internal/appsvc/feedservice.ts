@@ -65,6 +65,7 @@ export function ExportOPML(): $CancellablePromise<string> {
  * Prefer fetch=false from the UI so the call returns after writing subscriptions;
  * then refresh AddedFeedIDs with RefreshFeed for progress. fetch=true blocks until
  * every new feed is fetched (slow for large OPML files).
+ * Existing feed URLs are merged (folder / unlocked title / empty site URL), not ignored.
  */
 export function ImportOPML(xml: string, fetch: boolean): $CancellablePromise<$models.OPMLImportResult> {
     return $Call.ByID(3830505915, xml, fetch);

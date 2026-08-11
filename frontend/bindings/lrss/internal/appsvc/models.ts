@@ -56,6 +56,7 @@ export interface LLMStreamEvent {
 export interface OPMLImportResult {
     "foldersCreated": number;
     "feedsAdded": number;
+    "feedsUpdated": number;
     "feedsSkipped": number;
     "feedsFailed": number;
     "errors": string[] | null;

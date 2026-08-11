@@ -24,6 +24,7 @@ const {
   searchBusy,
   searchSource,
   emptyListReason,
+  articlesLoading,
   refreshing,
   selectArticle,
   markAllRead,
@@ -35,12 +36,16 @@ const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
 const empty = computed(() => filteredArticles.value.length === 0);
 
 const articleCountLabel = computed(() => {
+  if (articlesLoading.value && empty.value) {
+    return t("common.loading");
+  }
   const n = filteredArticles.value.length;
   return n === 1 ? t("article.countOne") : t("article.count", { n });
 });
 
 const emptyTitle = computed(() => {
   const r = emptyListReason.value;
+  if (r === "loading") return t("empty.loadingTitle");
   if (r === "no-feeds") return t("empty.noFeedsTitle");
   if (r === "no-matches") return t("empty.noMatchesTitle");
   return t("empty.emptyCollectionTitle");
@@ -48,6 +53,7 @@ const emptyTitle = computed(() => {
 
 const emptyHint = computed(() => {
   const r = emptyListReason.value;
+  if (r === "loading") return t("empty.loadingHint");
   if (r === "no-feeds") return t("empty.noFeedsHint");
   if (r === "no-matches") return t("empty.noMatchesHint");
   return t("empty.emptyCollectionHint");

@@ -74,6 +74,7 @@ const {
   smartCounts,
   collectionId,
   settings,
+  libraryLoading,
   selectCollection,
   openAddFeed,
   openAddFeedInFolder,
@@ -728,7 +729,7 @@ const smartItems = computed(() => [
             v-else
             class="mt-1.5 px-2 text-[11.5px] text-muted-foreground"
           >
-            {{ t("nav.noFolders") }}
+            {{ libraryLoading ? t("nav.loadingLibrary") : t("nav.noFolders") }}
           </p>
         </section>
 
