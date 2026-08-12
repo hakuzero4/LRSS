@@ -104,19 +104,33 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Wails v3 CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-
-      - name: Install Linux webview deps
+      # Linux: install GUI/CGO deps BEFORE anything that may probe pkg-config.
+      # Wails v3 needs GTK4 + WebKitGTK 6.0 on recent Ubuntu (not only GTK3/4.1).
+      - name: Install Linux build deps
         if: runner.os == 'Linux'
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
             pkg-config \
+            gcc \
             libgtk-3-dev \
+            libgtk-4-dev \
             libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev
+            libwebkitgtk-6.0-dev \
+            libayatana-appindicator3-dev \
+            libglib2.0-dev
+          # Sanity: required .pc files for Wails / WebView
+          pkg-config --exists gtk4 && echo "gtk4 ok"
+          pkg-config --exists webkitgtk-6.0 && echo "webkitgtk-6.0 ok" \
+            || pkg-config --exists webkit2gtk-4.1 && echo "webkit2gtk-4.1 ok"
+
+      - name: Install Wails v3 CLI
+        # CLI itself does not need CGO; pure-Go install avoids pkg-config on all OSes.
+        env:
+          CGO_ENABLED: "0"
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
       - name: Install frontend deps
         working-directory: frontend
