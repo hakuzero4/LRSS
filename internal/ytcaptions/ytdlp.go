@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,32 +24,44 @@ type ytDlpTrackEntry struct {
 	Name string `json:"name"`
 }
 
+var (
+	ytDlpOnce   sync.Once
+	ytDlpBin    string
+	ytDlpPrefix []string
+	ytDlpOK     bool
+)
+
 // detectYtDlp returns a command that can run yt-dlp, or empty if unavailable.
+// Result is cached for the process lifetime (avoids re-probing python/py on every video).
 func detectYtDlp() (bin string, prefixArgs []string, ok bool) {
-	candidates := []struct {
-		bin  string
-		args []string
-	}{
-		{"yt-dlp", nil},
-		{"yt-dlp.exe", nil},
-		{"python", []string{"-m", "yt_dlp"}},
-		{"python3", []string{"-m", "yt_dlp"}},
-		{"py", []string{"-3", "-m", "yt_dlp"}},
-	}
-	for _, c := range candidates {
-		path, err := exec.LookPath(c.bin)
-		if err != nil {
-			continue
+	ytDlpOnce.Do(func() {
+		candidates := []struct {
+			bin  string
+			args []string
+		}{
+			{"yt-dlp", nil},
+			{"yt-dlp.exe", nil},
+			{"python", []string{"-m", "yt_dlp"}},
+			{"python3", []string{"-m", "yt_dlp"}},
+			{"py", []string{"-3", "-m", "yt_dlp"}},
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		cmd := exec.CommandContext(ctx, path, append(append([]string{}, c.args...), "--version")...)
-		err = cmd.Run()
-		cancel()
-		if err == nil {
-			return path, c.args, true
+		for _, c := range candidates {
+			path, err := exec.LookPath(c.bin)
+			if err != nil {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			cmd := exec.CommandContext(ctx, path, append(append([]string{}, c.args...), "--version")...)
+			hideConsoleWindow(cmd)
+			err = cmd.Run()
+			cancel()
+			if err == nil {
+				ytDlpBin, ytDlpPrefix, ytDlpOK = path, c.args, true
+				return
+			}
 		}
-	}
-	return "", nil, false
+	})
+	return ytDlpBin, ytDlpPrefix, ytDlpOK
 }
 
 // fetchViaYtDlp uses a local yt-dlp binary when InnerTube is blocked.
@@ -74,6 +87,7 @@ func fetchViaYtDlp(ctx context.Context, videoID string, prefer []string, httpCli
 	}
 
 	cmd := exec.CommandContext(ctx, bin, args...)
+	hideConsoleWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
