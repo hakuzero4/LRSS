@@ -3,16 +3,20 @@ import {
   BookOpenText,
   Briefcase,
   CalendarDays,
+  ChevronsDownUp,
+  ChevronsUpDown,
   ChevronRight,
   Eye,
   Folder,
   FolderPlus,
   Inbox,
+  ListFilter,
   Plus,
   Settings,
   Star,
+  X,
 } from "@lucide/vue";
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
@@ -140,6 +144,11 @@ const creatingFolder = ref(false);
 const folderBusyId = ref<string | null>(null);
 const feedBusyId = ref<string | null>(null);
 
+/** Sidebar feed/folder name filter (client-side only). */
+const feedFilterOpen = ref(false);
+const feedFilterQuery = ref("");
+const feedFilterInputEl = ref<HTMLInputElement | null>(null);
+
 watch(
   collapsedFolders,
   (map) => {
@@ -183,8 +192,92 @@ const deleteBusy = ref(false);
 /** Sidebar-only feeds (office mode hides isNsfw). */
 const unfiledFeeds = computed(() => sidebarFeeds.value.filter((f) => !f.folderId));
 
-const feedsInFolder = (folderId: string) =>
-  sidebarFeeds.value.filter((f) => f.folderId === folderId);
+const feedFilterNeedle = computed(() => feedFilterQuery.value.trim().toLowerCase());
+
+function feedMatchesFilter(feed: Feed): boolean {
+  const q = feedFilterNeedle.value;
+  if (!q) return true;
+  return (
+    feed.title.toLowerCase().includes(q) ||
+    (feed.siteUrl ?? "").toLowerCase().includes(q) ||
+    (feed.feedUrl ?? "").toLowerCase().includes(q)
+  );
+}
+
+const feedsInFolder = (folderId: string) => {
+  const list = sidebarFeeds.value.filter((f) => f.folderId === folderId);
+  if (!feedFilterNeedle.value) return list;
+  return list.filter(feedMatchesFilter);
+};
+
+/** Folders visible under the current name filter (empty query → all). */
+const filteredSidebarFolders = computed(() => {
+  const q = feedFilterNeedle.value;
+  if (!q) return sidebarFolders.value;
+  return sidebarFolders.value.filter((folder) => {
+    if (folder.name.toLowerCase().includes(q)) return true;
+    return sidebarFeeds.value.some(
+      (f) => f.folderId === folder.id && feedMatchesFilter(f),
+    );
+  });
+});
+
+const filteredUnfiledFeeds = computed(() => {
+  const list = unfiledFeeds.value;
+  if (!feedFilterNeedle.value) return list;
+  return list.filter(feedMatchesFilter);
+});
+
+/** True when every folder is collapsed (or there are no folders). */
+const allFoldersCollapsed = computed(() => {
+  const list = sidebarFolders.value;
+  if (!list.length) return true;
+  return list.every((f) => !!collapsedFolders.value[f.id]);
+});
+
+function collapseAllFolders() {
+  const next: Record<string, boolean> = {};
+  for (const f of sidebarFolders.value) next[f.id] = true;
+  collapsedFolders.value = next;
+}
+
+function expandAllFolders() {
+  collapsedFolders.value = {};
+}
+
+function toggleExpandAllFolders() {
+  if (allFoldersCollapsed.value) expandAllFolders();
+  else collapseAllFolders();
+}
+
+async function toggleFeedFilter() {
+  feedFilterOpen.value = !feedFilterOpen.value;
+  if (!feedFilterOpen.value) {
+    feedFilterQuery.value = "";
+    return;
+  }
+  await nextTick();
+  feedFilterInputEl.value?.focus();
+}
+
+function clearFeedFilter() {
+  feedFilterQuery.value = "";
+  feedFilterOpen.value = false;
+}
+
+// While filtering, auto-expand folders that still have visible feeds.
+watch(feedFilterNeedle, (q) => {
+  if (!q) return;
+  const next = { ...collapsedFolders.value };
+  let changed = false;
+  for (const folder of filteredSidebarFolders.value) {
+    if (next[folder.id]) {
+      delete next[folder.id];
+      changed = true;
+    }
+  }
+  if (changed) collapsedFolders.value = next;
+});
 
 /** Sum of unread for visible feeds inside each folder (respects nsfwMode). */
 const folderUnreadMap = computed(() => {
@@ -562,22 +655,77 @@ const smartItems = computed(() => [
         <section>
           <div class="flex items-center justify-between gap-1 px-2">
             <p class="section-label">{{ t("nav.folders") }}</p>
-            <Button
-              v-if="!webMode"
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              class="text-muted-foreground"
-              :disabled="creatingFolder"
-              :aria-label="t('nav.newFolder')"
-              :title="t('nav.newFolder')"
-              @click="onCreateFolder"
-            >
-              <FolderPlus class="size-3.5" />
-            </Button>
+            <div class="flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                class="text-muted-foreground"
+                :disabled="!sidebarFolders.length"
+                :aria-label="
+                  allFoldersCollapsed ? t('nav.expandAllFolders') : t('nav.collapseAllFolders')
+                "
+                :title="
+                  allFoldersCollapsed ? t('nav.expandAllFolders') : t('nav.collapseAllFolders')
+                "
+                @click="toggleExpandAllFolders"
+              >
+                <ChevronsUpDown v-if="allFoldersCollapsed" class="size-3.5" />
+                <ChevronsDownUp v-else class="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                class="text-muted-foreground"
+                :class="feedFilterOpen && 'text-primary'"
+                :aria-label="t('nav.filterFeeds')"
+                :title="t('nav.filterFeeds')"
+                :aria-pressed="feedFilterOpen"
+                @click="toggleFeedFilter"
+              >
+                <ListFilter class="size-3.5" />
+              </Button>
+              <Button
+                v-if="!webMode"
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                class="text-muted-foreground"
+                :disabled="creatingFolder"
+                :aria-label="t('nav.newFolder')"
+                :title="t('nav.newFolder')"
+                @click="onCreateFolder"
+              >
+                <FolderPlus class="size-3.5" />
+              </Button>
+            </div>
           </div>
-          <ul v-if="sidebarFolders.length" class="mt-1.5 space-y-0.5">
-            <li v-for="folder in sidebarFolders" :key="folder.id">
+          <div v-if="feedFilterOpen" class="mt-1.5 px-2">
+            <div class="relative">
+              <input
+                ref="feedFilterInputEl"
+                v-model="feedFilterQuery"
+                type="text"
+                class="border-input bg-transparent dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-7 w-full min-w-0 rounded-lg border px-2.5 py-1 pr-7 text-[12px] outline-none focus-visible:ring-3 placeholder:text-muted-foreground"
+                :placeholder="t('nav.filterFeedsPlaceholder')"
+                :aria-label="t('nav.filterFeeds')"
+                autocomplete="off"
+                @keydown.escape.prevent="clearFeedFilter"
+              />
+              <button
+                v-if="feedFilterQuery"
+                type="button"
+                class="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                :aria-label="t('common.close')"
+                @click="feedFilterQuery = ''"
+              >
+                <X class="size-3" />
+              </button>
+            </div>
+          </div>
+          <ul v-if="filteredSidebarFolders.length" class="mt-1.5 space-y-0.5">
+            <li v-for="folder in filteredSidebarFolders" :key="folder.id">
               <ContextMenu>
                 <ContextMenuTrigger as-child>
                   <div class="flex items-center gap-0.5">
@@ -766,14 +914,20 @@ const smartItems = computed(() => [
             v-else
             class="mt-1.5 px-2 text-[11.5px] text-muted-foreground"
           >
-            {{ libraryLoading ? t("nav.loadingLibrary") : t("nav.noFolders") }}
+            {{
+              libraryLoading
+                ? t("nav.loadingLibrary")
+                : feedFilterNeedle
+                  ? t("nav.filterFeedsEmpty")
+                  : t("nav.noFolders")
+            }}
           </p>
         </section>
 
-        <section v-if="unfiledFeeds.length">
+        <section v-if="filteredUnfiledFeeds.length || (feedFilterNeedle && unfiledFeeds.length)">
           <p class="section-label px-2">{{ t("nav.feeds") }}</p>
-          <ul class="mt-1.5 space-y-0.5">
-            <li v-for="feed in unfiledFeeds" :key="feed.id">
+          <ul v-if="filteredUnfiledFeeds.length" class="mt-1.5 space-y-0.5">
+            <li v-for="feed in filteredUnfiledFeeds" :key="feed.id">
               <ContextMenu>
                 <ContextMenuTrigger as-child>
                   <button
@@ -845,6 +999,12 @@ const smartItems = computed(() => [
               </ContextMenu>
             </li>
           </ul>
+          <p
+            v-else
+            class="mt-1.5 px-2 text-[11.5px] text-muted-foreground"
+          >
+            {{ t("nav.filterFeedsEmpty") }}
+          </p>
         </section>
       </nav>
     </div>
