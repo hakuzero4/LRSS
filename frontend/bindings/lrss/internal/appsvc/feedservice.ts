@@ -93,7 +93,8 @@ export function MoveFeed(feedId: string, folderId: string): $CancellablePromise<
 }
 
 /**
- * RefreshAll refreshes all non-paused feeds.
+ * RefreshAll queues every active feed and refreshes one paced batch.
+ * Remaining feeds drain in the background (same cap as auto-refresh).
  */
 export function RefreshAll(): $CancellablePromise<$models.RefreshAllResult> {
     return $Call.ByID(398512294);

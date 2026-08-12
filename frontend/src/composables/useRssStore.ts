@@ -2375,8 +2375,25 @@ async function refreshFeeds() {
 
     const api = await loadAppsvc();
     if (api?.FeedService?.RefreshAll) {
-      await api.FeedService.RefreshAll();
+      const res = (await api.FeedService.RefreshAll()) as {
+        feedsOk?: number;
+        feedsErr?: number;
+        articlesAdded?: number;
+        feedsPending?: number;
+      } | null;
       await reloadLibrary();
+      const pending = Math.max(0, Math.floor(Number(res?.feedsPending) || 0));
+      const ok = Math.max(0, Math.floor(Number(res?.feedsOk) || 0));
+      if (pending > 0) {
+        toast.success(t("article.refreshAllQueued", { done: ok, pending }));
+      } else if (ok > 0 || (res?.feedsErr ?? 0) > 0) {
+        toast.success(
+          t("article.refreshAllDone", {
+            ok,
+            err: Math.max(0, Math.floor(Number(res?.feedsErr) || 0)),
+          }),
+        );
+      }
     } else {
       await new Promise((r) => setTimeout(r, 400));
       for (const feed of feeds.value) {

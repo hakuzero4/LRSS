@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"hash/fnv"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +44,11 @@ type Library struct {
 	// Held for the whole pass, but refreshMu is released between feeds so a
 	// manual RefreshFeed is not stuck behind hundreds of HTTP round-trips.
 	refreshBatchMu sync.Mutex
+
+	// forceMu guards the manual "refresh all" queue (same pacing as auto-refresh).
+	forceMu  sync.Mutex
+	forceIDs []string
+	forceSet map[string]struct{}
 }
 
 // youtubeEmbedSrcRe allows only YouTube / youtube-nocookie embed iframe srcs.
@@ -266,69 +273,115 @@ func (lib *Library) RefreshFeed(ctx context.Context, feedID string) (int, error)
 	return lib.refreshOne(ctx, feed)
 }
 
-// RefreshAllResult summarizes a full refresh.
+// RefreshAllResult summarizes a refresh batch (auto-due and/or manual force queue).
 type RefreshAllResult struct {
 	FeedsOK       int `json:"feedsOk"`
 	FeedsErr      int `json:"feedsErr"`
 	ArticlesAdded int `json:"articlesAdded"`
+	// FeedsPending is how many force-queued feeds remain after this batch
+	// (manual Refresh All is paced like auto-refresh).
+	FeedsPending int `json:"feedsPending"`
 }
 
-// RefreshAll refreshes non-paused feeds sequentially.
-// Concurrent multi-feed passes wait on refreshBatchMu; each feed only holds refreshMu
-// for its own fetch so manual RefreshFeed can run between sources.
-func (lib *Library) RefreshAll(ctx context.Context) (RefreshAllResult, error) {
-	lib.refreshBatchMu.Lock()
-	defer lib.refreshBatchMu.Unlock()
+// AutoRefreshMaxFeedsPerTick is the max number of feeds one background tick
+// (or one RefreshAll API call) may fetch. Large libraries are drained across
+// minutes instead of one multi-minute spike.
+const AutoRefreshMaxFeedsPerTick = 20
 
-	feeds, err := lib.Feeds.ListActive(ctx)
-	if err != nil {
-		return RefreshAllResult{}, err
+// ForceQueueLen returns how many feeds are waiting from manual Refresh All.
+func (lib *Library) ForceQueueLen() int {
+	lib.forceMu.Lock()
+	defer lib.forceMu.Unlock()
+	return len(lib.forceIDs)
+}
+
+func (lib *Library) enqueueForceIDs(ids []string) {
+	if len(ids) == 0 {
+		return
 	}
-	var res RefreshAllResult
-	for _, f := range feeds {
-		if ctx.Err() != nil {
-			break
-		}
-		lib.refreshMu.Lock()
-		n, err := lib.refreshOne(ctx, f)
-		lib.refreshMu.Unlock()
-		if err != nil {
-			res.FeedsErr++
+	lib.forceMu.Lock()
+	defer lib.forceMu.Unlock()
+	if lib.forceSet == nil {
+		lib.forceSet = make(map[string]struct{}, len(ids))
+	}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
 			continue
 		}
-		res.FeedsOK++
-		res.ArticlesAdded += n
+		if _, ok := lib.forceSet[id]; ok {
+			continue
+		}
+		lib.forceSet[id] = struct{}{}
+		lib.forceIDs = append(lib.forceIDs, id)
+	}
+}
+
+func (lib *Library) popForceIDs(n int) []string {
+	lib.forceMu.Lock()
+	defer lib.forceMu.Unlock()
+	if n <= 0 || len(lib.forceIDs) == 0 {
+		return nil
+	}
+	if n > len(lib.forceIDs) {
+		n = len(lib.forceIDs)
+	}
+	out := append([]string(nil), lib.forceIDs[:n]...)
+	lib.forceIDs = lib.forceIDs[n:]
+	for _, id := range out {
+		delete(lib.forceSet, id)
+	}
+	if len(lib.forceIDs) == 0 {
+		lib.forceSet = nil
+	}
+	return out
+}
+
+// EnqueueRefreshAll queues every active feed for a paced force-refresh
+// (oldest last_fetched first). Dedupes ids already in the queue.
+func (lib *Library) EnqueueRefreshAll(ctx context.Context) (int, error) {
+	feeds, err := lib.Feeds.ListActive(ctx)
+	if err != nil {
+		return 0, err
+	}
+	sort.SliceStable(feeds, func(i, j int) bool {
+		return lastFetchedLess(feeds[i], feeds[j])
+	})
+	ids := make([]string, 0, len(feeds))
+	for _, f := range feeds {
+		ids = append(ids, f.ID)
+	}
+	before := lib.ForceQueueLen()
+	lib.enqueueForceIDs(ids)
+	return lib.ForceQueueLen() - before, nil
+}
+
+// RefreshAll enqueues all active feeds and runs one paced batch (same cap as
+// auto-refresh). Remaining work is drained by the background refresh loop so
+// hundreds of OPML imports are not fetched in a single blocking spike.
+func (lib *Library) RefreshAll(ctx context.Context) (RefreshAllResult, error) {
+	if _, err := lib.EnqueueRefreshAll(ctx); err != nil {
+		return RefreshAllResult{}, err
+	}
+	res, ok, err := lib.TryRefreshWork(ctx, 30, false)
+	if err != nil {
+		return res, err
+	}
+	if !ok {
+		// Another multi-feed pass is running; queue is still populated.
+		res.FeedsPending = lib.ForceQueueLen()
+		return res, nil
 	}
 	return res, nil
 }
 
-// TryRefreshAll is like RefreshAll but returns immediately if a multi-feed pass is already running.
-// ok is false when the batch lock could not be acquired.
+// TryRefreshAll enqueues a full refresh and drains one batch if the batch lock
+// is free. ok is false when the batch lock could not be acquired (queue still set).
 func (lib *Library) TryRefreshAll(ctx context.Context) (res RefreshAllResult, ok bool, err error) {
-	if !lib.refreshBatchMu.TryLock() {
-		return RefreshAllResult{}, false, nil
-	}
-	defer lib.refreshBatchMu.Unlock()
-
-	feeds, err := lib.Feeds.ListActive(ctx)
-	if err != nil {
+	if _, err := lib.EnqueueRefreshAll(ctx); err != nil {
 		return RefreshAllResult{}, true, err
 	}
-	for _, f := range feeds {
-		if ctx.Err() != nil {
-			break
-		}
-		lib.refreshMu.Lock()
-		n, rerr := lib.refreshOne(ctx, f)
-		lib.refreshMu.Unlock()
-		if rerr != nil {
-			res.FeedsErr++
-			continue
-		}
-		res.FeedsOK++
-		res.ArticlesAdded += n
-	}
-	return res, true, nil
+	return lib.TryRefreshWork(ctx, 30, false)
 }
 
 // EffectiveRefreshMinutes returns the interval used for auto-refresh for one feed.
@@ -346,42 +399,178 @@ func EffectiveRefreshMinutes(feed model.Feed, defaultMinutes int) int {
 	return defaultMinutes
 }
 
-// feedRefreshDue reports whether feed should be fetched now for auto-refresh.
-func feedRefreshDue(feed model.Feed, defaultMinutes int, now time.Time) bool {
-	interval := EffectiveRefreshMinutes(feed, defaultMinutes)
-	if feed.LastFetchedAt == nil || strings.TrimSpace(*feed.LastFetchedAt) == "" {
-		return true
+// refreshPhaseMinutes is a stable offset in [0, interval) from the feed id.
+// Spreads bulk-due feeds (same last_fetched_at after OPML import) across the
+// interval window using wall-clock minutes.
+func refreshPhaseMinutes(feedID string, interval int) int {
+	if interval <= 1 {
+		return 0
 	}
-	t, err := time.Parse(time.RFC3339, strings.TrimSpace(*feed.LastFetchedAt))
-	if err != nil {
-		// Tolerate fractional seconds / space separator from older rows.
-		t, err = time.Parse(time.RFC3339Nano, strings.TrimSpace(*feed.LastFetchedAt))
-		if err != nil {
-			return true
-		}
-	}
-	return !now.Before(t.Add(time.Duration(interval) * time.Minute))
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(feedID))
+	return int(h.Sum32() % uint32(interval))
 }
 
-// TryRefreshDue refreshes only non-paused feeds whose last fetch is older than
-// their effective interval. defaultMinutes is the global LibraryConfig interval.
-// ok is false when another multi-feed pass holds refreshBatchMu.
+func parseFeedLastFetched(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return time.Time{}, false
+		}
+	}
+	return t, true
+}
+
+// FeedRefreshDue reports whether a feed is eligible for background auto-refresh
+// at now. Age must meet the effective interval; then a stable id-based phase
+// staggers sources that became due together. Feeds more than 2× interval overdue
+// skip the phase gate so a long offline period can catch up (still capped per tick).
+func FeedRefreshDue(feed model.Feed, defaultMinutes int, now time.Time) bool {
+	interval := EffectiveRefreshMinutes(feed, defaultMinutes)
+	now = now.UTC()
+
+	var age time.Duration
+	if feed.LastFetchedAt == nil {
+		age = time.Duration(interval*3) * time.Minute // treat as very overdue
+	} else if t, ok := parseFeedLastFetched(*feed.LastFetchedAt); !ok {
+		age = time.Duration(interval*3) * time.Minute
+	} else {
+		age = now.Sub(t)
+		if age < time.Duration(interval)*time.Minute {
+			return false
+		}
+	}
+
+	phase := refreshPhaseMinutes(feed.ID, interval)
+	slot := int(now.Unix()/60) % interval
+	if slot == phase {
+		return true
+	}
+	// Catch-up after long downtime: allow without waiting for phase match.
+	// max-per-tick still spreads the work across minutes.
+	if age >= time.Duration(interval*2)*time.Minute {
+		return true
+	}
+	return false
+}
+
+func lastFetchedLess(a, b model.Feed) bool {
+	// Never-fetched first, then oldest last_fetched_at, then id for stability.
+	at, aOK := time.Time{}, false
+	bt, bOK := time.Time{}, false
+	if a.LastFetchedAt != nil {
+		at, aOK = parseFeedLastFetched(*a.LastFetchedAt)
+	}
+	if b.LastFetchedAt != nil {
+		bt, bOK = parseFeedLastFetched(*b.LastFetchedAt)
+	}
+	if aOK != bOK {
+		return !aOK // a never-fetched → true
+	}
+	if aOK && bOK && !at.Equal(bt) {
+		return at.Before(bt)
+	}
+	return a.ID < b.ID
+}
+
+// SelectFeedsDueForRefresh returns up to maxN feeds that are due, oldest first.
+// maxN <= 0 means no cap (used only in tests).
+func SelectFeedsDueForRefresh(feeds []model.Feed, defaultMinutes int, now time.Time, maxN int) []model.Feed {
+	var due []model.Feed
+	for _, f := range feeds {
+		if f.IsPaused {
+			continue
+		}
+		if FeedRefreshDue(f, defaultMinutes, now) {
+			due = append(due, f)
+		}
+	}
+	sort.SliceStable(due, func(i, j int) bool {
+		return lastFetchedLess(due[i], due[j])
+	})
+	if maxN > 0 && len(due) > maxN {
+		due = due[:maxN]
+	}
+	return due
+}
+
+// TryRefreshDue drains the manual force queue first, then interval-due feeds,
+// up to AutoRefreshMaxFeedsPerTick. defaultMinutes is the global LibraryConfig
+// interval. ok is false when another multi-feed pass holds refreshBatchMu.
 func (lib *Library) TryRefreshDue(ctx context.Context, defaultMinutes int) (res RefreshAllResult, ok bool, err error) {
+	return lib.TryRefreshWork(ctx, defaultMinutes, true)
+}
+
+// TryRefreshWork runs one paced refresh batch.
+// includeDue: also refresh interval-due feeds after the force queue.
+// When includeDue is false, only the manual force queue is drained (Refresh All).
+func (lib *Library) TryRefreshWork(ctx context.Context, defaultMinutes int, includeDue bool) (res RefreshAllResult, ok bool, err error) {
 	if !lib.refreshBatchMu.TryLock() {
 		return RefreshAllResult{}, false, nil
 	}
 	defer lib.refreshBatchMu.Unlock()
 
-	feeds, err := lib.Feeds.ListActive(ctx)
-	if err != nil {
-		return RefreshAllResult{}, true, err
+	res, err = lib.drainRefreshBatchLocked(ctx, defaultMinutes, AutoRefreshMaxFeedsPerTick, includeDue)
+	res.FeedsPending = lib.ForceQueueLen()
+	return res, true, err
+}
+
+// drainRefreshBatchLocked requires refreshBatchMu. Force-queue first, then due.
+func (lib *Library) drainRefreshBatchLocked(ctx context.Context, defaultMinutes, maxN int, includeDue bool) (RefreshAllResult, error) {
+	var res RefreshAllResult
+	if maxN <= 0 {
+		maxN = AutoRefreshMaxFeedsPerTick
 	}
-	now := time.Now().UTC()
-	for _, f := range feeds {
+	budget := maxN
+	refreshed := make(map[string]struct{}, maxN)
+
+	for budget > 0 {
 		if ctx.Err() != nil {
 			break
 		}
-		if !feedRefreshDue(f, defaultMinutes, now) {
+		ids := lib.popForceIDs(1)
+		if len(ids) == 0 {
+			break
+		}
+		id := ids[0]
+		feed, gerr := lib.Feeds.Get(ctx, id)
+		if gerr != nil || feed.IsPaused {
+			// Drop missing/paused from the queue; do not burn the whole budget on junk.
+			continue
+		}
+		lib.refreshMu.Lock()
+		n, rerr := lib.refreshOne(ctx, feed)
+		lib.refreshMu.Unlock()
+		refreshed[id] = struct{}{}
+		budget--
+		if rerr != nil {
+			res.FeedsErr++
+			continue
+		}
+		res.FeedsOK++
+		res.ArticlesAdded += n
+	}
+
+	if !includeDue || budget <= 0 || ctx.Err() != nil {
+		return res, nil
+	}
+
+	feeds, err := lib.Feeds.ListActive(ctx)
+	if err != nil {
+		return res, err
+	}
+	now := time.Now().UTC()
+	due := SelectFeedsDueForRefresh(feeds, defaultMinutes, now, budget)
+	for _, f := range due {
+		if ctx.Err() != nil {
+			break
+		}
+		if _, already := refreshed[f.ID]; already {
 			continue
 		}
 		lib.refreshMu.Lock()
@@ -394,7 +583,7 @@ func (lib *Library) TryRefreshDue(ctx context.Context, defaultMinutes int) (res 
 		res.FeedsOK++
 		res.ArticlesAdded += n
 	}
-	return res, true, nil
+	return res, nil
 }
 
 // RenameFeed sets a custom display title (locked against feed-document overwrites).

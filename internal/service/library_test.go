@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -633,7 +634,7 @@ func TestEffectiveRefreshMinutesAndDue(t *testing.T) {
 	now := mustTime(t, "2026-01-01T12:00:00Z")
 
 	// Global default when feed interval is 0.
-	f := model.Feed{RefreshIntervalMinutes: 0}
+	f := model.Feed{ID: "feed-a", RefreshIntervalMinutes: 0}
 	if m := service.EffectiveRefreshMinutes(f, 30); m != 30 {
 		t.Fatalf("global = %d", m)
 	}
@@ -647,23 +648,134 @@ func TestEffectiveRefreshMinutesAndDue(t *testing.T) {
 		t.Fatalf("per-feed = %d", m)
 	}
 
-	// Never fetched → due.
-	if !feedDue(t, f, 30, now) {
-		t.Fatal("nil last fetch should be due")
-	}
-
-	// Fetched 10m ago with 15m interval → not due.
+	// Fetched 10m ago with 15m interval → not due (age).
 	last := "2026-01-01T11:50:00Z"
 	f.LastFetchedAt = &last
-	if feedDue(t, f, 30, now) {
+	if service.FeedRefreshDue(f, 30, now) {
 		t.Fatal("should not be due yet")
 	}
 
-	// Fetched 20m ago with 15m interval → due.
+	// Fetched 20m ago with 15m interval → age ok; due only on phase match or 2× overdue.
 	last = "2026-01-01T11:40:00Z"
 	f.LastFetchedAt = &last
-	if !feedDue(t, f, 30, now) {
-		t.Fatal("should be due")
+	// Force phase match by probing slots over the interval.
+	dueOnce := false
+	for min := 0; min < 15; min++ {
+		probe := now.Add(time.Duration(min) * time.Minute)
+		if service.FeedRefreshDue(f, 30, probe) {
+			dueOnce = true
+			break
+		}
+	}
+	if !dueOnce {
+		t.Fatal("expected due on some phase slot within interval")
+	}
+
+	// 2× overdue → due regardless of phase.
+	last = "2026-01-01T11:00:00Z" // 60m ago, interval 15 → 4×
+	f.LastFetchedAt = &last
+	if !service.FeedRefreshDue(f, 30, now) {
+		t.Fatal("very overdue should be due without phase wait")
+	}
+}
+
+type stubRSS struct {
+	calls int
+}
+
+func (s *stubRSS) Fetch(ctx context.Context, feedURL string, opts rss.FetchOptions) (*rss.FetchResult, error) {
+	s.calls++
+	return nil, context.Canceled // fail fast; still counts as a refresh attempt
+}
+
+func TestRefreshAll_UsesForceQueueAndCap(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	stub := &stubRSS{}
+	lib := service.NewLibraryFromRepos(repos, stub)
+	ctx := context.Background()
+
+	for i := 0; i < 45; i++ {
+		f := &model.Feed{
+			Title:   "F" + strconv.Itoa(i),
+			FeedURL: "https://example.com/force-" + strconv.Itoa(i) + ".xml",
+		}
+		if err := repos.Feeds.Insert(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := lib.EnqueueRefreshAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 45 {
+		t.Fatalf("enqueued = %d want 45", n)
+	}
+	if lib.ForceQueueLen() != 45 {
+		t.Fatalf("queue = %d", lib.ForceQueueLen())
+	}
+
+	res, ok, err := lib.TryRefreshWork(ctx, 30, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected batch lock")
+	}
+	if stub.calls != service.AutoRefreshMaxFeedsPerTick {
+		t.Fatalf("rss calls = %d want %d", stub.calls, service.AutoRefreshMaxFeedsPerTick)
+	}
+	if res.FeedsPending != 45-service.AutoRefreshMaxFeedsPerTick {
+		t.Fatalf("pending = %d want %d (ok=%d err=%d)",
+			res.FeedsPending, 45-service.AutoRefreshMaxFeedsPerTick, res.FeedsOK, res.FeedsErr)
+	}
+}
+
+func TestSelectFeedsDueForRefresh_StaggerAndCap(t *testing.T) {
+	// Same last_fetched for many feeds (OPML bulk) with 30m interval.
+	last := "2026-01-01T11:30:00Z" // 30m before now → just due
+	now := mustTime(t, "2026-01-01T12:00:00Z")
+	var feeds []model.Feed
+	for i := 0; i < 90; i++ {
+		id := "bulk-" + strconv.Itoa(i)
+		feeds = append(feeds, model.Feed{
+			ID:                     id,
+			RefreshIntervalMinutes: 0,
+			LastFetchedAt:          &last,
+		})
+	}
+
+	// Across 30 wall-clock minutes, phase should spread due feeds; each tick capped.
+	totalPicked := 0
+	maxInOneTick := 0
+	for min := 0; min < 30; min++ {
+		probe := now.Add(time.Duration(min) * time.Minute)
+		picked := service.SelectFeedsDueForRefresh(feeds, 30, probe, service.AutoRefreshMaxFeedsPerTick)
+		if len(picked) > service.AutoRefreshMaxFeedsPerTick {
+			t.Fatalf("tick %d: picked %d > cap", min, len(picked))
+		}
+		if len(picked) > maxInOneTick {
+			maxInOneTick = len(picked)
+		}
+		totalPicked += len(picked)
+	}
+	// Without stagger, one tick would take all 90 (or cap 20 once). With phase,
+	// load spreads: many ticks contribute and no single tick grabs everything.
+	if totalPicked < 40 {
+		t.Fatalf("expected staggered picks over 30m, totalPicked=%d", totalPicked)
+	}
+	if maxInOneTick >= 90 {
+		t.Fatalf("stagger failed: one tick took %d", maxInOneTick)
+	}
+	// Cap must bite when catch-up marks everyone due (2× interval).
+	veryOld := "2026-01-01T10:00:00Z"
+	for i := range feeds {
+		feeds[i].LastFetchedAt = &veryOld
+	}
+	capped := service.SelectFeedsDueForRefresh(feeds, 30, now, service.AutoRefreshMaxFeedsPerTick)
+	if len(capped) != service.AutoRefreshMaxFeedsPerTick {
+		t.Fatalf("catch-up cap = %d want %d", len(capped), service.AutoRefreshMaxFeedsPerTick)
 	}
 }
 
@@ -674,21 +786,6 @@ func mustTime(t *testing.T, s string) time.Time {
 		t.Fatal(err)
 	}
 	return tt
-}
-
-// feedDue re-implements due check via TryRefreshDue path helpers exported through EffectiveRefreshMinutes.
-// We test EffectiveRefreshMinutes above; due logic is covered via a small package-level probe using List + interval math.
-func feedDue(t *testing.T, f model.Feed, defaultMin int, now time.Time) bool {
-	t.Helper()
-	interval := service.EffectiveRefreshMinutes(f, defaultMin)
-	if f.LastFetchedAt == nil || strings.TrimSpace(*f.LastFetchedAt) == "" {
-		return true
-	}
-	tt, err := time.Parse(time.RFC3339, strings.TrimSpace(*f.LastFetchedAt))
-	if err != nil {
-		return true
-	}
-	return !now.Before(tt.Add(time.Duration(interval) * time.Minute))
 }
 
 type stubFulltext struct {

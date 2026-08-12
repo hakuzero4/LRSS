@@ -155,6 +155,8 @@ export default {
     refreshThisFeed: "刷新当前订阅",
     refreshThisFolder: "刷新此文件夹内订阅",
     refreshFailed: "刷新失败",
+    refreshAllQueued: "已刷新 {done} 个，剩余 {pending} 个将在后台分批继续",
+    refreshAllDone: "刷新完成（成功 {ok}，失败 {err}）",
     markAllRead: "全部标为已读",
     emptyTitle: "这里没有文章",
     emptyHint: "试试其他列表、清除搜索，或刷新订阅源。",

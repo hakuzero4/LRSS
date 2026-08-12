@@ -103,14 +103,17 @@ func (s *FeedService) RefreshFeed(id string) (RefreshResult, error) {
 	return RefreshResult{Added: n}, nil
 }
 
-// RefreshAllResult is returned by RefreshAll.
+// RefreshAllResult is returned by RefreshAll (one paced batch; rest may be pending).
 type RefreshAllResult struct {
 	FeedsOK       int `json:"feedsOk"`
 	FeedsErr      int `json:"feedsErr"`
 	ArticlesAdded int `json:"articlesAdded"`
+	// FeedsPending is force-queue remaining after this call (background continues).
+	FeedsPending int `json:"feedsPending"`
 }
 
-// RefreshAll refreshes all non-paused feeds.
+// RefreshAll queues every active feed and refreshes one paced batch (same cap
+// as auto-refresh). Remaining feeds drain in the background loop.
 func (s *FeedService) RefreshAll() (RefreshAllResult, error) {
 	res, err := s.lib.RefreshAll(context.Background())
 	if err != nil {
@@ -121,6 +124,7 @@ func (s *FeedService) RefreshAll() (RefreshAllResult, error) {
 		FeedsOK:       res.FeedsOK,
 		FeedsErr:      res.FeedsErr,
 		ArticlesAdded: res.ArticlesAdded,
+		FeedsPending:  res.FeedsPending,
 	}, nil
 }
 

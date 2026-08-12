@@ -223,25 +223,33 @@ func runAutoRefresh(ctx context.Context, library *service.Library, store *settin
 			timer.Reset(30 * time.Second)
 			continue
 		}
-		if !cfg.AutoRefresh {
+		// Manual "Refresh All" uses the same paced queue even when auto-refresh is off.
+		// When auto is on, also refresh interval-due feeds (staggered + capped).
+		includeDue := cfg.AutoRefresh
+		if !includeDue && library.ForceQueueLen() == 0 {
 			timer.Reset(30 * time.Second)
 			continue
 		}
 
-		// Per-feed intervals: only fetch sources that are due (global or custom).
-		// Tick every minute so short per-feed intervals (e.g. 5m) are honored.
-		res, ok, err := library.TryRefreshDue(ctx, cfg.RefreshIntervalMinutes)
+		// Tick every minute so short intervals (e.g. 5m) and force-queue batches progress.
+		res, ok, err := library.TryRefreshWork(ctx, cfg.RefreshIntervalMinutes, includeDue)
 		if err != nil {
 			log.Printf("auto-refresh: error: %v", err)
 		} else if !ok {
 			log.Printf("auto-refresh: skipped (refresh already in progress)")
-		} else if res.FeedsOK > 0 || res.FeedsErr > 0 {
-			log.Printf("auto-refresh: ok=%d err=%d added=%d", res.FeedsOK, res.FeedsErr, res.ArticlesAdded)
+		} else if res.FeedsOK > 0 || res.FeedsErr > 0 || res.FeedsPending > 0 {
+			log.Printf("auto-refresh: ok=%d err=%d added=%d pending=%d",
+				res.FeedsOK, res.FeedsErr, res.ArticlesAdded, res.FeedsPending)
 			if notifier != nil {
 				notifier.AfterRefresh(ctx, res.ArticlesAdded)
 			}
 		}
 
-		timer.Reset(time.Minute)
+		// Drain force queue faster than due-only ticks when work remains.
+		if library.ForceQueueLen() > 0 {
+			timer.Reset(15 * time.Second)
+		} else {
+			timer.Reset(time.Minute)
+		}
 	}
 }

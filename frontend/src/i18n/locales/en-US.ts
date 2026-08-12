@@ -156,6 +156,8 @@ export default {
     refreshThisFeed: "Refresh this feed",
     refreshThisFolder: "Refresh feeds in this folder",
     refreshFailed: "Refresh failed",
+    refreshAllQueued: "Refreshed {done}; {pending} more will continue in the background",
+    refreshAllDone: "Refresh done ({ok} ok, {err} failed)",
     markAllRead: "Mark all as read",
     emptyTitle: "No articles here",
     emptyHint: "Try another list, clear search, or refresh your feeds.",
