@@ -124,10 +124,10 @@ jobs:
           CGO_ENABLED: "0"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-      # UPX only on Windows/Linux. macOS: zip already shrinks .app; UPX on Mach-O is
-      # slow/unreliable and brew install upx adds several minutes per job.
-      - name: Install UPX (Windows / Linux)
-        if: runner.os != 'macOS'
+      # UPX only on Linux. Windows: packing triggers SmartScreen/Defender false positives
+      # for unsigned apps; macOS: zip is enough and UPX is slow/unreliable on Mach-O.
+      - name: Install UPX (Linux only)
+        if: runner.os == 'Linux'
         uses: crazy-max/ghaction-upx@v3
         with:
           version: v5.0.1
@@ -153,8 +153,8 @@ jobs:
             *) echo "unexpected goos"; exit 1 ;;
           esac
 
-      - name: UPX compress binary
-        if: matrix.kind == 'binary'
+      - name: UPX compress binary (Linux only)
+        if: matrix.kind == 'binary' && matrix.goos == 'linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -163,16 +163,12 @@ jobs:
           before=$(wc -c < "$src" | tr -d ' ')
           # -9 is far faster than --best --lzma on large Go binaries; still ~½ size.
           # --force: required for many Go binaries (PT_LOAD layout)
-          # Windows arm64: soft-fail if unsupported.
           if upx -9 --force "$src"; then
             after=$(wc -c < "$src" | tr -d ' ')
             pct=$(( after * 100 / before ))
             echo "UPX: ${before} → ${after} bytes (${pct}% of original)"
           else
-            echo "UPX failed for ${{ matrix.artifact }} (arch may be unsupported); shipping uncompressed."
-            if [[ "${{ matrix.goarch }}" == "arm64" ]]; then
-              exit 0
-            fi
+            echo "UPX failed; shipping uncompressed."
             exit 1
           fi
 
@@ -296,7 +292,7 @@ jobs:
             ## LRSS ${{ github.ref_name }}
 
             Multi-platform desktop builds (Wails v3).
-            Windows/Linux binaries are **UPX**-packed (`-9`); macOS ships as `.app.zip` only (no UPX).
+            Linux binaries are **UPX**-packed; Windows and macOS are **not** (avoids SmartScreen / Gatekeeper false positives).
 
             | Asset | Platform |
             | --- | --- |
@@ -307,6 +303,11 @@ jobs:
             | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
             | `SHA256SUMS.txt` | Checksums |
 
+            ### Windows (SmartScreen)
+            Builds are **unsigned**. SmartScreen may say “Windows protected your PC”.
+            Click **More info** → **Run anyway**. Reputation improves as more people download the same release.
+            A paid Authenticode certificate is required to remove this permanently.
+
             ### macOS
             1. Download `LRSS-macOS-*.app.zip` and unzip.
             2. Drag `LRSS-macOS-*.app` to Applications (optional).
@@ -315,9 +316,6 @@ jobs:
 
             ### Linux
             Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` on recent Ubuntu/Debian).
-
-            ### Note
-            Some antivirus tools flag UPX-packed executables as suspicious (false positive). Prefer the `.zip` / checksums if needed.
 
             Source: https://github.com/hakuzero4/LRSS
         env:

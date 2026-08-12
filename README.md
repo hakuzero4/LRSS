@@ -179,7 +179,9 @@ Prebuilt apps are published on GitHub Releases when a version tag is pushed:
 | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon** (M1/M2/M3…) |
 | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
 
-macOS builds are real `.app` bundles (ad-hoc signed on GitHub `macos-latest` runners; no universal fat binary — keeps CI under ~10–15m per arch). First open: right-click → **Open** if Gatekeeper blocks unsigned CI builds.
+**Windows:** builds are **not code-signed**. SmartScreen may block the first run — click **More info** → **Run anyway**. Removing this permanently requires an Authenticode certificate (paid). We do **not** UPX-pack Windows builds (packing worsens false positives).
+
+**macOS:** real `.app` bundles (ad-hoc signed on GitHub runners; no universal fat binary). First open: right-click → **Open** if Gatekeeper blocks.
 
 ```bash
 # After pushing to GitHub, cut a release:
