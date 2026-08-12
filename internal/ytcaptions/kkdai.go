@@ -35,8 +35,8 @@ func fetchViaKKDAI(ctx context.Context, videoID string, prefer []string, httpCli
 			lastErr = err
 			continue
 		}
-		text := transcriptPlain(tr)
-		if text == "" {
+		cues := transcriptCues(tr)
+		if len(cues) == 0 {
 			lastErr = fmt.Errorf("ytcaptions: empty kkdai transcript")
 			continue
 		}
@@ -44,7 +44,9 @@ func fetchViaKKDAI(ctx context.Context, videoID string, prefer []string, httpCli
 		if lang == "" {
 			lang = "en"
 		}
-		return Result{Language: lang, Kind: kind, Text: text}, nil
+		res := Result{Language: lang, Kind: kind, Cues: cues}
+		res.fillTextFromCues()
+		return res, nil
 	}
 
 	// 2) Fallback: resolve video metadata for caption track base URLs, then download timedtext.
@@ -80,33 +82,30 @@ func fetchViaKKDAI(ctx context.Context, videoID string, prefer []string, httpCli
 	if hc == nil {
 		hc = &http.Client{Timeout: 15 * time.Second}
 	}
-	text, err := downloadTrack(ctx, hc, track.BaseURL)
+	cues, err := downloadTrackWithUA(ctx, hc, track.BaseURL, webUA)
 	if err != nil {
 		return Result{}, fmt.Errorf("ytcaptions: kkdai timedtext: %w", err)
 	}
-	text = cleanCaptionText(text)
-	if text == "" {
-		return Result{}, fmt.Errorf("ytcaptions: kkdai empty timedtext")
-	}
-	return Result{
+	res := Result{
 		Language: track.LanguageCode,
 		Kind:     track.Kind,
-		Text:     text,
-	}, nil
+		Cues:     cues,
+	}
+	normalizeResult(&res)
+	if res.Text == "" {
+		return Result{}, fmt.Errorf("ytcaptions: kkdai empty timedtext")
+	}
+	return res, nil
 }
 
-func transcriptPlain(tr youtube.VideoTranscript) string {
-	var b strings.Builder
+func transcriptCues(tr youtube.VideoTranscript) []Cue {
+	cues := make([]Cue, 0, len(tr))
 	for _, seg := range tr {
 		t := strings.TrimSpace(seg.Text)
 		if t == "" {
 			continue
 		}
-		if b.Len() > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(t)
+		cues = append(cues, Cue{StartMs: seg.StartMs, Text: t})
 	}
-	return strings.TrimSpace(b.String())
+	return cues
 }
-

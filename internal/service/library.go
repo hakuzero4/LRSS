@@ -57,7 +57,7 @@ func newArticleSanitizer() *bluemonday.Policy {
 	// yt-embed / yt-desc / yt-captions wrappers, titles, and unavailable notice
 	p.AllowAttrs("class").OnElements("div", "section", "h2", "h3", "p", "span")
 	p.AllowAttrs("id").Matching(regexp.MustCompile(`^lrss-yt-captions$`)).OnElements("section", "div")
-	p.AllowAttrs("data-yt-captions", "data-yt-captions-miss", "hidden").OnElements("section", "div")
+	p.AllowAttrs("data-yt-captions", "data-yt-captions-miss", "data-yt-captions-timed", "hidden").OnElements("section", "div")
 	return p
 }
 
@@ -524,17 +524,27 @@ func (lib *Library) enrichParsedYouTubeItem(ctx context.Context, item *repo.Pars
 	if !needsYouTubeCaptionFetch(htmlBody) {
 		return
 	}
-	if strings.TrimSpace(htmlBody) == "" {
-		htmlBody = rss.YouTubeEmbedHTML(vid, "")
+	hadPlain := ytcaptions.HasCaptionsSection(htmlBody) && !ytcaptions.HasTimedCaptions(htmlBody)
+	base := htmlBody
+	if hadPlain {
+		// Upgrade path: strip untimed block so we can rewrite with cues.
+		base = stripYouTubeCaptionsSection(htmlBody)
+	}
+	if strings.TrimSpace(base) == "" {
+		base = rss.YouTubeEmbedHTML(vid, "")
 	}
 	res, err := ytcaptions.Fetch(ctx, vid, ytcaptions.Options{Timeout: 12 * time.Second})
 	if err != nil {
-		// Keep embed/description; mark miss so GetArticle won't retry every open.
-		san := lib.sanitizeHTML(markYouTubeCaptionsMiss(htmlBody))
+		// Never destroy readable plain captions when re-fetch fails.
+		if hadPlain {
+			return
+		}
+		// No prior captions: mark miss so GetArticle won't hammer YouTube.
+		san := lib.sanitizeHTML(markYouTubeCaptionsMiss(base))
 		item.ContentHTML = &san
 		return
 	}
-	merged := lib.sanitizeHTML(ytcaptions.AppendHTML(htmlBody, res))
+	merged := lib.sanitizeHTML(ytcaptions.AppendHTML(base, res))
 	item.ContentHTML = &merged
 	if res.Text != "" {
 		ct := res.Text
@@ -546,13 +556,36 @@ func (lib *Library) enrichParsedYouTubeItem(ctx context.Context, item *repo.Pars
 }
 
 func needsYouTubeCaptionFetch(contentHTML string) bool {
-	if ytcaptions.HasCaptionsSection(contentHTML) {
-		return false
-	}
 	if strings.Contains(contentHTML, `data-yt-captions-miss="1"`) {
 		return false
 	}
+	// Already have timeline captions — skip.
+	if ytcaptions.HasTimedCaptions(contentHTML) {
+		return false
+	}
+	// Plain (untimed) block or no captions — fetch/upgrade.
 	return true
+}
+
+// stripYouTubeCaptionsSection removes a previous captions <section> so it can be re-appended.
+func stripYouTubeCaptionsSection(contentHTML string) string {
+	if contentHTML == "" {
+		return contentHTML
+	}
+	// Prefer marker-based cut (same as FetchFullContent path).
+	if i := strings.Index(contentHTML, `data-yt-captions="1"`); i > 0 {
+		cut := strings.LastIndex(contentHTML[:i], "<section")
+		if cut >= 0 {
+			return strings.TrimSpace(contentHTML[:cut])
+		}
+	}
+	if i := strings.Index(contentHTML, `id="lrss-yt-captions"`); i > 0 {
+		cut := strings.LastIndex(contentHTML[:i], "<section")
+		if cut >= 0 {
+			return strings.TrimSpace(contentHTML[:cut])
+		}
+	}
+	return contentHTML
 }
 
 // Visible notice when captions cannot be fetched (bot check / no tracks / network).
@@ -629,8 +662,8 @@ func (lib *Library) backfillYouTubeCaptionsForFeed(ctx context.Context, feedID s
 }
 
 // ensureYouTubeCaptions fetches and persists captions when the article is a YouTube
-// video and the body does not yet include a captions section.
-// Skips when a previous attempt already marked miss (avoids hammering YouTube).
+// video and the body has no captions yet, or only plain (untimed) captions to upgrade.
+// Skips miss-marked articles. On upgrade failure, keeps existing plain captions.
 func (lib *Library) ensureYouTubeCaptions(ctx context.Context, a *model.Article) {
 	if a == nil {
 		return
@@ -643,7 +676,8 @@ func (lib *Library) ensureYouTubeCaptions(ctx context.Context, a *model.Article)
 	if a.ContentHTML != nil {
 		htmlBody = *a.ContentHTML
 	}
-	if ytcaptions.HasCaptionsSection(htmlBody) {
+	// Already timeline — nothing to do.
+	if ytcaptions.HasTimedCaptions(htmlBody) {
 		return
 	}
 	// Hard miss marker only — do not skip merely because full_content_fetched
@@ -651,20 +685,31 @@ func (lib *Library) ensureYouTubeCaptions(ctx context.Context, a *model.Article)
 	if strings.Contains(htmlBody, `data-yt-captions-miss="1"`) {
 		return
 	}
-	// Drop bare "Captions …" text left by older sanitizer so we can rewrite.
-	htmlBody = ytcaptions.StripLegacyCaptions(htmlBody)
-	if strings.TrimSpace(htmlBody) == "" {
-		htmlBody = rss.YouTubeEmbedHTML(vid, "")
+
+	hadPlain := ytcaptions.HasCaptionsSection(htmlBody)
+	// Work on a copy; only persist on success (or first-time miss).
+	work := htmlBody
+	if hadPlain {
+		// Drop untimed section so AppendHTML can rewrite with cues.
+		work = stripYouTubeCaptionsSection(work)
+	}
+	work = ytcaptions.StripLegacyCaptions(work)
+	if strings.TrimSpace(work) == "" {
+		work = rss.YouTubeEmbedHTML(vid, "")
 	}
 	res, err := ytcaptions.Fetch(ctx, vid, ytcaptions.Options{Timeout: 12 * time.Second})
 	if err != nil {
-		san := lib.sanitizeHTML(markYouTubeCaptionsMiss(htmlBody))
+		// Had readable plain captions: keep them. Do NOT overwrite with miss UI.
+		if hadPlain {
+			return
+		}
+		san := lib.sanitizeHTML(markYouTubeCaptionsMiss(work))
 		_ = lib.Articles.UpdateContent(ctx, a.ID, san, htmltext.ToText(san))
 		a.ContentHTML = &san
 		a.FullContentFetched = true
 		return
 	}
-	merged := lib.sanitizeHTML(ytcaptions.AppendHTML(htmlBody, res))
+	merged := lib.sanitizeHTML(ytcaptions.AppendHTML(work, res))
 	text := htmltext.ToText(merged)
 	if err := lib.Articles.UpdateContent(ctx, a.ID, merged, text); err != nil {
 		return

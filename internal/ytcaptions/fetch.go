@@ -3,36 +3,57 @@
 package ytcaptions
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
-
-	"lrss/internal/httpx"
 )
 
 const (
 	defaultTimeout = 18 * time.Second
 	maxBody        = 3 << 20
-	innertubeURL   = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
-	// Public Android client values used by many open-source transcript tools.
-	clientName    = "ANDROID"
-	clientVersion = "20.10.38"
-	androidUA     = "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
 )
 
-// Result is plain caption text for display under the video embed.
+// Cue is one timed caption line (start offset in the video).
+type Cue struct {
+	// StartMs is the cue start time in milliseconds from video start.
+	StartMs int
+	// Text is the caption line (plain text, unescaped).
+	Text string
+}
+
+// Result is caption data for display under the video embed.
 type Result struct {
 	Language string // BCP-47-ish code from the track (e.g. en, zh-Hans)
 	Kind     string // "asr" for auto-generated, else ""
-	Text     string
+	// Text is plain joined transcript (legacy / search / fallback).
+	Text string
+	// Cues are timed lines when available; FormatHTML prefers these for a timeline UI.
+	Cues []Cue
+}
+
+// fillTextFromCues sets Text from Cues when Text is empty.
+func (r *Result) fillTextFromCues() {
+	if strings.TrimSpace(r.Text) != "" || len(r.Cues) == 0 {
+		return
+	}
+	var b strings.Builder
+	for _, c := range r.Cues {
+		t := strings.TrimSpace(c.Text)
+		if t == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(t)
+	}
+	r.Text = b.String()
 }
 
 // Options controls Fetch.
@@ -50,9 +71,10 @@ var defaultPrefer = []string{
 }
 
 // Fetch downloads captions for videoID.
-// Order:
-//  1. github.com/kkdai/youtube/v2 (pure Go, youtube-dl style client)
-//  2. Direct innertube player + timedtext (local fallback)
+// Order (aligned with baoyu-youtube-transcript style tools):
+//  1. InnerTube: watch-page session + multi-client player + timedtext
+//  2. github.com/kkdai/youtube/v2
+//  3. Optional local yt-dlp (-J) if installed
 func Fetch(ctx context.Context, videoID string, opts Options) (Result, error) {
 	videoID = strings.TrimSpace(videoID)
 	if videoID == "" || !videoIDOK(videoID) {
@@ -75,86 +97,70 @@ func Fetch(ctx context.Context, videoID string, opts Options) (Result, error) {
 
 	httpClient := opts.HTTP
 	if httpClient == nil {
-		// Plain net/http first; surf can be flaky against YouTube on some PCs.
+		// Plain net/http; surf fingerprinting is flaky against YouTube on some PCs.
 		httpClient = &http.Client{Timeout: timeout}
 	}
 
-	// --- 1) third-party Go library ---
-	if res, err := fetchViaKKDAI(cctx, videoID, prefer, httpClient); err == nil && strings.TrimSpace(res.Text) != "" {
-		res.Text = cleanCaptionText(res.Text)
-		if res.Text != "" {
+	var lastErr error
+
+	// --- 1) InnerTube with watch session + ANDROID/WEB/iOS rotation ---
+	if res, err := fetchViaInnertubeSession(cctx, videoID, prefer, httpClient); err == nil {
+		normalizeResult(&res)
+		if res.Text != "" || len(res.Cues) > 0 {
 			return res, nil
 		}
+		lastErr = fmt.Errorf("ytcaptions: empty innertube result")
+	} else {
+		lastErr = err
 	}
 
-	// --- 2) local innertube fallback ---
-	return fetchViaInnertube(cctx, videoID, prefer, httpClient, timeout)
+	// --- 2) kkdai pure-Go client ---
+	if res, err := fetchViaKKDAI(cctx, videoID, prefer, httpClient); err == nil {
+		normalizeResult(&res)
+		if res.Text != "" || len(res.Cues) > 0 {
+			return res, nil
+		}
+		lastErr = fmt.Errorf("ytcaptions: empty kkdai result")
+	} else {
+		lastErr = err
+	}
+
+	// --- 3) optional yt-dlp ---
+	if res, err := fetchViaYtDlp(cctx, videoID, prefer, httpClient); err == nil {
+		normalizeResult(&res)
+		if res.Text != "" || len(res.Cues) > 0 {
+			return res, nil
+		}
+		lastErr = fmt.Errorf("ytcaptions: empty yt-dlp result")
+	} else if !strings.Contains(err.Error(), "yt-dlp not found") {
+		lastErr = err
+	}
+
+	if lastErr != nil {
+		return Result{}, lastErr
+	}
+	return Result{}, fmt.Errorf("ytcaptions: all caption backends failed")
 }
 
-func fetchViaInnertube(ctx context.Context, videoID string, prefer []string, primary *http.Client, timeout time.Duration) (Result, error) {
-	clients := []*http.Client{primary}
-	if primary != nil {
-		// optional surf fallback
-		clients = append(clients, httpx.Std(httpx.Options{Timeout: timeout, UserAgent: androidUA}))
+func normalizeResult(res *Result) {
+	if res == nil {
+		return
 	}
-
-	var (
-		tracks []captionTrack
-		client *http.Client
-		err    error
-	)
-	for _, c := range clients {
-		for attempt := 0; attempt < 2; attempt++ {
-			if attempt > 0 {
-				select {
-				case <-ctx.Done():
-					return Result{}, ctx.Err()
-				case <-time.After(350 * time.Millisecond):
-				}
-			}
-			actx, cancel := context.WithTimeout(ctx, 8*time.Second)
-			tracks, err = listTracks(actx, c, videoID)
-			cancel()
-			if err == nil && len(tracks) > 0 {
-				client = c
-				break
-			}
-		}
-		if client != nil {
-			break
+	for i := range res.Cues {
+		res.Cues[i].Text = cleanCaptionText(res.Cues[i].Text)
+	}
+	// Drop empty cues
+	out := res.Cues[:0]
+	for _, c := range res.Cues {
+		if c.Text != "" {
+			out = append(out, c)
 		}
 	}
-	if client == nil || len(tracks) == 0 {
-		if err != nil {
-			return Result{}, err
-		}
-		return Result{}, fmt.Errorf("ytcaptions: no caption tracks")
+	res.Cues = out
+	if strings.TrimSpace(res.Text) != "" {
+		res.Text = cleanCaptionText(res.Text)
 	}
-	track := pickTrack(tracks, prefer)
-	if track.BaseURL == "" {
-		return Result{}, fmt.Errorf("ytcaptions: empty caption url")
-	}
-	text, err := downloadTrack(ctx, client, track.BaseURL)
-	if err != nil {
-		select {
-		case <-ctx.Done():
-			return Result{}, ctx.Err()
-		case <-time.After(300 * time.Millisecond):
-		}
-		text, err = downloadTrack(ctx, client, track.BaseURL)
-		if err != nil {
-			return Result{}, err
-		}
-	}
-	text = cleanCaptionText(text)
-	if text == "" {
-		return Result{}, fmt.Errorf("ytcaptions: empty transcript")
-	}
-	return Result{
-		Language: track.LanguageCode,
-		Kind:     track.Kind,
-		Text:     text,
-	}, nil
+	res.fillTextFromCues()
 }
 
 type captionTrack struct {
@@ -162,85 +168,6 @@ type captionTrack struct {
 	LanguageCode string
 	Kind         string // "asr" or empty
 	Name         string
-}
-
-type innertubeClient struct {
-	name, version, ua, clientNameHeader string
-}
-
-var innertubeClients = []innertubeClient{
-	{clientName, clientVersion, androidUA, "3"},
-	// WEB fallback when ANDROID is blocked or returns no tracks on some networks.
-	{"WEB", "2.20250312.00.00", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "1"},
-}
-
-func listTracks(ctx context.Context, client *http.Client, videoID string) ([]captionTrack, error) {
-	var lastErr error
-	for _, ic := range innertubeClients {
-		tracks, err := listTracksWithClient(ctx, client, videoID, ic)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if len(tracks) > 0 {
-			return tracks, nil
-		}
-		lastErr = fmt.Errorf("ytcaptions: no caption tracks (%s)", ic.name)
-	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, fmt.Errorf("ytcaptions: no caption tracks")
-}
-
-func listTracksWithClient(ctx context.Context, client *http.Client, videoID string, ic innertubeClient) ([]captionTrack, error) {
-	payload := map[string]any{
-		"context": map[string]any{
-			"client": map[string]any{
-				"clientName":    ic.name,
-				"clientVersion": ic.version,
-				"hl":            "en",
-				"gl":            "US",
-			},
-		},
-		"videoId": videoID,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, innertubeURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", ic.ua)
-	req.Header.Set("X-YouTube-Client-Name", ic.clientNameHeader)
-	req.Header.Set("X-YouTube-Client-Version", ic.version)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("ytcaptions: player: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("ytcaptions: player http %d", resp.StatusCode)
-	}
-	var root any
-	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil, fmt.Errorf("ytcaptions: player json: %w", err)
-	}
-	if status, reason := playability(root); status == "LOGIN_REQUIRED" || status == "ERROR" {
-		if reason == "" {
-			reason = status
-		}
-		return nil, fmt.Errorf("ytcaptions: youtube blocked automated access (%s)", reason)
-	}
-	return extractTracks(root), nil
 }
 
 func playability(v any) (status, reason string) {
@@ -345,50 +272,15 @@ func pickTrack(tracks []captionTrack, prefer []string) captionTrack {
 	return best
 }
 
-func downloadTrack(ctx context.Context, client *http.Client, baseURL string) (string, error) {
-	// Ensure srv3/xml or json3. Tracks often already include fmt=srv3.
-	u := baseURL
-	if !strings.Contains(u, "fmt=") {
-		if strings.Contains(u, "?") {
-			u += "&fmt=srv3"
-		} else {
-			u += "?fmt=srv3"
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", androidUA)
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("ytcaptions: timedtext: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("ytcaptions: timedtext http %d", resp.StatusCode)
-	}
-	if len(raw) == 0 {
-		return "", fmt.Errorf("ytcaptions: empty timedtext")
-	}
-	// Prefer XML srv3; fall back to json3 shape if needed.
-	if bytes.Contains(raw, []byte("<timedtext")) || bytes.Contains(raw, []byte("<p ")) {
-		return parseSrv3(raw), nil
-	}
-	if text := parseJSON3(raw); text != "" {
-		return text, nil
-	}
-	// Last resort: strip tags.
-	return cleanCaptionText(string(raw)), nil
+func downloadTrack(ctx context.Context, client *http.Client, baseURL string) ([]Cue, error) {
+	return downloadTrackWithUA(ctx, client, baseURL, webUA)
 }
 
 type srv3TimedText struct {
 	Body struct {
 		P []struct {
+			T    string `xml:"t,attr"` // start ms
+			D    string `xml:"d,attr"` // duration ms (unused)
 			Text string `xml:",chardata"`
 			// Nested <s> segments in some variants
 			S []struct {
@@ -398,13 +290,12 @@ type srv3TimedText struct {
 	} `xml:"body"`
 }
 
-func parseSrv3(raw []byte) string {
+func parseSrv3Cues(raw []byte) []Cue {
 	var doc srv3TimedText
 	if err := xml.Unmarshal(raw, &doc); err != nil {
-		// Fallback: crude <p>...</p> extraction.
-		return parsePTags(string(raw))
+		return parsePTagCues(string(raw))
 	}
-	var parts []string
+	var cues []Cue
 	for _, p := range doc.Body.P {
 		var b strings.Builder
 		b.WriteString(p.Text)
@@ -412,53 +303,100 @@ func parseSrv3(raw []byte) string {
 			b.WriteString(s.Text)
 		}
 		line := strings.TrimSpace(html.UnescapeString(b.String()))
-		if line != "" {
-			parts = append(parts, line)
-		}
-	}
-	return strings.Join(parts, " ")
-}
-
-var pTagRe = regexp.MustCompile(`(?is)<p\b[^>]*>(.*?)</p>`)
-
-func parsePTags(raw string) string {
-	matches := pTagRe.FindAllStringSubmatch(raw, -1)
-	var parts []string
-	for _, m := range matches {
-		if len(m) < 2 {
+		if line == "" {
 			continue
 		}
-		line := strings.TrimSpace(html.UnescapeString(stripTags(m[1])))
-		if line != "" {
-			parts = append(parts, line)
+		start := 0
+		if p.T != "" {
+			if n, err := parseIntLoose(p.T); err == nil {
+				start = n
+			}
 		}
+		cues = append(cues, Cue{StartMs: start, Text: line})
+	}
+	return cues
+}
+
+// parseSrv3 returns plain joined text (tests / legacy).
+func parseSrv3(raw []byte) string {
+	cues := parseSrv3Cues(raw)
+	var parts []string
+	for _, c := range cues {
+		parts = append(parts, c.Text)
 	}
 	return strings.Join(parts, " ")
 }
 
-func parseJSON3(raw []byte) string {
+var pTagRe = regexp.MustCompile(`(?is)<p\b([^>]*)>(.*?)</p>`)
+var pAttrTRe = regexp.MustCompile(`(?i)\bt\s*=\s*["']?(\d+)`)
+
+func parsePTagCues(raw string) []Cue {
+	matches := pTagRe.FindAllStringSubmatch(raw, -1)
+	var cues []Cue
+	for _, m := range matches {
+		if len(m) < 3 {
+			continue
+		}
+		line := strings.TrimSpace(html.UnescapeString(stripTags(m[2])))
+		if line == "" {
+			continue
+		}
+		start := 0
+		if am := pAttrTRe.FindStringSubmatch(m[1]); len(am) == 2 {
+			if n, err := parseIntLoose(am[1]); err == nil {
+				start = n
+			}
+		}
+		cues = append(cues, Cue{StartMs: start, Text: line})
+	}
+	return cues
+}
+
+func parseJSON3Cues(raw []byte) []Cue {
 	var payload struct {
 		Events []struct {
-			Segs []struct {
+			TStartMs int `json:"tStartMs"`
+			Segs     []struct {
 				Utf8 string `json:"utf8"`
 			} `json:"segs"`
 		} `json:"events"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return ""
+		return nil
 	}
-	var parts []string
+	var cues []Cue
 	for _, e := range payload.Events {
 		var b strings.Builder
 		for _, s := range e.Segs {
 			b.WriteString(s.Utf8)
 		}
 		line := strings.TrimSpace(html.UnescapeString(b.String()))
-		if line != "" && line != "\n" {
-			parts = append(parts, line)
+		if line == "" || line == "\n" {
+			continue
 		}
+		cues = append(cues, Cue{StartMs: e.TStartMs, Text: line})
 	}
-	return strings.Join(parts, " ")
+	return cues
+}
+
+func parseIntLoose(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty")
+	}
+	n := 0
+	digits := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			break
+		}
+		n = n*10 + int(r-'0')
+		digits++
+	}
+	if digits == 0 {
+		return 0, fmt.Errorf("no digits")
+	}
+	return n, nil
 }
 
 var spaceRe = regexp.MustCompile(`\s+`)
@@ -499,9 +437,11 @@ func videoIDOK(id string) bool {
 	return true
 }
 
-// FormatHTML wraps transcript text as a section for article body HTML.
+// FormatHTML wraps transcript as a section for article body HTML.
+// When Cues are present, each line is shown with a timeline timestamp (m:ss).
 func FormatHTML(res Result) string {
-	if strings.TrimSpace(res.Text) == "" {
+	res.fillTextFromCues()
+	if strings.TrimSpace(res.Text) == "" && len(res.Cues) == 0 {
 		return ""
 	}
 	label := "字幕 / Captions"
@@ -513,18 +453,106 @@ func FormatHTML(res Result) string {
 	} else if res.Kind == "asr" {
 		label = "字幕 / Captions (auto)"
 	}
-	// Escape and split into paragraphs every ~4 sentences for readability.
-	escaped := html.EscapeString(res.Text)
-	paras := wrapCaptionParagraphs(escaped)
 	var b strings.Builder
 	// id survives aggressive sanitizers better than data-* alone; keep both.
-	b.WriteString(`<section id="lrss-yt-captions" class="yt-captions" data-yt-captions="1">`)
+	// data-yt-captions-timed marks timeline layout so we can upgrade old plain blocks.
+	timed := len(res.Cues) > 0
+	b.WriteString(`<section id="lrss-yt-captions" class="yt-captions`)
+	if timed {
+		b.WriteString(` yt-captions-timed"`)
+		b.WriteString(` data-yt-captions="1" data-yt-captions-timed="1"`)
+	} else {
+		b.WriteString(`" data-yt-captions="1"`)
+	}
+	b.WriteString(`>`)
 	b.WriteString(`<h3 class="yt-captions-title">`)
 	b.WriteString(html.EscapeString(label))
 	b.WriteString(`</h3>`)
-	b.WriteString(paras)
+	if timed {
+		b.WriteString(formatCueLines(res.Cues))
+	} else {
+		escaped := html.EscapeString(res.Text)
+		b.WriteString(wrapCaptionParagraphs(escaped))
+	}
 	b.WriteString(`</section>`)
 	return b.String()
+}
+
+// formatCueLines renders timed cues as a vertical timeline list.
+func formatCueLines(cues []Cue) string {
+	// Merge very short ASR fragments into readable rows (~5s or ~90 chars).
+	merged := mergeCues(cues, 5000, 90)
+	var b strings.Builder
+	b.WriteString(`<div class="yt-caption-list">`)
+	for _, c := range merged {
+		b.WriteString(`<div class="yt-caption-line">`)
+		b.WriteString(`<span class="yt-caption-time">`)
+		b.WriteString(html.EscapeString(formatTimestamp(c.StartMs)))
+		b.WriteString(`</span>`)
+		b.WriteString(`<span class="yt-caption-text">`)
+		b.WriteString(html.EscapeString(c.Text))
+		b.WriteString(`</span>`)
+		b.WriteString(`</div>`)
+	}
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// mergeCues groups consecutive short cues for readable timeline rows.
+// maxGapMs: start a new row when the next cue jumps more than this after the group start.
+// maxChars: soft wrap length for a single row.
+func mergeCues(cues []Cue, maxGapMs, maxChars int) []Cue {
+	if len(cues) == 0 {
+		return nil
+	}
+	if maxGapMs <= 0 {
+		maxGapMs = 5000
+	}
+	if maxChars <= 0 {
+		maxChars = 90
+	}
+	var out []Cue
+	cur := Cue{StartMs: cues[0].StartMs, Text: strings.TrimSpace(cues[0].Text)}
+	for i := 1; i < len(cues); i++ {
+		n := cues[i]
+		nt := strings.TrimSpace(n.Text)
+		if nt == "" {
+			continue
+		}
+		gap := n.StartMs - cur.StartMs
+		nextLen := len(cur.Text) + 1 + len(nt)
+		if cur.Text == "" {
+			cur = Cue{StartMs: n.StartMs, Text: nt}
+			continue
+		}
+		if gap > maxGapMs || nextLen > maxChars {
+			if cur.Text != "" {
+				out = append(out, cur)
+			}
+			cur = Cue{StartMs: n.StartMs, Text: nt}
+			continue
+		}
+		cur.Text = cur.Text + " " + nt
+	}
+	if cur.Text != "" {
+		out = append(out, cur)
+	}
+	return out
+}
+
+// formatTimestamp renders milliseconds as m:ss or h:mm:ss.
+func formatTimestamp(ms int) string {
+	if ms < 0 {
+		ms = 0
+	}
+	sec := ms / 1000
+	h := sec / 3600
+	m := (sec % 3600) / 60
+	s := sec % 60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%d:%02d", m, s)
 }
 
 func wrapCaptionParagraphs(escaped string) string {
@@ -553,6 +581,16 @@ func wrapCaptionParagraphs(escaped string) string {
 		b.WriteString("</p>")
 	}
 	return b.String()
+}
+
+// HasTimedCaptions reports a captions block that already has the timeline layout.
+func HasTimedCaptions(contentHTML string) bool {
+	if contentHTML == "" {
+		return false
+	}
+	return strings.Contains(contentHTML, `data-yt-captions-timed="1"`) ||
+		strings.Contains(contentHTML, `yt-caption-time`) ||
+		strings.Contains(contentHTML, `yt-captions-timed`)
 }
 
 // HasCaptionsSection reports whether HTML already includes our captions block
