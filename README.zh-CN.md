@@ -179,9 +179,9 @@ YouTube 字幕回退可选：将 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) �
 | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon**（M1/M2/M3…） |
 | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
 
-**Windows：** 发布包**未做代码签名**。SmartScreen 可能提示「已保护你的电脑」——点 **更多信息** → **仍要运行**。彻底消除需购买 Authenticode 证书。Windows **不做 UPX**（压缩更容易被 Defender 误报）。
+**Windows / Linux：** 发布二进制会 **UPX 压缩**（体积大约减半）。**未做代码签名**；Windows SmartScreen 可能提示「已保护你的电脑」——点 **更多信息** → **仍要运行**。
 
-**macOS：** 标准 `.app`（CI ad-hoc 签名；无 universal）。首次被拦截：右键 → **打开**。
+**macOS：** 标准 `.app`（CI ad-hoc 签名；无 universal / 无 UPX）。首次被拦截：右键 → **打开**。
 
 ```bash
 # 推送到 GitHub 后打标签发版：

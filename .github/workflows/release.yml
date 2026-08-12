@@ -124,10 +124,10 @@ jobs:
           CGO_ENABLED: "0"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-      # UPX only on Linux. Windows: packing triggers SmartScreen/Defender false positives
-      # for unsigned apps; macOS: zip is enough and UPX is slow/unreliable on Mach-O.
-      - name: Install UPX (Linux only)
-        if: runner.os == 'Linux'
+      # UPX on Windows + Linux to keep release artifacts small (~½).
+      # macOS: skip (Mach-O UPX is slow/unreliable; .app.zip is enough).
+      - name: Install UPX (Windows / Linux)
+        if: runner.os != 'macOS'
         uses: crazy-max/ghaction-upx@v3
         with:
           version: v5.0.1
@@ -153,8 +153,8 @@ jobs:
             *) echo "unexpected goos"; exit 1 ;;
           esac
 
-      - name: UPX compress binary (Linux only)
-        if: matrix.kind == 'binary' && matrix.goos == 'linux'
+      - name: UPX compress binary
+        if: matrix.kind == 'binary'
         shell: bash
         run: |
           set -euo pipefail
@@ -163,12 +163,16 @@ jobs:
           before=$(wc -c < "$src" | tr -d ' ')
           # -9 is far faster than --best --lzma on large Go binaries; still ~½ size.
           # --force: required for many Go binaries (PT_LOAD layout)
+          # Windows arm64: soft-fail if this UPX build cannot pack the arch.
           if upx -9 --force "$src"; then
             after=$(wc -c < "$src" | tr -d ' ')
             pct=$(( after * 100 / before ))
             echo "UPX: ${before} → ${after} bytes (${pct}% of original)"
           else
-            echo "UPX failed; shipping uncompressed."
+            echo "UPX failed for ${{ matrix.artifact }}; shipping uncompressed."
+            if [[ "${{ matrix.goarch }}" == "arm64" ]]; then
+              exit 0
+            fi
             exit 1
           fi
 
@@ -292,27 +296,25 @@ jobs:
             ## LRSS ${{ github.ref_name }}
 
             Multi-platform desktop builds (Wails v3).
-            Linux binaries are **UPX**-packed; Windows and macOS are **not** (avoids SmartScreen / Gatekeeper false positives).
+            **Windows and Linux** binaries are **UPX**-packed (`-9`, ~½ size). macOS ships as `.app.zip` only.
 
             | Asset | Platform |
             | --- | --- |
-            | `lrss-windows-amd64.exe` / `.zip` | Windows x64 |
-            | `lrss-windows-arm64.exe` / `.zip` | Windows ARM64 |
-            | `lrss-linux-amd64` / `.tar.gz` | Linux x64 |
-            | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon (M1/M2/M3…)** |
+            | `lrss-windows-amd64.exe` / `.zip` | Windows x64 (UPX) |
+            | `lrss-windows-arm64.exe` / `.zip` | Windows ARM64 (UPX when supported) |
+            | `lrss-linux-amd64` / `.tar.gz` | Linux x64 (UPX) |
+            | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon** |
             | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
             | `SHA256SUMS.txt` | Checksums |
 
             ### Windows (SmartScreen)
             Builds are **unsigned**. SmartScreen may say “Windows protected your PC”.
-            Click **More info** → **Run anyway**. Reputation improves as more people download the same release.
-            A paid Authenticode certificate is required to remove this permanently.
+            Click **More info** → **Run anyway**. A paid Authenticode certificate is required to remove this permanently.
 
             ### macOS
             1. Download `LRSS-macOS-*.app.zip` and unzip.
-            2. Drag `LRSS-macOS-*.app` to Applications (optional).
-            3. First launch: right-click → **Open** (unsigned CI builds; Gatekeeper).
-            4. Prefer **arm64** on M-series; **amd64** on Intel Macs.
+            2. Drag to Applications (optional).
+            3. First launch: right-click → **Open** if Gatekeeper blocks.
 
             ### Linux
             Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` on recent Ubuntu/Debian).
