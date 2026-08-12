@@ -337,6 +337,22 @@ func (s *Service) TranslateStream(ctx context.Context, a ArticleInput, targetLan
 	}, nil
 }
 
+// NeedsFullContentFetch reports whether a stored body looks partial enough to
+// download the original page. Conservative local heuristic only (no LLM).
+// Requires a non-empty page URL. Ambiguous bodies return false.
+func NeedsFullContentFetch(title, summary, body, pageURL string) bool {
+	pageURL = strings.TrimSpace(pageURL)
+	if pageURL == "" {
+		return false
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return true
+	}
+	v, _, ok := localFullnessHeuristic(title, summary, body, pageURL)
+	return ok && v == FullnessPartial
+}
+
 // DetectContentFullness judges whether the stored article body looks complete or partial.
 // Result.Verdict is full|partial|unclear; Markdown is the raw model reply.
 //

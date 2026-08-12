@@ -93,8 +93,8 @@ export function MoveFeed(feedId: string, folderId: string): $CancellablePromise<
 }
 
 /**
- * RefreshAll queues every active feed and refreshes one paced batch.
- * Remaining feeds drain in the background (same cap as auto-refresh).
+ * RefreshAll queues every active feed and refreshes one paced batch (same cap
+ * as auto-refresh). Remaining feeds drain in the background loop.
  */
 export function RefreshAll(): $CancellablePromise<$models.RefreshAllResult> {
     return $Call.ByID(398512294);
@@ -113,14 +113,6 @@ export function RefreshFeed(id: string): $CancellablePromise<$models.RefreshResu
  */
 export function RenameFeed(id: string, title: string): $CancellablePromise<void> {
     return $Call.ByID(1087303506, id, title);
-}
-
-/**
- * SetFeedURL updates the subscription feed URL (http/https). Keeps articles;
- * rejects URLs already used by another feed.
- */
-export function SetFeedURL(id: string, feedURL: string): $CancellablePromise<void> {
-    return $Call.ByID(3854602269, id, feedURL);
 }
 
 /**
@@ -158,6 +150,14 @@ export function SetFeedPaused(id: string, paused: boolean): $CancellablePromise<
  */
 export function SetFeedRefreshInterval(id: string, minutes: number): $CancellablePromise<void> {
     return $Call.ByID(1949052462, id, minutes);
+}
+
+/**
+ * SetFeedURL updates the subscription feed URL (http/https). Keeps articles;
+ * rejects URLs already used by another feed.
+ */
+export function SetFeedURL(id: string, feedURL: string): $CancellablePromise<void> {
+    return $Call.ByID(3854602269, id, feedURL);
 }
 
 /**

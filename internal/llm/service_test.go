@@ -237,6 +237,22 @@ func TestService_HTTPError(t *testing.T) {
 	}
 }
 
+func TestNeedsFullContentFetch(t *testing.T) {
+	if !llm.NeedsFullContentFetch("T", "", "", "https://x") {
+		t.Fatal("empty body + url should fetch")
+	}
+	if llm.NeedsFullContentFetch("T", "", "body", "") {
+		t.Fatal("no url should not fetch")
+	}
+	if !llm.NeedsFullContentFetch("T", "sum", "Short. Read more…", "https://x") {
+		t.Fatal("truncation cue should fetch")
+	}
+	long := strings.Repeat("Complete paragraph about the topic here. ", 40)
+	if llm.NeedsFullContentFetch("T", "sum", long, "https://x") {
+		t.Fatal("long body should not auto-fetch")
+	}
+}
+
 func TestService_DetectContentFullness(t *testing.T) {
 	store, database := testStore(t)
 	stub := &stubChat{model: "test-model", content: "VERDICT: partial\nmodel would say partial wrongly"}

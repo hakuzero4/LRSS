@@ -461,7 +461,8 @@ export default {
       defaultFolderDesc: "添加订阅时默认归入的文件夹。",
       unfiled: "未分组",
       fetchFullContent: "抓取全文",
-      fetchFullContentDesc: "在支持时尝试提取完整正文（可能更慢）。",
+      fetchFullContentDesc:
+        "仅针对新入库文章：本地判断为摘要/截断时，在后台分批抓取原文页（与订阅刷新队列分离，不拖慢定时拉源）。",
       keepDays: "文章保留天数",
       keepDaysDesc:
         "清理同时满足「发布已超过 N 天」且「入库已超过 N 天」的非收藏文章。刚订阅的历史源不会立刻被清光；收藏永不清理。",

@@ -688,6 +688,82 @@ func (s *stubRSS) Fetch(ctx context.Context, feedURL string, opts rss.FetchOptio
 	return nil, context.Canceled // fail fast; still counts as a refresh attempt
 }
 
+func TestQueueNewArticlesForFullContent_AndDrain(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	ft := &stubFulltext{
+		html: `<p>Expanded full article body with plenty of detail for the reader.</p>`,
+		text: `Expanded full article body with plenty of detail for the reader.`,
+	}
+	lib := service.NewLibraryFromRepos(repos, &stubRSS{})
+	lib.Fulltext = ft
+	lib.FullContentEnabled = func(context.Context) bool { return true }
+	ctx := context.Background()
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://example.com/ft.xml"}
+	if err := repos.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	// Strong truncation cue → should queue.
+	sum := "This is a teaser summary that is long enough to compare against body."
+	body := "Short lead. Read more…"
+	res, err := repos.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{{
+		GUID:        "g1",
+		URL:         "https://example.com/article-1",
+		Title:       "Partial piece",
+		Summary:     &sum,
+		ContentText: &body,
+		ContentHTML: ptrHTML("<p>" + body + "</p>"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Inserted != 1 || len(res.InsertedIDs) != 1 {
+		t.Fatalf("upsert = %+v", res)
+	}
+
+	lib.QueueNewArticlesForFullContent(ctx, res.InsertedIDs)
+	if lib.FulltextQueueLen() != 1 {
+		t.Fatalf("queue = %d want 1", lib.FulltextQueueLen())
+	}
+
+	// Full-looking article must not queue.
+	long := strings.Repeat("This is a complete paragraph about the topic. ", 40)
+	res2, err := repos.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{{
+		GUID:        "g2",
+		URL:         "https://example.com/article-2",
+		Title:       "Full piece",
+		ContentText: &long,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib.QueueNewArticlesForFullContent(ctx, res2.InsertedIDs)
+	if lib.FulltextQueueLen() != 1 {
+		t.Fatalf("queue after full body = %d want 1", lib.FulltextQueueLen())
+	}
+
+	okN, failN, pending := lib.TryDrainFulltext(ctx, 4)
+	if okN != 1 || failN != 0 {
+		t.Fatalf("drain ok=%d fail=%d pending=%d calls=%d", okN, failN, pending, ft.calls)
+	}
+	if lib.FulltextQueueLen() != 0 {
+		t.Fatalf("queue after drain = %d", lib.FulltextQueueLen())
+	}
+	if ft.calls != 1 {
+		t.Fatalf("fulltext calls = %d", ft.calls)
+	}
+	got, err := repos.Articles.Get(ctx, res.InsertedIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.FullContentFetched {
+		t.Fatal("expected full_content_fetched")
+	}
+}
+
+func ptrHTML(s string) *string { return &s }
+
 func TestRefreshAll_UsesForceQueueAndCap(t *testing.T) {
 	database := openTestDB(t)
 	repos := repo.New(database.SQL)

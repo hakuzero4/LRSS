@@ -66,6 +66,11 @@ func main() {
 		return err == nil && cfg.IsConfigured()
 	}))
 	library := service.NewLibraryFromRepos(repos, &rss.Client{})
+	// Settings → Feeds "抓取全文": enqueue only; drain is paced separately from feed refresh.
+	library.FullContentEnabled = func(c context.Context) bool {
+		prefs, err := store.LoadUIPrefs(c)
+		return err == nil && prefs.FetchFullContent
+	}
 	settingsAPI.SetLibrary(library)
 	feedAPI := appsvc.NewFeedService(library)
 	feedAPI.SetNotifier(notifier)
@@ -219,34 +224,49 @@ func runAutoRefresh(ctx context.Context, library *service.Library, store *settin
 
 		cfg, err := store.LoadLibraryConfig(ctx)
 		if err != nil {
-			log.Printf("auto-refresh: load config: %v", err)
+			log.Printf("auto-refresh: error load config: %v", err)
 			timer.Reset(30 * time.Second)
 			continue
 		}
 		// Manual "Refresh All" uses the same paced queue even when auto-refresh is off.
 		// When auto is on, also refresh interval-due feeds (staggered + capped).
 		includeDue := cfg.AutoRefresh
-		if !includeDue && library.ForceQueueLen() == 0 {
+		hasForce := library.ForceQueueLen() > 0
+		hasFulltext := library.FulltextQueueLen() > 0
+		if !includeDue && !hasForce && !hasFulltext {
 			timer.Reset(30 * time.Second)
 			continue
 		}
 
-		// Tick every minute so short intervals (e.g. 5m) and force-queue batches progress.
-		res, ok, err := library.TryRefreshWork(ctx, cfg.RefreshIntervalMinutes, includeDue)
-		if err != nil {
-			log.Printf("auto-refresh: error: %v", err)
-		} else if !ok {
-			log.Printf("auto-refresh: skipped (refresh already in progress)")
-		} else if res.FeedsOK > 0 || res.FeedsErr > 0 || res.FeedsPending > 0 {
-			log.Printf("auto-refresh: ok=%d err=%d added=%d pending=%d",
-				res.FeedsOK, res.FeedsErr, res.ArticlesAdded, res.FeedsPending)
-			if notifier != nil {
-				notifier.AfterRefresh(ctx, res.ArticlesAdded)
+		if includeDue || hasForce {
+			// Tick: short intervals (e.g. 5m) and force-queue batches progress.
+			res, ok, err := library.TryRefreshWork(ctx, cfg.RefreshIntervalMinutes, includeDue)
+			if err != nil {
+				log.Printf("auto-refresh: error: %v", err)
+			} else if !ok {
+				log.Printf("auto-refresh: skipped (refresh already in progress)")
+			} else if res.FeedsOK > 0 || res.FeedsErr > 0 || res.FeedsPending > 0 {
+				log.Printf("auto-refresh: ok=%d err=%d added=%d pending=%d",
+					res.FeedsOK, res.FeedsErr, res.ArticlesAdded, res.FeedsPending)
+				if notifier != nil {
+					notifier.AfterRefresh(ctx, res.ArticlesAdded)
+				}
 			}
 		}
 
-		// Drain force queue faster than due-only ticks when work remains.
-		if library.ForceQueueLen() > 0 {
+		// Full-content drain: independent budget; never holds the multi-feed batch lock.
+		if library.FulltextQueueLen() > 0 {
+			ui, uerr := store.LoadUIPrefs(ctx)
+			if uerr == nil && ui.FetchFullContent {
+				okN, failN, pending := library.TryDrainFulltext(ctx, 0)
+				if okN > 0 || failN > 0 || pending > 0 {
+					log.Printf("fulltext-queue: ok=%d err=%d pending=%d", okN, failN, pending)
+				}
+			}
+		}
+
+		// Drain force / fulltext faster when work remains.
+		if library.ForceQueueLen() > 0 || library.FulltextQueueLen() > 0 {
 			timer.Reset(15 * time.Second)
 		} else {
 			timer.Reset(time.Minute)

@@ -81,7 +81,10 @@ export interface RefreshAllResult {
     "feedsOk": number;
     "feedsErr": number;
     "articlesAdded": number;
-    /** Force-queue remaining after this call (background continues). */
+
+    /**
+     * FeedsPending is force-queue remaining after this call (background continues).
+     */
     "feedsPending": number;
 }
 

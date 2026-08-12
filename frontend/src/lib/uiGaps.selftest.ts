@@ -156,7 +156,10 @@ assert(list.includes("empty.noFeeds") || list.includes("emptyListReason"), "empt
 assert(sync.includes("disabled") && sync.includes("unavailable"), "sync marked unavailable");
 assert(advanced.includes("resetUIPrefsToDefaults") || advanced.includes("exportDiagnostics"), "advanced real actions");
 assert(general.includes("launchAtLogin") && general.includes("disabled"), "launch disabled");
-assert(feedsPanel.includes("fetchFullContent") && feedsPanel.includes("disabled"), "full content disabled");
+assert(
+  feedsPanel.includes("fetchFullContent") && feedsPanel.includes("onFetchFullContent"),
+  "full content toggle wired",
+);
 assert(about.includes("smartCounts"), "about uses smartCounts");
 
 // add feed folder + advanced options

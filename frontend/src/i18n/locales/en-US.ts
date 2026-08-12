@@ -469,7 +469,8 @@ export default {
       defaultFolderDesc: "Folder assigned when adding a feed.",
       unfiled: "Unfiled",
       fetchFullContent: "Fetch full content",
-      fetchFullContentDesc: "Try to extract full article body when supported (may be slower).",
+      fetchFullContentDesc:
+        "New articles only: if the body looks truncated, fetch the original page in a paced background queue (separate from feed refresh).",
       keepDays: "Keep articles (days)",
       keepDaysDesc:
         "Remove non-starred articles only when both published and stored older than N days. Freshly subscribed archive feeds are not wiped immediately; starred items are always kept.",

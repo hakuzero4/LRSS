@@ -66,6 +66,9 @@ type ParsedItem struct {
 type UpsertResult struct {
 	Inserted int
 	Skipped  int
+	// InsertedIDs are new article ids (same order as successful inserts).
+	// Used for post-refresh full-content queueing without re-scanning the feed.
+	InsertedIDs []string
 }
 
 // SmartCounts is the sidebar badge totals (independent of the current list page).
@@ -251,6 +254,7 @@ func (r *ArticleRepo) UpsertFromParsed(ctx context.Context, feedID string, items
 			continue
 		}
 		res.Inserted++
+		res.InsertedIDs = append(res.InsertedIDs, articleID)
 
 		summary := ""
 		if item.Summary != nil {

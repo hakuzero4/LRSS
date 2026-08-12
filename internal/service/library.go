@@ -15,6 +15,7 @@ import (
 	"lrss/internal/favicon"
 	"lrss/internal/fulltext"
 	"lrss/internal/htmltext"
+	"lrss/internal/llm"
 	"lrss/internal/model"
 	"lrss/internal/repo"
 	"lrss/internal/rss"
@@ -49,7 +50,23 @@ type Library struct {
 	forceMu  sync.Mutex
 	forceIDs []string
 	forceSet map[string]struct{}
+
+	// fulltextMu guards the auto full-content queue (separate from feed refresh).
+	fulltextMu  sync.Mutex
+	fulltextIDs []string
+	fulltextSet map[string]struct{}
+
+	// FullContentEnabled reports Settings → Feeds "fetch full content".
+	// Nil means never auto-queue full-content work.
+	FullContentEnabled func(ctx context.Context) bool
 }
+
+// AutoFulltextMaxPerTick caps original-page fetches per background drain.
+// Independent of AutoRefreshMaxFeedsPerTick so feed refresh is not slowed.
+const AutoFulltextMaxPerTick = 8
+
+// fulltextQueueCap bounds memory if many partials arrive while the drain is slow.
+const fulltextQueueCap = 2000
 
 // youtubeEmbedSrcRe allows only YouTube / youtube-nocookie embed iframe srcs.
 var youtubeEmbedSrcRe = regexp.MustCompile(`(?i)^https://(www\.)?(youtube\.com|youtube-nocookie\.com)/embed/[A-Za-z0-9_-]{6,20}([?#].*)?$`)
@@ -187,12 +204,14 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 	}
 
 	items := mapParsedItems(parsed.Items, lib)
-	if _, err := lib.Articles.UpsertFromParsed(ctx, feed.ID, items); err != nil {
+	up, err := lib.Articles.UpsertFromParsed(ctx, feed.ID, items)
+	if err != nil {
 		// Leave the feed row (user can refresh) but clear validators so a retry
 		// cannot 304-loop with an empty article table.
 		_ = lib.Feeds.UpdateAfterFetch(ctx, feed.ID, "", nil, nil, ptrString(err.Error()))
 		return model.Feed{}, err
 	}
+	lib.maybeQueueFullContent(ctx, up.InsertedIDs)
 
 	// Best-effort favicon; never fail AddFeed for icon discovery.
 	lib.ensureFavicon(ctx, feed.ID, siteURL, feedURL, nil)
@@ -335,6 +354,143 @@ func (lib *Library) popForceIDs(n int) []string {
 		lib.forceSet = nil
 	}
 	return out
+}
+
+// FulltextQueueLen returns pending auto full-content article ids.
+func (lib *Library) FulltextQueueLen() int {
+	lib.fulltextMu.Lock()
+	defer lib.fulltextMu.Unlock()
+	return len(lib.fulltextIDs)
+}
+
+func (lib *Library) enqueueFulltextIDs(ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	lib.fulltextMu.Lock()
+	defer lib.fulltextMu.Unlock()
+	if lib.fulltextSet == nil {
+		lib.fulltextSet = make(map[string]struct{}, len(ids))
+	}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := lib.fulltextSet[id]; ok {
+			continue
+		}
+		if len(lib.fulltextIDs) >= fulltextQueueCap {
+			break
+		}
+		lib.fulltextSet[id] = struct{}{}
+		lib.fulltextIDs = append(lib.fulltextIDs, id)
+	}
+}
+
+func (lib *Library) popFulltextIDs(n int) []string {
+	lib.fulltextMu.Lock()
+	defer lib.fulltextMu.Unlock()
+	if n <= 0 || len(lib.fulltextIDs) == 0 {
+		return nil
+	}
+	if n > len(lib.fulltextIDs) {
+		n = len(lib.fulltextIDs)
+	}
+	out := append([]string(nil), lib.fulltextIDs[:n]...)
+	lib.fulltextIDs = lib.fulltextIDs[n:]
+	for _, id := range out {
+		delete(lib.fulltextSet, id)
+	}
+	if len(lib.fulltextIDs) == 0 {
+		lib.fulltextSet = nil
+	}
+	return out
+}
+
+// QueueNewArticlesForFullContent enqueues newly inserted articles that look
+// partial when Settings → Feeds "fetch full content" is on. Cheap local
+// heuristic only — does not fetch pages (separate paced drain).
+func (lib *Library) QueueNewArticlesForFullContent(ctx context.Context, insertedIDs []string) {
+	lib.maybeQueueFullContent(ctx, insertedIDs)
+}
+
+// maybeQueueFullContent enqueues newly inserted articles that look partial
+// when Settings → Feeds "fetch full content" is on. Cheap local heuristic only.
+// Does not fetch pages here (separate paced drain).
+func (lib *Library) maybeQueueFullContent(ctx context.Context, insertedIDs []string) {
+	if len(insertedIDs) == 0 {
+		return
+	}
+	if lib.FullContentEnabled == nil || !lib.FullContentEnabled(ctx) {
+		return
+	}
+	var toQueue []string
+	for _, id := range insertedIDs {
+		if ctx.Err() != nil {
+			break
+		}
+		a, err := lib.Articles.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		if a.FullContentFetched {
+			continue
+		}
+		pageURL := strings.TrimSpace(a.URL)
+		if pageURL == "" {
+			continue
+		}
+		// YouTube: refresh path already attaches captions; page readability is useless.
+		if rss.YouTubeVideoID(pageURL) != "" {
+			continue
+		}
+		body := ""
+		if a.ContentText != nil {
+			body = *a.ContentText
+		}
+		if body == "" && a.ContentHTML != nil {
+			body = htmltext.ToText(*a.ContentHTML)
+		}
+		summary := ""
+		if a.Summary != nil {
+			summary = *a.Summary
+		}
+		if !llm.NeedsFullContentFetch(a.Title, summary, body, pageURL) {
+			continue
+		}
+		toQueue = append(toQueue, id)
+	}
+	lib.enqueueFulltextIDs(toQueue)
+}
+
+// TryDrainFulltext fetches original pages for up to maxN queued partial articles.
+// Uses refreshMu per article only (never refreshBatchMu) so feed refresh queues
+// are not blocked. maxN <= 0 uses AutoFulltextMaxPerTick.
+func (lib *Library) TryDrainFulltext(ctx context.Context, maxN int) (ok, failed, pending int) {
+	if maxN <= 0 {
+		maxN = AutoFulltextMaxPerTick
+	}
+	for i := 0; i < maxN; i++ {
+		if ctx.Err() != nil {
+			break
+		}
+		ids := lib.popFulltextIDs(1)
+		if len(ids) == 0 {
+			break
+		}
+		id := ids[0]
+		lib.refreshMu.Lock()
+		_, err := lib.FetchFullContent(ctx, id)
+		lib.refreshMu.Unlock()
+		if err != nil {
+			failed++
+			continue
+		}
+		ok++
+	}
+	pending = lib.FulltextQueueLen()
+	return ok, failed, pending
 }
 
 // EnqueueRefreshAll queues every active feed for a paced force-refresh
@@ -709,6 +865,8 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 		_ = lib.Feeds.UpdateAfterFetch(ctx, feed.ID, title, nil, nil, &msg)
 		return 0, err
 	}
+	// Queue partial new articles for paced full-content fetch (does not block this feed).
+	lib.maybeQueueFullContent(ctx, up.InsertedIDs)
 	// Existing YouTube rows use ON CONFLICT DO NOTHING — fill captions for those
 	// that still lack a captions section (one pass after upsert).
 	lib.backfillYouTubeCaptionsForFeed(ctx, feed.ID, items)

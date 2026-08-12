@@ -280,6 +280,11 @@ const defaultFolderModel = computed({
   },
 });
 
+function onFetchFullContent(v: boolean) {
+  settings.fetchFullContent = v;
+  persistUIPrefs();
+}
+
 async function onPurgeNow() {
   if (purging.value || busy.value) return;
   purging.value = true;
@@ -701,16 +706,15 @@ async function confirmClearAll(ev: Event) {
           </Select>
         </SettingsRow>
       </div>
-      <div class="py-2.5 opacity-60">
+      <div class="py-2.5">
         <SettingsRow
           :title="t('settings.feeds.fetchFullContent')"
-          :description="t('settings.unavailable.fetchFullContent')"
+          :description="t('settings.feeds.fetchFullContentDesc')"
         >
           <Switch
-            :checked="false"
-            disabled
-            :aria-disabled="true"
-            :aria-label="t('settings.unavailable.comingSoon')"
+            :checked="settings.fetchFullContent"
+            :aria-label="t('settings.feeds.fetchFullContent')"
+            @update:checked="onFetchFullContent"
           />
         </SettingsRow>
       </div>
