@@ -222,7 +222,11 @@ async function confirmDelete(ev: Event) {
 
 <template>
   <Dialog :open="feedEditOpen" @update:open="onOpenChange">
-    <DialogContent class="sm:max-w-md">
+    <!-- Above Settings (z-50): nested edit must stack higher, including overlay. -->
+    <DialogContent
+      class="z-[70] sm:max-w-md"
+      overlay-class="z-[70]"
+    >
       <DialogHeader>
         <DialogTitle>{{ t("settings.feeds.editTitle") }}</DialogTitle>
         <DialogDescription>{{ t("settings.feeds.editDesc") }}</DialogDescription>
@@ -253,7 +257,10 @@ async function confirmDelete(ev: Event) {
             <SelectTrigger class="h-9 w-full text-[13px]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+            <SelectContent
+              position="popper"
+              class="z-[80] w-[var(--reka-select-trigger-width)]"
+            >
               <SelectItem
                 v-for="opt in INTERVAL_OPTIONS"
                 :key="opt"
@@ -270,7 +277,10 @@ async function confirmDelete(ev: Event) {
             <SelectTrigger class="h-9 w-full text-[13px]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+            <SelectContent
+              position="popper"
+              class="z-[80] w-[var(--reka-select-trigger-width)]"
+            >
               <SelectItem
                 v-for="opt in KEEP_DAYS_OPTIONS"
                 :key="opt"
@@ -290,7 +300,10 @@ async function confirmDelete(ev: Event) {
             <SelectTrigger class="h-9 w-full text-[13px]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+            <SelectContent
+              position="popper"
+              class="z-[80] w-[var(--reka-select-trigger-width)]"
+            >
               <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
               <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
                 {{ f.name }}

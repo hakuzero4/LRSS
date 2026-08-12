@@ -772,7 +772,8 @@ async function confirmClearAll(ev: Event) {
 
     <!-- Add one or many feed URLs -->
     <Dialog :open="addOpen" @update:open="(v) => !addingFeeds && (addOpen = v)">
-      <DialogContent class="sm:max-w-lg">
+      <!-- Nested over Settings (z-50). -->
+      <DialogContent class="z-[70] sm:max-w-lg" overlay-class="z-[70]">
         <DialogHeader>
           <DialogTitle>{{ t("settings.feeds.addTitle") }}</DialogTitle>
           <DialogDescription>{{ t("settings.feeds.addDesc") }}</DialogDescription>
@@ -804,7 +805,10 @@ async function confirmClearAll(ev: Event) {
               <SelectTrigger class="h-9 w-full text-[13px]">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+              <SelectContent
+                position="popper"
+                class="z-[80] w-[var(--reka-select-trigger-width)]"
+              >
                 <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
                 <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
                   {{ f.name }}

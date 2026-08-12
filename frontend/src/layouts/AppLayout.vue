@@ -84,9 +84,10 @@ async function onRetryBootstrap() {
       </ResizablePanel>
     </ResizablePanelGroup>
 
+    <!-- Settings first; nested feed dialogs after so equal-z portals still paint on top. -->
+    <SettingsDialog v-if="!webMode" />
     <AddFeedDialog v-if="!webMode" />
     <FeedEditDialog v-if="!webMode" />
-    <SettingsDialog v-if="!webMode" />
     <Toaster
       class="pointer-events-auto"
       position="top-center"
