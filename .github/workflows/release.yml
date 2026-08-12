@@ -1,0 +1,244 @@
+# Multi-platform desktop builds → GitHub Release (tag v*).
+# Repo: https://github.com/hakuzero4/LRSS
+#
+# Trigger:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Or: Actions → Release → Run workflow
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Create/update a GitHub Release from this run (uses the ref name or draft)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: lrss
+  NODE_VERSION: "20"
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows amd64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+            artifact: lrss-windows-amd64.exe
+            out_name: lrss.exe
+
+          - name: Windows arm64
+            os: windows-latest
+            goos: windows
+            goarch: arm64
+            artifact: lrss-windows-arm64.exe
+            out_name: lrss.exe
+
+          - name: Linux amd64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            artifact: lrss-linux-amd64
+            out_name: lrss
+
+          - name: macOS arm64
+            os: macos-latest
+            goos: darwin
+            goarch: arm64
+            artifact: lrss-darwin-arm64
+            out_name: lrss
+
+          - name: macOS amd64
+            os: macos-latest
+            goos: darwin
+            goarch: amd64
+            artifact: lrss-darwin-amd64
+            out_name: lrss
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wails v3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Install Linux webview deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev
+
+      - name: Build frontend deps (cached path)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build application
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.goos == 'windows' && '0' || '1' }}
+        run: |
+          set -euo pipefail
+          # Prefer platform Taskfile ARCH= so bin layout matches Taskfile defaults.
+          case "${{ matrix.goos }}" in
+            windows)
+              wails3 task windows:build ARCH=${{ matrix.goarch }}
+              ;;
+            darwin)
+              wails3 task darwin:build ARCH=${{ matrix.goarch }}
+              ;;
+            linux)
+              wails3 task linux:build ARCH=${{ matrix.goarch }}
+              ;;
+            *)
+              echo "unknown GOOS ${{ matrix.goos }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          src="bin/${{ matrix.out_name }}"
+          if [[ ! -f "$src" ]]; then
+            echo "Missing build output: $src"
+            ls -la bin/ || true
+            find bin -type f 2>/dev/null || true
+            exit 1
+          fi
+          cp "$src" "dist/${{ matrix.artifact }}"
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            if command -v powershell.exe >/dev/null 2>&1; then
+              powershell.exe -NoProfile -Command "Compress-Archive -Path 'dist/${{ matrix.artifact }}' -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force"
+            else
+              (cd dist && zip -9 "${{ matrix.artifact }}.zip" "${{ matrix.artifact }}")
+            fi
+          else
+            chmod +x "dist/${{ matrix.artifact }}"
+            tar -C dist -czf "dist/${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}"
+          fi
+          ls -la dist/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/${{ matrix.artifact }}
+            dist/${{ matrix.artifact }}.zip
+            dist/${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    # Tags always release; manual runs only if create_release is checked.
+    if: >
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.create_release)
+    steps:
+      - name: Checkout (for notes)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten release files
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          # artifacts/<artifact-name>/<files>
+          find artifacts -type f | sort
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            case "$base" in
+              *.zip|*.tar.gz|*.exe|lrss-*)
+                cp -v "$f" "release/$base"
+                ;;
+            esac
+          done < <(find artifacts -type f -print0)
+
+          ls -la release/
+          test "$(find release -type f | wc -l)" -gt 0
+
+          (
+            cd release
+            sha256sum * > SHA256SUMS.txt
+            cat SHA256SUMS.txt
+          )
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # workflow_dispatch without a tag: draft release named after the run
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('draft-{0}', github.run_id) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Draft build {0}', github.run_id) }}
+          draft: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          generate_release_notes: true
+          files: release/*
+          body: |
+            ## LRSS ${{ github.ref_name }}
+
+            Multi-platform desktop builds (Wails v3).
+
+            | Asset | Platform |
+            | --- | --- |
+            | `lrss-windows-amd64.exe` / `.zip` | Windows x64 |
+            | `lrss-windows-arm64.exe` / `.zip` | Windows ARM64 |
+            | `lrss-linux-amd64` / `.tar.gz` | Linux x64 |
+            | `lrss-darwin-arm64` / `.tar.gz` | macOS Apple Silicon |
+            | `lrss-darwin-amd64` / `.tar.gz` | macOS Intel |
+            | `SHA256SUMS.txt` | Checksums |
+
+            **macOS:** unsigned cross-CI builds may need right-click → Open the first time (Gatekeeper).
+
+            **Linux:** requires WebKitGTK at runtime (e.g. `libwebkit2gtk-4.1-0` on recent Ubuntu/Debian).
+
+            Source: https://github.com/hakuzero4/LRSS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

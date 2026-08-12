@@ -167,6 +167,30 @@ Optional for YouTube captions fallback: [`yt-dlp`](https://github.com/yt-dlp/yt-
 
 ---
 
+## Downloads / Releases
+
+Prebuilt binaries are published on GitHub Releases when a version tag is pushed:
+
+| Asset | Platform |
+| --- | --- |
+| `lrss-windows-amd64.exe` | Windows x64 |
+| `lrss-windows-arm64.exe` | Windows ARM64 |
+| `lrss-linux-amd64` | Linux x64 |
+| `lrss-darwin-arm64` | macOS Apple Silicon |
+| `lrss-darwin-amd64` | macOS Intel |
+
+```bash
+# After pushing to GitHub, cut a release:
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Workflow: [`.github/workflows/release.yml`](.github/workflows/release.yml) (also runnable via **Actions → Release → Run workflow**).
+
+Repository: [github.com/hakuzero4/LRSS](https://github.com/hakuzero4/LRSS)
+
+---
+
 ## Quick start
 
 ```bash
