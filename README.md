@@ -1,24 +1,138 @@
 # LRSS
 
-**Local-first desktop RSS reader** — subscribe, sync, full-text search, optional AI (summarize / translate / embeddings), and optional LAN web access for the same reading UI.
+<p align="center">
+  <img src="docs/brand/lrss-source-22.png" alt="LRSS icon" width="96" height="96" />
+</p>
 
-本地优先的桌面 RSS 阅读器：订阅拉取入库、全文检索、可选大模型能力，以及可选的浏览器 Web 访问。
+**Local-first desktop RSS reader** — subscribe, sync, search, optional AI, YouTube-friendly reading, and optional browser access on your LAN.
+
+本地优先的桌面 RSS 阅读器：订阅拉取入库、全文/语义搜索、可选大模型能力、YouTube 字幕时间轴，以及可选的浏览器 Web 访问。
+
+---
+
+## Screenshot
+
+三栏资料库 · 列表 · 阅读器（摘要 deck、划词翻译、订阅文件夹与智能列表）
+
+![LRSS main UI — three-pane library, article list, and reader with AI summary and selection translate](docs/screenshots/main-reader.png)
 
 ---
 
 ## Features
 
-- **Three-pane library** — smart lists / folders / feeds · article list · reader
-- **Smart lists** — Unread · Today · Starred · All
-- **Subscriptions** — RSS/Atom URL, single-feed or full refresh; ETag / Last-Modified
-- **OPML** — import / export; folders in the sidebar
-- **Reading** — read / star / open original; HTML sanitized (bluemonday)
-- **Search** — FTS5 always on; optional embedding for vector / hybrid search
-- **AI (optional)** — OpenAI-compatible Chat Completions: summarize, translate, ask, full-content helpers
-- **YouTube** — channel RSS embeds; caption fetch with timeline display
-- **Web access (optional)** — local HTTP server; browser can star / mark read; no settings or feed management
-- **i18n** — 简体中文 / English
-- **Desktop extras** — keyboard shortcuts, retention policy, system notifications, themes
+### Library & navigation
+
+| Capability | Details |
+| --- | --- |
+| **Three-pane layout** | Sidebar (smart lists / folders / feeds) · article list · reader |
+| **Smart lists** | Unread · Today · Starred · All — with live counts |
+| **Folders** | Nested-style organization; create / rename / delete; mark all read; refresh folder; move feeds |
+| **Feeds** | Favicons, unread badges, context menus, per-feed editor |
+| **Office / NSFW mode** | Mark feeds or folders sensitive; hide them from sidebar & smart lists when office mode is on |
+| **Zen mode** | Hide sidebar + list; focus on the article (`z`) |
+| **Resizable panes** | Layout sizes persist across sessions |
+
+### Subscriptions
+
+| Capability | Details |
+| --- | --- |
+| **Add feeds** | Single or multi-line RSS/Atom URLs; optional mark all as NSFW on import |
+| **Refresh** | Single feed, folder, or library-wide; respects ETag / Last-Modified |
+| **Auto-refresh** | Configurable global interval (minutes → hours); per-feed interval or pause |
+| **OPML** | Import / export (OPML 2.0); folders preserved; re-import merges |
+| **Per-feed options** | Display title (user-locked), folder, refresh interval, keep-days, pause, NSFW |
+| **Failed feeds** | Filter errors, one-click remove invalid subscriptions |
+| **Retention** | Global and per-feed keep-days for non-starred articles; manual purge; **starred never purged** |
+
+### Reading
+
+| Capability | Details |
+| --- | --- |
+| **Read / star** | Toggle read state and favorites; mark all read on lists/folders |
+| **Mark-on-open / mark-on-scroll** | Configurable read behavior |
+| **Unread-only list filter** | Hide read items (starred collection exempt) |
+| **Open original** | System browser (desktop) or new tab (web access) |
+| **In-body links** | Honor “open links in browser” preference |
+| **HTML safety** | Article HTML sanitized with bluemonday before store/display |
+| **Fetch full content** | Manual toolbar action; optional auto-fetch when local heuristics detect a truncated feed body (conservative — skips YouTube/embeds) |
+| **Typography** | Font size (sm/md/lg), system font picker, reader width (narrow → fill) |
+| **Reader toolbar** | Configurable: zen, star, read, summarize, translate, AI menu, fetch full, Markdown panel, open original |
+| **Markdown panel** | Side panel for Markdown conversion of the article |
+
+### Search & filters
+
+| Capability | Details |
+| --- | --- |
+| **FTS5 full-text** | Always available offline on title / summary / body text |
+| **Semantic search (optional)** | OpenAI-compatible embeddings; vector / hybrid modes when configured |
+| **Search modes** | auto · fts · vector · hybrid |
+| **List search** | Filter current collection; backend FTS when connected |
+| **Duplicate titles** | Optional hide across list |
+| **Block keywords** | Comma-separated title/summary mute list |
+
+### AI (optional, OpenAI-compatible)
+
+Requires **Settings → Models** chat endpoint. Feature toggles under **AI features**.
+
+| Feature | Entry | Notes |
+| --- | --- | --- |
+| **Summarize** | Toolbar / ✨ | Streaming summary deck above the body; optional auto-summarize on open |
+| **Translate** | Language icon | Original + translation side-by-side; original body never deleted |
+| **Selection translate** | Select text in body | Popup short-text translation |
+| **Ask / explain** | ✨ menu | Q&A on the current article |
+| **Folder / tag suggest** | ✨ menu | Local keywords + LLM; one-click move feed to folder |
+| **Promo / soft-ad classify** | ✨ menu | Manual organic / promo / unclear |
+| **Auto full-fetch** | AI features toggle | Opens article → conservative partial check → fetch page |
+| **Cache** | Local SQLite | `article + feature + model + content fingerprint + locale` |
+| **Locale-aware prompts** | UI language | zh-CN UI → Chinese prompts/replies |
+
+Embedding (vector search) and chat (LLM) are **configured separately** (different models/gateways allowed).
+
+### YouTube
+
+| Capability | Details |
+| --- | --- |
+| **Channel RSS** | Embed player for video items |
+| **Captions** | Fetch when available; **timeline / timed cues** in the reader |
+| **Fetch backends** | Watch-session InnerTube (ANDROID/WEB/iOS) → kkdai → optional **yt-dlp** |
+| **Fail-safe** | Keep plain caption text if timed upgrade fails |
+| **Cookies (optional)** | `YOUTUBE_TRANSCRIPT_COOKIES_FROM_BROWSER` for restricted videos |
+
+### Web access (optional)
+
+Enable in **Settings → Advanced → Web access**.
+
+| Capability | Details |
+| --- | --- |
+| **Same SPA** | Browser opens the same reading UI as desktop |
+| **Bind** | `localhost` (127.0.0.1) or **LAN** (0.0.0.0) |
+| **Port / token** | Default port `18765`; Bearer or `?token=`; LAN empty token auto-generated |
+| **Allowed** | Browse, star, mark read, mark-all-read, search, reader tools (if enabled on desktop) |
+| **Blocked** | Settings UI, feed/folder CRUD, refresh, OPML, sync management |
+| **Invalid token** | Full-page block only — no empty library shell |
+| **Locale** | Follows desktop UIPrefs language |
+
+### Desktop & preferences
+
+| Area | Details |
+| --- | --- |
+| **Themes** | System / light / dark; accent presets + custom hex |
+| **Compact sidebar** | Denser feed list |
+| **i18n** | 简体中文 · English |
+| **Keyboard shortcuts** | j/k next-prev · s star · m read · r refresh · z zen · `,` settings (toggleable) |
+| **Notifications** | New-article system notifications; sound on/off; test notification |
+| **Sync (OPML only)** | WebDAV or S3-compatible (R2 / MinIO); push/pull subscription structure — **not** read/star/body |
+| **Advanced** | Hardware acceleration toggle, clear AI cache, developer diagnostics export, reset UI prefs |
+| **Startup** | Default collection; hide-read-on-startup (launch-at-login when wired by platform) |
+
+### Privacy & data
+
+- **Local-first**: library in SQLite on disk (no cloud account required)
+- **API keys** stored only on-device (masked in UI)
+- **Outbound HTTP** via fingerprint-friendly client (`enetx/surf` / `internal/httpx`)
+- Data path: XDG data home; Windows typically `%LOCALAPPDATA%/LRSS/data/lrss.db`
+
+---
 
 ## Stack
 
@@ -32,15 +146,21 @@
 
 Go module path: `lrss`.
 
+---
+
 ## Requirements
 
-- **Go** 1.25+ (CI/dev currently on 1.26)
+- **Go** 1.25+ (dev often on 1.26)
 - **Node.js** 20+
 - **Wails CLI v3**
 
 ```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 ```
+
+Optional for YouTube captions fallback: [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on `PATH`.
+
+---
 
 ## Quick start
 
@@ -58,10 +178,10 @@ wails3 task dev
 Production build:
 
 ```bash
-wails3 task build   # output under bin/
+wails3 task build   # → bin/
 ```
 
-Frontend only (no Wails shell):
+Frontend only:
 
 ```bash
 cd frontend && npm run dev    # http://127.0.0.1:9245
@@ -72,10 +192,9 @@ Tests:
 
 ```bash
 go test ./...
-cd frontend && npm run build   # typecheck + production bundle
 ```
 
-### Common commands
+### Commands
 
 | Command | Description |
 | --- | --- |
@@ -84,36 +203,34 @@ cd frontend && npm run build   # typecheck + production bundle
 | `wails3 generate bindings` | Regenerate frontend bindings |
 | `go test ./...` | Backend tests |
 
-## Data location
+---
 
-SQLite DB lives under the platform data directory (XDG on Unix; on Windows typically `%LOCALAPPDATA%/LRSS/data/lrss.db`).
+## Configuration map
 
-See [docs/database.md](docs/database.md).
-
-## Configuration (high level)
-
-| Area | Where | Notes |
+| Area | Settings path | Storage |
 | --- | --- | --- |
-| Theme / locale / reading | Settings → Appearance / Reading | Stored in SQLite UI prefs |
-| Search & embeddings | Settings → Search / AI | OpenAI-compatible embedding endpoint |
-| LLM features | Settings → Search / AI · AI features | Summarize, translate, etc. |
-| Web access | Settings → Advanced | Bind host, port, token; copy local / LAN URL |
-| Retention | Settings · per-feed options | Drop old non-starred articles |
+| Refresh, read behavior, NSFW | General | SQLite UI prefs |
+| Theme, accent, locale, toolbar buttons | Appearance | SQLite UI prefs |
+| Font, width, unread-only, open-in-browser | Reading | SQLite UI prefs |
+| OPML, feed list, retention | Feeds | SQLite + files |
+| Duplicates, block keywords | Filters | SQLite UI prefs |
+| Embedding + LLM endpoints | Models | SQLite settings |
+| Auto-summarize, auto full-fetch, … | AI features | SQLite UI prefs |
+| WebDAV / S3 OPML sync | Sync | SQLite settings |
+| Shortcuts on/off | Shortcuts | SQLite UI prefs |
+| New-article notifications | Notifications | SQLite UI prefs |
+| Web access, cache, diagnostics | Advanced | SQLite + runtime |
 
-Details: [docs/embedding.md](docs/embedding.md), [docs/llm.md](docs/llm.md).
+Details: [docs/embedding.md](docs/embedding.md) · [docs/llm.md](docs/llm.md) · [docs/database.md](docs/database.md)
 
-## Web access
+### Web access quick setup
 
-When enabled on the desktop app:
+1. **Settings → Advanced → Allow Web access**
+2. Choose **localhost** or **LAN**, port, token
+3. Copy local / LAN URL (includes `?token=` when set)
+4. Open in a browser on the same machine or LAN
 
-1. Open **Settings → Advanced → Allow Web access**
-2. Choose **localhost** or **LAN**, port, and token
-3. Open the copied URL in a browser (include `?token=…` when a token is set)
-
-**Allowed:** browse library, star, mark read, reader toolbar tools that are enabled on desktop.  
-**Not allowed:** settings UI, add/remove feeds, OPML, sync management.
-
-Invalid or missing token shows a dedicated full-page message (no reader shell).
+---
 
 ## Architecture
 
@@ -125,34 +242,42 @@ main.go
 ├── rss/             Fetch + parse (gofeed)
 ├── search/          FTS + optional vector
 ├── embed/ · llm/    OpenAI-compatible providers
+├── fulltext/        Full-page extract (host policy)
 ├── web/             Optional browser HTTP API + SPA
 ├── ytcaptions/      YouTube caption backends
+├── cloudsync/       OPML push/pull (WebDAV / S3)
 └── db/              Open, migrate, vector probe
 
 frontend/
-├── src/             Vue app (store, reader, settings)
-└── bindings/        Generated from Go (prefer loadAppsvc())
+├── src/             Vue app (store, reader, settings, web gate)
+└── bindings/        Generated from Go (via loadAppsvc())
 ```
 
-More: [docs/README.md](docs/README.md).
+---
 
 ## Documentation
 
 | Doc | Content |
 | --- | --- |
 | [docs/README.md](docs/README.md) | Documentation index |
-| [docs/database.md](docs/database.md) | Schema, FTS, paths |
+| [docs/database.md](docs/database.md) | Schema, FTS, migrations, data path |
 | [docs/embedding.md](docs/embedding.md) | Vector search & sqlite-vector notes |
-| [docs/llm.md](docs/llm.md) | LLM config and AI features |
+| [docs/llm.md](docs/llm.md) | LLM config and AI feature matrix |
+| [docs/screenshots/](docs/screenshots/) | UI screenshots for README |
+| [docs/brand/](docs/brand/) | App icon source asset |
 | [AGENTS.md](AGENTS.md) | Contributor / multi-agent conventions |
+
+---
 
 ## Contributing
 
-1. Prefer small, focused PRs with tests (`go test ./...`).
+1. Prefer small, focused changes with `go test ./...` green.
 2. After changing Wails-facing Go APIs, run `wails3 generate bindings`.
-3. Use `internal/httpx` for outbound HTTP (not ad-hoc `http.Client` in production paths).
+3. Use `internal/httpx` for outbound HTTP (no ad-hoc production `http.Client`).
 4. Sanitize article HTML before store/display.
-5. For larger roadmap work, follow the multi-agent process in [AGENTS.md](AGENTS.md).
+5. Larger roadmap work: follow [AGENTS.md](AGENTS.md) (local plans under `docs/dev/plans/`, gitignored).
+
+---
 
 ## License
 
@@ -160,4 +285,4 @@ License not specified yet. All rights reserved until a license file is added.
 
 ---
 
-Built with Wails, Vue, and SQLite — offline-friendly reading first.
+Built with **Wails**, **Vue**, and **SQLite** — offline-friendly reading first.

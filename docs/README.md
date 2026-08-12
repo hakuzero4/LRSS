@@ -10,11 +10,12 @@ Technical docs for contributors and advanced users. Day-to-day usage lives in th
 | [embedding.md](embedding.md) | Embedding config, search modes, sqlite-vector notes |
 | [llm.md](llm.md) | OpenAI-compatible LLM settings and AI features |
 
-## Brand
+## Brand & screenshots
 
 | Path | Description |
 | --- | --- |
 | [brand/lrss-source-22.png](brand/lrss-source-22.png) | App icon source (transparent PNG) |
+| [screenshots/main-reader.png](screenshots/main-reader.png) | Main three-pane UI (used in root README) |
 
 Platform icons are generated into `build/` (`appicon.png`, Windows `.ico`, etc.) and `frontend/public/`.
 
