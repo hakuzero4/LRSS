@@ -11,7 +11,6 @@ import {
   FolderPlus,
   Inbox,
   ListFilter,
-  Plus,
   Settings,
   Star,
   X,
@@ -83,7 +82,6 @@ const {
   libraryLoading,
   webMode,
   selectCollection,
-  openAddFeed,
   openAddFeedInFolder,
   openSettings,
   openFeedEdit,
@@ -602,32 +600,6 @@ const smartItems = computed(() => [
       )
     "
   >
-    <div class="flex h-13 items-center justify-between gap-2 px-3 pt-2 pb-1">
-      <div class="flex min-w-0 items-center gap-2.5 pl-0.5">
-        <span class="brand-mark" aria-hidden="true">
-          <img src="/appicon.png" alt="" width="28" height="28" draggable="false" />
-        </span>
-        <div class="min-w-0">
-          <p class="truncate text-[13.5px] font-semibold tracking-tight text-foreground">
-            LRSS
-          </p>
-          <p class="truncate text-[11px] text-muted-foreground">
-            {{ webMode ? t("nav.webReadonly") : t("nav.library") }}
-          </p>
-        </div>
-      </div>
-      <Button
-        v-if="!webMode"
-        variant="ghost"
-        size="icon-sm"
-        class="text-muted-foreground"
-        :aria-label="t('nav.addFeed')"
-        @click="openAddFeed"
-      >
-        <Plus class="size-4" />
-      </Button>
-    </div>
-
     <div class="scroll-pane flex-1 px-2.5 pb-3">
       <nav class="space-y-5 pt-2" :aria-label="t('nav.library')">
         <section>
