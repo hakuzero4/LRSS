@@ -16,6 +16,7 @@ import (
 	"lrss/internal/search"
 	"lrss/internal/service"
 	"lrss/internal/settings"
+	"lrss/internal/web"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
@@ -73,6 +74,29 @@ func main() {
 	articleAPI := appsvc.NewArticleService(library, store)
 	aiAPI := appsvc.NewAI(store, library, database.SQL)
 	syncAPI := appsvc.NewSync(store, library)
+
+	// Optional browser access (same SPA; reader toolbar tools + star/read; no settings UI).
+	webServer := web.New(web.APIDeps{
+		Library: library,
+		Store:   store,
+		Search:  searchSvc,
+		AI:      appsvc.NewWebAI(aiAPI),
+	}, assets)
+	settingsAPI.SetWebServer(webServer)
+	defer func() {
+		if err := webServer.Stop(context.Background()); err != nil {
+			log.Printf("web access stop: %v", err)
+		}
+	}()
+	if webCfg, err := store.LoadWebAccessConfig(ctx); err != nil {
+		log.Printf("load web access config: %v", err)
+	} else if webCfg.Enabled {
+		if st, err := webServer.Apply(ctx, webCfg); err != nil {
+			log.Printf("web access start: %v", err)
+		} else {
+			log.Printf("web access enabled: %s", st.URL)
+		}
+	}
 
 	// Background auto-refresh (reads LibraryConfig each tick).
 	go runAutoRefresh(ctx, library, store, notifier)

@@ -37,5 +37,7 @@ assert(store.includes("readerWidth"), "readerWidth setting");
 
 assert(openLink.includes("Browser"), "uses Wails Browser API");
 assert(openLink.includes("OpenURL"), "OpenURL call");
+assert(openLink.includes("isWebMode"), "skips Wails OpenURL in web mode");
+assert(openLink.includes("openInNewTab") || openLink.includes("createElement"), "web opens via new tab");
 
 console.log("openLink.selftest (reading settings wiring): OK");

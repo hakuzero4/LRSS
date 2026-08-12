@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/resizable";
 
 const { t } = useI18n();
-const { bootstrapError, backendReady, reloadLibrary, zenMode } = useRssStore();
+const { bootstrapError, backendReady, reloadLibrary, zenMode, webMode } = useRssStore();
 
 useTheme();
 useKeyboardShortcuts();
@@ -84,9 +84,9 @@ async function onRetryBootstrap() {
       </ResizablePanel>
     </ResizablePanelGroup>
 
-    <AddFeedDialog />
-    <FeedEditDialog />
-    <SettingsDialog />
+    <AddFeedDialog v-if="!webMode" />
+    <FeedEditDialog v-if="!webMode" />
+    <SettingsDialog v-if="!webMode" />
     <Toaster
       class="pointer-events-auto"
       position="top-center"
