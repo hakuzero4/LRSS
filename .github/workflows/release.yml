@@ -132,6 +132,12 @@ jobs:
           CGO_ENABLED: "0"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          version: v5.0.1
+          install-only: true
+
       - name: Install frontend deps
         working-directory: frontend
         run: npm ci
@@ -151,6 +157,29 @@ jobs:
             linux)   wails3 task linux:build ARCH=${{ matrix.goarch }} ;;
             *) echo "unexpected goos"; exit 1 ;;
           esac
+
+      - name: UPX compress binary
+        if: matrix.kind == 'binary'
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="bin/${{ matrix.out_name }}"
+          test -f "$src"
+          before=$(wc -c < "$src" | tr -d ' ')
+          # --force: required for many Go binaries (PT_LOAD layout)
+          # Windows arm64: UPX support varies — soft-fail so the job still ships.
+          if upx --best --lzma --force "$src"; then
+            after=$(wc -c < "$src" | tr -d ' ')
+            pct=$(( after * 100 / before ))
+            echo "UPX: ${before} → ${after} bytes (${pct}% of original)"
+          else
+            echo "UPX failed for ${{ matrix.artifact }} (arch may be unsupported); shipping uncompressed."
+            # Soft-fail only on less-common arches so the release still ships.
+            if [[ "${{ matrix.goarch }}" == "arm64" ]]; then
+              exit 0
+            fi
+            exit 1
+          fi
 
       - name: Stage binary artifact
         if: matrix.kind == 'binary'
@@ -178,7 +207,7 @@ jobs:
           fi
           ls -la dist/
 
-      # ── macOS: .app bundle (ad-hoc signed) ──────────────────────────
+      # ── macOS: build → UPX → .app + ad-hoc sign ─────────────────────
       - name: Build macOS .app
         if: matrix.kind == 'macos-app'
         shell: bash
@@ -188,8 +217,18 @@ jobs:
           CGO_ENABLED: "1"
         run: |
           set -euo pipefail
-          # package = build + create .app + ad-hoc codesign on macOS runners
-          wails3 task darwin:package ARCH=${{ matrix.goarch }}
+          # Build binary first so we can UPX before bundling/signing.
+          wails3 task darwin:build ARCH=${{ matrix.goarch }}
+          test -f bin/lrss
+          before=$(wc -c < bin/lrss | tr -d ' ')
+          if upx --best --lzma --force bin/lrss; then
+            after=$(wc -c < bin/lrss | tr -d ' ')
+            echo "UPX: ${before} → ${after} bytes"
+          else
+            echo "UPX skipped/failed on this macOS arch; continuing uncompressed."
+          fi
+          # Bundle + ad-hoc codesign (must run after UPX)
+          wails3 task darwin:create:app:bundle
           test -d "bin/lrss.app"
           ls -laR bin/lrss.app | head -50
 
@@ -201,7 +240,18 @@ jobs:
           CGO_ENABLED: "1"
         run: |
           set -euo pipefail
-          wails3 task darwin:package:universal
+          # Universal: lipo first, then UPX the fat binary (if supported), then package.
+          wails3 task darwin:build:universal
+          test -f bin/lrss
+          file bin/lrss || true
+          before=$(wc -c < bin/lrss | tr -d ' ')
+          if upx --best --lzma --force bin/lrss; then
+            after=$(wc -c < bin/lrss | tr -d ' ')
+            echo "UPX: ${before} → ${after} bytes"
+          else
+            echo "UPX skipped/failed on universal Mach-O; continuing uncompressed."
+          fi
+          wails3 task darwin:create:app:bundle
           test -d "bin/lrss.app"
           file bin/lrss.app/Contents/MacOS/lrss || true
           ls -laR bin/lrss.app | head -50
@@ -286,7 +336,7 @@ jobs:
           body: |
             ## LRSS ${{ github.ref_name }}
 
-            Multi-platform desktop builds (Wails v3).
+            Multi-platform desktop builds (Wails v3). Binaries are **UPX-compressed** when the target arch is supported (typically ~½ size; first launch may unpack slightly slower).
 
             | Asset | Platform |
             | --- | --- |
@@ -306,6 +356,9 @@ jobs:
 
             ### Linux
             Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` on recent Ubuntu/Debian).
+
+            ### Note
+            Some antivirus tools flag UPX-packed executables as suspicious (false positive). Prefer the `.zip` / checksums if needed.
 
             Source: https://github.com/hakuzero4/LRSS
         env:
