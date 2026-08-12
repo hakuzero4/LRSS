@@ -132,11 +132,22 @@ jobs:
           CGO_ENABLED: "0"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-      - name: Install UPX
+      # crazy-max/ghaction-upx does not support darwin — install per OS.
+      - name: Install UPX (Windows / Linux)
+        if: runner.os != 'macOS'
         uses: crazy-max/ghaction-upx@v3
         with:
           version: v5.0.1
           install-only: true
+
+      - name: Install UPX (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          if ! command -v upx >/dev/null 2>&1; then
+            brew install upx
+          fi
+          upx --version
 
       - name: Install frontend deps
         working-directory: frontend
