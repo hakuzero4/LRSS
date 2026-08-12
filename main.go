@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"embed"
 	"log"
 	"time"
 
@@ -22,8 +21,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
-//go:embed all:frontend/dist
-var assets embed.FS
+// assets is provided by assets_prod.go (//go:build production) or assets_stub.go.
 
 func init() {
 	application.RegisterEvent[string]("time")
