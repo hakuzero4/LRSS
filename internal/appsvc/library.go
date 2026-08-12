@@ -175,6 +175,12 @@ func (s *FeedService) RenameFeed(id, title string) error {
 	return s.lib.RenameFeed(context.Background(), id, title)
 }
 
+// SetFeedURL updates the subscription feed URL (http/https). Keeps articles;
+// rejects URLs already used by another feed.
+func (s *FeedService) SetFeedURL(id, feedURL string) error {
+	return s.lib.SetFeedURL(context.Background(), id, feedURL)
+}
+
 // SetFeedRefreshInterval sets per-feed auto-refresh minutes.
 // 0 means follow the global default; otherwise clamped to [5, 180].
 func (s *FeedService) SetFeedRefreshInterval(id string, minutes int) error {

@@ -374,6 +374,59 @@ func TestLibrary_RenameFeedAndRefreshInterval(t *testing.T) {
 	}
 }
 
+func TestLibrary_SetFeedURL(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	a := &model.Feed{Title: "A", FeedURL: "https://example.com/a.xml"}
+	b := &model.Feed{Title: "B", FeedURL: "https://example.com/b.xml"}
+	if err := repos.Feeds.Insert(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := repos.Feeds.Insert(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	etag := `"abc"`
+	mod := "Wed, 01 Jan 2020 00:00:00 GMT"
+	errMsg := "old error"
+	if err := repos.Feeds.UpdateAfterFetch(ctx, a.ID, "", &etag, &mod, &errMsg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalid URL.
+	if err := lib.SetFeedURL(ctx, a.ID, "not-a-url"); err == nil {
+		t.Fatal("expected invalid url to fail")
+	}
+	// Conflict with B.
+	if err := lib.SetFeedURL(ctx, a.ID, "https://example.com/b.xml"); err == nil {
+		t.Fatal("expected duplicate url to fail")
+	}
+	// Same URL is no-op success.
+	if err := lib.SetFeedURL(ctx, a.ID, "https://example.com/a.xml"); err != nil {
+		t.Fatalf("same url: %v", err)
+	}
+	// Valid change clears validators and last_error.
+	newURL := "https://example.com/a-new.xml"
+	if err := lib.SetFeedURL(ctx, a.ID, newURL); err != nil {
+		t.Fatalf("SetFeedURL: %v", err)
+	}
+	got, err := repos.Feeds.Get(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FeedURL != newURL {
+		t.Fatalf("FeedURL = %q want %q", got.FeedURL, newURL)
+	}
+	if got.ETag != nil || got.LastModified != nil {
+		t.Fatalf("expected etag/last_modified cleared, etag=%v lm=%v", got.ETag, got.LastModified)
+	}
+	if got.LastError != nil {
+		t.Fatalf("expected last_error cleared, got %v", *got.LastError)
+	}
+}
+
 func TestLibrary_NSFWOfficeModeFiltersListAndCounts(t *testing.T) {
 	database := openTestDB(t)
 	repos := repo.New(database.SQL)

@@ -45,6 +45,7 @@ const {
   feedEditId,
   closeFeedEdit,
   renameFeed,
+  setFeedUrl,
   setFeedRefreshInterval,
   setFeedKeepArticlesDays,
   setFeedPaused,
@@ -130,12 +131,6 @@ watch(
   },
 );
 
-// Keep lastError / title in sync if library reloads while dialog is open.
-watch(editFeed, (f) => {
-  if (!feedEditOpen.value || !f) return;
-  editFeedUrl.value = f.feedUrl;
-});
-
 function onOpenChange(open: boolean) {
   if (!open) {
     if (editSaving.value || deleteBusy.value) return;
@@ -150,6 +145,11 @@ async function confirmEdit() {
     toast.error(t("settings.feeds.renameEmpty"));
     return;
   }
+  const url = editFeedUrl.value.trim();
+  if (!url) {
+    toast.error(t("settings.feeds.feedUrlEmpty"));
+    return;
+  }
   editSaving.value = true;
   const id = feedEditId.value;
   try {
@@ -158,6 +158,9 @@ async function confirmEdit() {
 
     if (title !== current.title) {
       await renameFeed(id, title);
+    }
+    if (url !== current.feedUrl) {
+      await setFeedUrl(id, url);
     }
     const minutes = Math.max(0, Math.floor(Number(editInterval.value) || 0));
     if (minutes !== (current.refreshIntervalMinutes ?? 0)) {
@@ -243,12 +246,19 @@ async function confirmDelete(ev: Event) {
           />
         </div>
         <div class="grid gap-1.5">
-          <Label>{{ t("settings.feeds.feedUrlLabel") }}</Label>
-          <p
-            class="truncate rounded-md border border-border/60 bg-muted/40 px-2.5 py-2 text-[12px] text-muted-foreground"
-            :title="editFeedUrl"
-          >
-            {{ editFeedUrl }}
+          <Label for="feed-edit-url">{{ t("settings.feeds.feedUrlLabel") }}</Label>
+          <Input
+            id="feed-edit-url"
+            v-model="editFeedUrl"
+            type="url"
+            spellcheck="false"
+            autocomplete="off"
+            class="h-9 font-mono text-[12.5px]"
+            :placeholder="t('settings.feeds.feedUrlPlaceholder')"
+            :disabled="editSaving"
+          />
+          <p class="text-[11.5px] leading-relaxed text-muted-foreground">
+            {{ t("settings.feeds.feedUrlHint") }}
           </p>
         </div>
         <div class="grid gap-1.5">
@@ -374,7 +384,7 @@ async function confirmDelete(ev: Event) {
         <Button
           type="button"
           size="sm"
-          :disabled="editSaving || !editTitle.trim()"
+          :disabled="editSaving || !editTitle.trim() || !editFeedUrl.trim()"
           @click="confirmEdit"
         >
           {{ editSaving ? t("common.saving") : t("common.save") }}

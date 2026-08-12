@@ -2397,12 +2397,22 @@ async function refreshFeeds() {
 function patchFeedLocal(
   id: string,
   patch: Partial<
-    Pick<Feed, "title" | "refreshIntervalMinutes" | "keepArticlesDays" | "isPaused" | "isNsfw">
+    Pick<
+      Feed,
+      | "title"
+      | "feedUrl"
+      | "refreshIntervalMinutes"
+      | "keepArticlesDays"
+      | "isPaused"
+      | "isNsfw"
+      | "lastError"
+    >
   >,
 ) {
   const feed = feeds.value.find((f) => f.id === id);
   if (!feed) return;
   if (patch.title !== undefined) feed.title = patch.title;
+  if (patch.feedUrl !== undefined) feed.feedUrl = patch.feedUrl;
   if (patch.refreshIntervalMinutes !== undefined) {
     feed.refreshIntervalMinutes = patch.refreshIntervalMinutes;
   }
@@ -2411,6 +2421,7 @@ function patchFeedLocal(
   }
   if (patch.isPaused !== undefined) feed.isPaused = patch.isPaused;
   if (patch.isNsfw !== undefined) feed.isNsfw = patch.isNsfw;
+  if (patch.lastError !== undefined) feed.lastError = patch.lastError;
 }
 
 /** Rename a subscription (locks title against remote overwrites). */
@@ -2425,6 +2436,23 @@ async function renameFeed(id: string, title: string): Promise<void> {
     return;
   }
   patchFeedLocal(id, { title: trimmed });
+}
+
+/** Update subscription feed URL (http/https). Keeps articles under the same feed id. */
+async function setFeedUrl(id: string, feedUrl: string): Promise<void> {
+  const trimmed = feedUrl.trim();
+  if (!trimmed) throw new Error(t("settings.feeds.feedUrlEmpty"));
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.SetFeedURL;
+  if (typeof fn === "function") {
+    await fn(id, trimmed);
+    patchFeedLocal(id, { feedUrl: trimmed, lastError: "" });
+    return;
+  }
+  // Mock / no backend: still enforce basic uniqueness in local state.
+  const clash = feeds.value.find((f) => f.id !== id && f.feedUrl === trimmed);
+  if (clash) throw new Error(t("settings.feeds.feedUrlDuplicate"));
+  patchFeedLocal(id, { feedUrl: trimmed, lastError: "" });
 }
 
 /**
@@ -2723,6 +2751,7 @@ export function useRssStore() {
     markFolderRead,
     refreshFolderFeeds,
     renameFeed,
+    setFeedUrl,
     setFeedRefreshInterval,
     setFeedKeepArticlesDays,
     setFeedPaused,

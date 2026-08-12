@@ -226,6 +226,33 @@ func (r *FeedRepo) SetFolder(ctx context.Context, feedID string, folderID *strin
 	return nil
 }
 
+// SetFeedURL updates feed_url and clears conditional-GET validators / last_error
+// so the next refresh hits the new endpoint cleanly.
+func (r *FeedRepo) SetFeedURL(ctx context.Context, feedID, feedURL string) error {
+	feedURL = strings.TrimSpace(feedURL)
+	if feedURL == "" {
+		return fmt.Errorf("set feed_url: empty")
+	}
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE feeds SET
+			feed_url = ?,
+			etag = NULL,
+			last_modified = NULL,
+			last_error = NULL,
+			updated_at = ?
+		WHERE id = ?`,
+		feedURL, now, feedID)
+	if err != nil {
+		return fmt.Errorf("set feed_url: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feed not found: %s", feedID)
+	}
+	return nil
+}
+
 // SetSiteURL updates site_url when discovered from the feed document.
 func (r *FeedRepo) SetSiteURL(ctx context.Context, feedID, siteURL string) error {
 	siteURL = strings.TrimSpace(siteURL)

@@ -21,6 +21,7 @@ type FeedStore interface {
 	SetTitle(ctx context.Context, feedID, title string) error
 	// SetDisplayTitle updates title only when title_user_set is false (OPML / feed doc).
 	SetDisplayTitle(ctx context.Context, feedID, title string) error
+	SetFeedURL(ctx context.Context, feedID, feedURL string) error
 	SetRefreshInterval(ctx context.Context, feedID string, minutes int) error
 	SetKeepArticlesDays(ctx context.Context, feedID string, days int) error
 	SetNsfw(ctx context.Context, feedID string, nsfw bool) error

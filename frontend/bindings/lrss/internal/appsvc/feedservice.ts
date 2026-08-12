@@ -115,6 +115,14 @@ export function RenameFeed(id: string, title: string): $CancellablePromise<void>
 }
 
 /**
+ * SetFeedURL updates the subscription feed URL (http/https). Keeps articles;
+ * rejects URLs already used by another feed.
+ */
+export function SetFeedURL(id: string, feedURL: string): $CancellablePromise<void> {
+    return $Call.ByID(3854602269, id, feedURL);
+}
+
+/**
  * RenameFolder renames a folder.
  */
 export function RenameFolder(id: string, name: string): $CancellablePromise<void> {

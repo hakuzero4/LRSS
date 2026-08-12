@@ -402,6 +402,31 @@ func (lib *Library) RenameFeed(ctx context.Context, feedID, title string) error 
 	return lib.Feeds.SetTitle(ctx, feedID, title)
 }
 
+// SetFeedURL changes a subscription's feed URL. Rejects invalid URLs and
+// conflicts with another feed. Clears ETag / Last-Modified / last_error so the
+// next refresh revalidates against the new endpoint. Article history is kept.
+func (lib *Library) SetFeedURL(ctx context.Context, feedID, feedURL string) error {
+	feedURL = strings.TrimSpace(feedURL)
+	if err := validateFeedURL(feedURL); err != nil {
+		return err
+	}
+	cur, err := lib.Feeds.Get(ctx, feedID)
+	if err != nil {
+		return err
+	}
+	if cur.FeedURL == feedURL {
+		return nil
+	}
+	other, err := lib.Feeds.GetByURL(ctx, feedURL)
+	if err == nil && other.ID != feedID {
+		return fmt.Errorf("feed url already subscribed")
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	return lib.Feeds.SetFeedURL(ctx, feedID, feedURL)
+}
+
 // SetFeedRefreshInterval sets per-feed auto-refresh minutes (0 = global default).
 func (lib *Library) SetFeedRefreshInterval(ctx context.Context, feedID string, minutes int) error {
 	return lib.Feeds.SetRefreshInterval(ctx, feedID, minutes)
