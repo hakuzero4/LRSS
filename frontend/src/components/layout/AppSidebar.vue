@@ -10,7 +10,6 @@ import {
   Inbox,
   Plus,
   Settings,
-  Sparkles,
   Star,
 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
@@ -78,6 +77,7 @@ const {
   collectionId,
   settings,
   libraryLoading,
+  webMode,
   selectCollection,
   openAddFeed,
   openAddFeedInFolder,
@@ -512,16 +512,19 @@ const smartItems = computed(() => [
     <div class="flex h-13 items-center justify-between gap-2 px-3 pt-2 pb-1">
       <div class="flex min-w-0 items-center gap-2.5 pl-0.5">
         <span class="brand-mark" aria-hidden="true">
-          <Sparkles />
+          <img src="/appicon.png" alt="" width="28" height="28" draggable="false" />
         </span>
         <div class="min-w-0">
           <p class="truncate text-[13.5px] font-semibold tracking-tight text-foreground">
             LRSS
           </p>
-          <p class="truncate text-[11px] text-muted-foreground">{{ t("nav.library") }}</p>
+          <p class="truncate text-[11px] text-muted-foreground">
+            {{ webMode ? t("nav.webReadonly") : t("nav.library") }}
+          </p>
         </div>
       </div>
       <Button
+        v-if="!webMode"
         variant="ghost"
         size="icon-sm"
         class="text-muted-foreground"
@@ -560,6 +563,7 @@ const smartItems = computed(() => [
           <div class="flex items-center justify-between gap-1 px-2">
             <p class="section-label">{{ t("nav.folders") }}</p>
             <Button
+              v-if="!webMode"
               type="button"
               variant="ghost"
               size="icon-xs"
@@ -635,31 +639,33 @@ const smartItems = computed(() => [
                   >
                     {{ t("folderMenu.markAllRead") }}
                   </ContextMenuItem>
-                  <ContextMenuItem
-                    :disabled="folderBusyId === folder.id"
-                    @select="onFolderRefresh(folder)"
-                  >
-                    {{
-                      folderBusyId === folder.id
-                        ? t("folderMenu.refreshing")
-                        : t("folderMenu.refresh")
-                    }}
-                  </ContextMenuItem>
-                  <ContextMenuItem @select="onFolderAddFeed(folder)">
-                    {{ t("folderMenu.addFeed") }}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem @select="onFolderNsfwToggle(folder)">
-                    {{
-                      folder.isNsfw ? t("folderMenu.unmarkNsfw") : t("folderMenu.markNsfw")
-                    }}
-                  </ContextMenuItem>
-                  <ContextMenuItem @select="openRename(folder)">
-                    {{ t("folderMenu.rename") }}
-                  </ContextMenuItem>
-                  <ContextMenuItem variant="destructive" @select="openDelete(folder)">
-                    {{ t("folderMenu.delete") }}
-                  </ContextMenuItem>
+                  <template v-if="!webMode">
+                    <ContextMenuItem
+                      :disabled="folderBusyId === folder.id"
+                      @select="onFolderRefresh(folder)"
+                    >
+                      {{
+                        folderBusyId === folder.id
+                          ? t("folderMenu.refreshing")
+                          : t("folderMenu.refresh")
+                      }}
+                    </ContextMenuItem>
+                    <ContextMenuItem @select="onFolderAddFeed(folder)">
+                      {{ t("folderMenu.addFeed") }}
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem @select="onFolderNsfwToggle(folder)">
+                      {{
+                        folder.isNsfw ? t("folderMenu.unmarkNsfw") : t("folderMenu.markNsfw")
+                      }}
+                    </ContextMenuItem>
+                    <ContextMenuItem @select="openRename(folder)">
+                      {{ t("folderMenu.rename") }}
+                    </ContextMenuItem>
+                    <ContextMenuItem variant="destructive" @select="openDelete(folder)">
+                      {{ t("folderMenu.delete") }}
+                    </ContextMenuItem>
+                  </template>
                 </ContextMenuContent>
               </ContextMenu>
 
@@ -699,6 +705,7 @@ const smartItems = computed(() => [
                         {{ t("feedMenu.open") }}
                       </ContextMenuItem>
                       <ContextMenuItem
+                        v-if="!webMode"
                         :disabled="feedBusyId === feed.id"
                         @select="onFeedRefresh(feed)"
                       >
@@ -710,43 +717,45 @@ const smartItems = computed(() => [
                       >
                         {{ t("feedMenu.markAllRead") }}
                       </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem @select="openFeedEdit(feed.id)">
-                        {{ t("feedMenu.edit") }}
-                      </ContextMenuItem>
-                      <ContextMenuItem @select="openRenameFeed(feed)">
-                        {{ t("feedMenu.rename") }}
-                      </ContextMenuItem>
-                      <ContextMenuItem @select="onFeedPauseToggle(feed)">
-                        {{ feed.isPaused ? t("feedMenu.unpause") : t("feedMenu.pause") }}
-                      </ContextMenuItem>
-                      <ContextMenuItem @select="onFeedNsfwToggle(feed)">
-                        {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
-                      </ContextMenuItem>
-                      <ContextMenuSub v-if="folders.length > 0 || feed.folderId">
-                        <ContextMenuSubTrigger>
-                          {{ t("feedMenu.moveTo") }}
-                        </ContextMenuSubTrigger>
-                        <ContextMenuSubContent>
-                          <ContextMenuItem
-                            v-if="feed.folderId"
-                            @select="onFeedMove(feed, null)"
-                          >
-                            {{ t("feedMenu.unfiled") }}
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            v-for="f in moveFolderTargets(feed)"
-                            :key="f.id"
-                            @select="onFeedMove(feed, f.id)"
-                          >
-                            <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
-                          </ContextMenuItem>
-                        </ContextMenuSubContent>
-                      </ContextMenuSub>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem variant="destructive" @select="openDeleteFeed(feed)">
-                        {{ t("feedMenu.delete") }}
-                      </ContextMenuItem>
+                      <template v-if="!webMode">
+                        <ContextMenuSeparator />
+                        <ContextMenuItem @select="openFeedEdit(feed.id)">
+                          {{ t("feedMenu.edit") }}
+                        </ContextMenuItem>
+                        <ContextMenuItem @select="openRenameFeed(feed)">
+                          {{ t("feedMenu.rename") }}
+                        </ContextMenuItem>
+                        <ContextMenuItem @select="onFeedPauseToggle(feed)">
+                          {{ feed.isPaused ? t("feedMenu.unpause") : t("feedMenu.pause") }}
+                        </ContextMenuItem>
+                        <ContextMenuItem @select="onFeedNsfwToggle(feed)">
+                          {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
+                        </ContextMenuItem>
+                        <ContextMenuSub v-if="folders.length > 0 || feed.folderId">
+                          <ContextMenuSubTrigger>
+                            {{ t("feedMenu.moveTo") }}
+                          </ContextMenuSubTrigger>
+                          <ContextMenuSubContent>
+                            <ContextMenuItem
+                              v-if="feed.folderId"
+                              @select="onFeedMove(feed, null)"
+                            >
+                              {{ t("feedMenu.unfiled") }}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              v-for="f in moveFolderTargets(feed)"
+                              :key="f.id"
+                              @select="onFeedMove(feed, f.id)"
+                            >
+                              <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+                            </ContextMenuItem>
+                          </ContextMenuSubContent>
+                        </ContextMenuSub>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem variant="destructive" @select="openDeleteFeed(feed)">
+                          {{ t("feedMenu.delete") }}
+                        </ContextMenuItem>
+                      </template>
                     </ContextMenuContent>
                   </ContextMenu>
                 </li>
@@ -787,6 +796,7 @@ const smartItems = computed(() => [
                     {{ t("feedMenu.open") }}
                   </ContextMenuItem>
                   <ContextMenuItem
+                    v-if="!webMode"
                     :disabled="feedBusyId === feed.id"
                     @select="onFeedRefresh(feed)"
                   >
@@ -798,37 +808,39 @@ const smartItems = computed(() => [
                   >
                     {{ t("feedMenu.markAllRead") }}
                   </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem @select="openFeedEdit(feed.id)">
-                    {{ t("feedMenu.edit") }}
-                  </ContextMenuItem>
-                  <ContextMenuItem @select="openRenameFeed(feed)">
-                    {{ t("feedMenu.rename") }}
-                  </ContextMenuItem>
-                  <ContextMenuItem @select="onFeedPauseToggle(feed)">
-                    {{ feed.isPaused ? t("feedMenu.unpause") : t("feedMenu.pause") }}
-                  </ContextMenuItem>
-                  <ContextMenuItem @select="onFeedNsfwToggle(feed)">
-                    {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
-                  </ContextMenuItem>
-                  <ContextMenuSub v-if="folders.length > 0">
-                    <ContextMenuSubTrigger>
-                      {{ t("feedMenu.moveTo") }}
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent>
-                      <ContextMenuItem
-                        v-for="f in moveFolderTargets(feed)"
-                        :key="f.id"
-                        @select="onFeedMove(feed, f.id)"
-                      >
-                        <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
-                      </ContextMenuItem>
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem variant="destructive" @select="openDeleteFeed(feed)">
-                    {{ t("feedMenu.delete") }}
-                  </ContextMenuItem>
+                  <template v-if="!webMode">
+                    <ContextMenuSeparator />
+                    <ContextMenuItem @select="openFeedEdit(feed.id)">
+                      {{ t("feedMenu.edit") }}
+                    </ContextMenuItem>
+                    <ContextMenuItem @select="openRenameFeed(feed)">
+                      {{ t("feedMenu.rename") }}
+                    </ContextMenuItem>
+                    <ContextMenuItem @select="onFeedPauseToggle(feed)">
+                      {{ feed.isPaused ? t("feedMenu.unpause") : t("feedMenu.pause") }}
+                    </ContextMenuItem>
+                    <ContextMenuItem @select="onFeedNsfwToggle(feed)">
+                      {{ feed.isNsfw ? t("feedMenu.unmarkNsfw") : t("feedMenu.markNsfw") }}
+                    </ContextMenuItem>
+                    <ContextMenuSub v-if="folders.length > 0">
+                      <ContextMenuSubTrigger>
+                        {{ t("feedMenu.moveTo") }}
+                      </ContextMenuSubTrigger>
+                      <ContextMenuSubContent>
+                        <ContextMenuItem
+                          v-for="f in moveFolderTargets(feed)"
+                          :key="f.id"
+                          @select="onFeedMove(feed, f.id)"
+                        >
+                          <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+                        </ContextMenuItem>
+                      </ContextMenuSubContent>
+                    </ContextMenuSub>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem variant="destructive" @select="openDeleteFeed(feed)">
+                      {{ t("feedMenu.delete") }}
+                    </ContextMenuItem>
+                  </template>
                 </ContextMenuContent>
               </ContextMenu>
             </li>
@@ -837,45 +849,47 @@ const smartItems = computed(() => [
       </nav>
     </div>
 
-    <Separator class="opacity-70" />
-    <div class="space-y-0.5 p-2.5">
-      <TooltipProvider :delay-duration="400">
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <button
-              type="button"
-              class="nav-row w-full"
-              :class="officeMode && 'nav-row-active'"
-              :disabled="nsfwToggling"
-              :aria-pressed="officeMode"
-              :aria-label="
-                officeMode ? t('nav.officeModeOnAria') : t('nav.officeModeOffAria')
-              "
-              @click="onToggleOfficeMode"
-            >
-              <Briefcase v-if="officeMode" class="nav-icon" />
-              <Eye v-else class="nav-icon" />
-              <span class="min-w-0 flex-1 truncate text-left">
-                {{ officeMode ? t("nav.officeMode") : t("nav.nsfwVisible") }}
-              </span>
-              <span
-                v-if="hasNsfwFeeds && officeMode"
-                class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground"
+    <template v-if="!webMode">
+      <Separator class="opacity-70" />
+      <div class="space-y-0.5 p-2.5">
+        <TooltipProvider :delay-duration="400">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <button
+                type="button"
+                class="nav-row w-full"
+                :class="officeMode && 'nav-row-active'"
+                :disabled="nsfwToggling"
+                :aria-pressed="officeMode"
+                :aria-label="
+                  officeMode ? t('nav.officeModeOnAria') : t('nav.officeModeOffAria')
+                "
+                @click="onToggleOfficeMode"
               >
-                {{ t("nav.nsfwHidden") }}
-              </span>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right" class="max-w-[220px] text-[12px]">
-            {{ t("nav.officeModeTooltip") }}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <button type="button" class="nav-row w-full" @click="openSettings">
-        <Settings class="nav-icon" />
-        <span class="flex-1 text-left">{{ t("nav.settings") }}</span>
-      </button>
-    </div>
+                <Briefcase v-if="officeMode" class="nav-icon" />
+                <Eye v-else class="nav-icon" />
+                <span class="min-w-0 flex-1 truncate text-left">
+                  {{ officeMode ? t("nav.officeMode") : t("nav.nsfwVisible") }}
+                </span>
+                <span
+                  v-if="hasNsfwFeeds && officeMode"
+                  class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground"
+                >
+                  {{ t("nav.nsfwHidden") }}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" class="max-w-[220px] text-[12px]">
+              {{ t("nav.officeModeTooltip") }}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <button type="button" class="nav-row w-full" @click="openSettings">
+          <Settings class="nav-icon" />
+          <span class="flex-1 text-left">{{ t("nav.settings") }}</span>
+        </button>
+      </div>
+    </template>
 
     <!-- Rename folder / feed -->
     <Dialog :open="renameOpen" @update:open="(v) => (renameOpen = v)">

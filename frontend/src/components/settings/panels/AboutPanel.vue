@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Sparkles } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
@@ -29,7 +28,14 @@ function openDocs() {
   <div class="space-y-7">
     <div class="flex items-start gap-4">
       <div class="brand-mark size-14 shrink-0 rounded-2xl !w-14 !h-14">
-        <Sparkles class="!size-7" />
+        <img
+          src="/appicon.png"
+          alt=""
+          width="56"
+          height="56"
+          class="size-full"
+          draggable="false"
+        />
       </div>
       <div class="min-w-0 pt-0.5">
         <h3 class="text-[17px] font-semibold tracking-tight">LRSS</h3>
