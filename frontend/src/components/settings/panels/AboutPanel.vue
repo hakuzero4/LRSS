@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
+import { APP_VERSION, GITHUB_REPO_URL, GITHUB_RELEASES_URL } from "@/lib/appMeta";
+import { checkForUpdate } from "@/lib/checkUpdate";
 import { openExternalLink } from "@/lib/openLink";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import { Button } from "@/components/ui/button";
 
 const { t } = useI18n();
 const { feeds, smartCounts } = useRssStore();
+
+const checking = ref(false);
 
 const summary = computed(() =>
   t("settings.about.summary", {
@@ -18,9 +23,60 @@ const summary = computed(() =>
 );
 
 function openDocs() {
-  void openExternalLink("https://github.com/wailsapp/wails", {
-    forceBrowser: true,
-  });
+  void openExternalLink(GITHUB_REPO_URL, { forceBrowser: true });
+}
+
+function openReleases() {
+  void openExternalLink(GITHUB_RELEASES_URL, { forceBrowser: true });
+}
+
+async function onCheckUpdate() {
+  if (checking.value) return;
+  checking.value = true;
+  try {
+    const result = await checkForUpdate();
+    if (result.status === "upToDate") {
+      toast.success(t("settings.about.updateUpToDateTitle"), {
+        description: t("settings.about.updateUpToDateDesc", {
+          version: result.current,
+        }),
+      });
+      return;
+    }
+    if (result.status === "updateAvailable") {
+      toast.message(t("settings.about.updateAvailableTitle"), {
+        description: t("settings.about.updateAvailableDesc", {
+          current: result.current,
+          latest: result.latest,
+        }),
+        action: {
+          label: t("settings.about.openRelease"),
+          onClick: () => {
+            void openExternalLink(result.htmlUrl, { forceBrowser: true });
+          },
+        },
+        duration: 12_000,
+      });
+      return;
+    }
+    // error
+    const code = result.message;
+    const desc =
+      code === "no_releases"
+        ? t("settings.about.updateNoReleases")
+        : code.startsWith("http_")
+          ? t("settings.about.updateHttpError", { status: code.replace("http_", "") })
+          : t("settings.about.updateNetworkError", { msg: code });
+    toast.error(t("settings.about.updateFailedTitle"), {
+      description: desc,
+      action: {
+        label: t("settings.about.openRelease"),
+        onClick: () => openReleases(),
+      },
+    });
+  } finally {
+    checking.value = false;
+  }
 }
 </script>
 
@@ -40,7 +96,7 @@ function openDocs() {
       <div class="min-w-0 pt-0.5">
         <h3 class="text-[17px] font-semibold tracking-tight">LRSS</h3>
         <p class="mt-0.5 text-[12.5px] text-muted-foreground">
-          {{ t("settings.about.version", { version: "0.1.0" }) }}
+          {{ t("settings.about.version", { version: APP_VERSION }) }}
         </p>
         <p class="mt-2 text-[13px] leading-relaxed text-muted-foreground">
           {{ t("settings.about.blurb") }}
@@ -58,10 +114,10 @@ function openDocs() {
           variant="outline"
           size="sm"
           type="button"
-          disabled
-          :title="t('settings.unavailable.comingSoon')"
+          :disabled="checking"
+          @click="onCheckUpdate"
         >
-          {{ t("settings.about.checkUpdate") }}
+          {{ checking ? t("settings.about.checkingUpdate") : t("settings.about.checkUpdate") }}
         </Button>
         <Button
           variant="outline"
@@ -74,7 +130,7 @@ function openDocs() {
         </Button>
       </div>
       <p class="text-[11.5px] text-muted-foreground">
-        {{ t("settings.unavailable.aboutNote") }}
+        {{ t("settings.about.resourcesNote") }}
       </p>
     </SettingsGroup>
   </div>

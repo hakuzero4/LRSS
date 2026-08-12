@@ -592,7 +592,7 @@ export default {
       notWiredNote: "",
       launchAtLogin: "开机启动需要系统 API，当前版本不可用。",
       fetchFullContent: "全文抓取尚未实现；目前仅保存订阅源提供的内容。",
-      aboutNote: "检查更新与许可证页面即将提供；文档可打开项目主页。",
+      aboutNote: "许可证页面即将提供；文档可打开项目主页。",
     },
 
     sync: {
@@ -752,7 +752,18 @@ export default {
       resources: "资源",
       docs: "项目主页",
       checkUpdate: "检查更新",
+      checkingUpdate: "检查中…",
       licenses: "开源许可",
+      resourcesNote: "检查更新会查询 GitHub Releases；许可证页面即将提供。",
+      updateUpToDateTitle: "已是最新版本",
+      updateUpToDateDesc: "当前版本 {version}，无需更新。",
+      updateAvailableTitle: "发现新版本",
+      updateAvailableDesc: "当前 {current}，最新 {latest}。可前往发布页下载。",
+      updateFailedTitle: "检查更新失败",
+      updateNoReleases: "尚未找到已发布的版本。",
+      updateHttpError: "GitHub 返回 HTTP {status}。",
+      updateNetworkError: "无法连接 GitHub：{msg}",
+      openRelease: "打开发布页",
     },
   },
 

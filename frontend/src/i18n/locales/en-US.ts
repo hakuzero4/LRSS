@@ -611,7 +611,7 @@ export default {
       notWiredNote: "",
       launchAtLogin: "Launch at login needs a system API; unavailable in this version.",
       fetchFullContent: "Full-content fetch is not implemented; only feed-provided body is stored.",
-      aboutNote: "Updates and licenses are coming soon; docs open the project homepage.",
+      aboutNote: "Licenses page coming soon; docs open the project homepage.",
     },
 
     sync: {
@@ -771,7 +771,18 @@ export default {
       resources: "Resources",
       docs: "Project home",
       checkUpdate: "Check for updates",
+      checkingUpdate: "Checking…",
       licenses: "Open-source licenses",
+      resourcesNote: "Update check queries GitHub Releases. Licenses page coming soon.",
+      updateUpToDateTitle: "You're up to date",
+      updateUpToDateDesc: "Current version is {version}.",
+      updateAvailableTitle: "Update available",
+      updateAvailableDesc: "You have {current}; latest is {latest}. Open the release page to download.",
+      updateFailedTitle: "Could not check for updates",
+      updateNoReleases: "No published releases found yet.",
+      updateHttpError: "GitHub returned HTTP {status}.",
+      updateNetworkError: "Could not reach GitHub: {msg}",
+      openRelease: "Open releases",
     },
   },
 
