@@ -178,9 +178,8 @@ YouTube 字幕回退可选：将 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) �
 | `lrss-linux-amd64` | Linux x64 |
 | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon**（M1/M2/M3…） |
 | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
-| `LRSS-macOS-universal.app.zip` | **macOS Universal**（arm64 + amd64） |
 
-macOS 为标准 **`.app` 包**（在 GitHub `macos-latest` 上构建并做 ad-hoc 签名）。首次打开若被拦截：右键 → **打开**。
+macOS 为标准 **`.app` 包**（GitHub `macos-latest` 构建 + ad-hoc 签名；不做 universal 双架构，避免 CI 半小时以上）。首次打开若被拦截：右键 → **打开**。
 
 ```bash
 # 推送到 GitHub 后打标签发版：

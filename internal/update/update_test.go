@@ -41,14 +41,9 @@ func TestPickAsset(t *testing.T) {
 	if err != nil || a.Name != "LRSS-macOS-arm64.app.zip" {
 		t.Fatalf("darwin arm64: %+v %v", a, err)
 	}
-	a, err = update.PickAsset(assets, "darwin", "amd64")
-	if err != nil || a.Name != "LRSS-macOS-universal.app.zip" {
-		// no amd64-specific in list — universal fallback
-		if err != nil {
-			t.Fatal(err)
-		}
-		if a.Name != "LRSS-macOS-universal.app.zip" {
-			t.Fatalf("want universal got %s", a.Name)
-		}
+	// No amd64-specific asset in this list → error (no universal fallback).
+	_, err = update.PickAsset(assets, "darwin", "amd64")
+	if err == nil {
+		t.Fatal("darwin amd64 should fail without arch-specific asset")
 	}
 }

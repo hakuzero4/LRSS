@@ -177,10 +177,9 @@ func PickAsset(assets []Asset, goos, goarch string) (Asset, error) {
 			fmt.Sprintf("lrss-linux-%s.tar.gz", goarch),
 		}
 	case "darwin":
-		// Prefer arch-specific .app, then universal.
+		// Arch-specific .app only (CI no longer ships universal — too slow to build).
 		candidates = []string{
 			fmt.Sprintf("LRSS-macOS-%s.app.zip", goarch),
-			"LRSS-macOS-universal.app.zip",
 			fmt.Sprintf("lrss-darwin-%s.tar.gz", goarch),
 			fmt.Sprintf("lrss-darwin-%s", goarch),
 		}

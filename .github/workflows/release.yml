@@ -58,14 +58,13 @@ jobs:
             artifact: lrss-linux-amd64
             out_name: lrss
 
-          # —— macOS (native runners, .app bundles) ——
+          # —— macOS (.app; single-arch only — universal was ~50m+: 2× build + slow UPX) ——
           - name: macOS arm64
             os: macos-latest
             kind: macos-app
             goos: darwin
             goarch: arm64
             artifact: LRSS-macOS-arm64
-            # zip will be LRSS-macOS-arm64.app.zip
 
           - name: macOS amd64
             os: macos-latest
@@ -73,13 +72,6 @@ jobs:
             goos: darwin
             goarch: amd64
             artifact: LRSS-macOS-amd64
-
-          - name: macOS universal
-            os: macos-latest
-            kind: macos-universal
-            goos: darwin
-            goarch: universal
-            artifact: LRSS-macOS-universal
 
     steps:
       - name: Checkout
@@ -132,22 +124,14 @@ jobs:
           CGO_ENABLED: "0"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-      # crazy-max/ghaction-upx does not support darwin — install per OS.
+      # UPX only on Windows/Linux. macOS: zip already shrinks .app; UPX on Mach-O is
+      # slow/unreliable and brew install upx adds several minutes per job.
       - name: Install UPX (Windows / Linux)
         if: runner.os != 'macOS'
         uses: crazy-max/ghaction-upx@v3
         with:
           version: v5.0.1
           install-only: true
-
-      - name: Install UPX (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          if ! command -v upx >/dev/null 2>&1; then
-            brew install upx
-          fi
-          upx --version
 
       - name: Install frontend deps
         working-directory: frontend
@@ -177,15 +161,15 @@ jobs:
           src="bin/${{ matrix.out_name }}"
           test -f "$src"
           before=$(wc -c < "$src" | tr -d ' ')
+          # -9 is far faster than --best --lzma on large Go binaries; still ~½ size.
           # --force: required for many Go binaries (PT_LOAD layout)
-          # Windows arm64: UPX support varies — soft-fail so the job still ships.
-          if upx --best --lzma --force "$src"; then
+          # Windows arm64: soft-fail if unsupported.
+          if upx -9 --force "$src"; then
             after=$(wc -c < "$src" | tr -d ' ')
             pct=$(( after * 100 / before ))
             echo "UPX: ${before} → ${after} bytes (${pct}% of original)"
           else
             echo "UPX failed for ${{ matrix.artifact }} (arch may be unsupported); shipping uncompressed."
-            # Soft-fail only on less-common arches so the release still ships.
             if [[ "${{ matrix.goarch }}" == "arm64" ]]; then
               exit 0
             fi
@@ -218,7 +202,7 @@ jobs:
           fi
           ls -la dist/
 
-      # ── macOS: build → UPX → .app + ad-hoc sign ─────────────────────
+      # ── macOS: single-arch .app (no UPX — .app.zip is enough) ───────
       - name: Build macOS .app
         if: matrix.kind == 'macos-app'
         shell: bash
@@ -228,55 +212,19 @@ jobs:
           CGO_ENABLED: "1"
         run: |
           set -euo pipefail
-          # Build binary first so we can UPX before bundling/signing.
-          wails3 task darwin:build ARCH=${{ matrix.goarch }}
-          test -f bin/lrss
-          before=$(wc -c < bin/lrss | tr -d ' ')
-          if upx --best --lzma --force bin/lrss; then
-            after=$(wc -c < bin/lrss | tr -d ' ')
-            echo "UPX: ${before} → ${after} bytes"
-          else
-            echo "UPX skipped/failed on this macOS arch; continuing uncompressed."
-          fi
-          # Bundle + ad-hoc codesign (must run after UPX)
-          wails3 task darwin:create:app:bundle
+          # package = build + create .app + ad-hoc codesign
+          wails3 task darwin:package ARCH=${{ matrix.goarch }}
           test -d "bin/lrss.app"
-          ls -laR bin/lrss.app | head -50
-
-      - name: Build macOS universal .app
-        if: matrix.kind == 'macos-universal'
-        shell: bash
-        env:
-          GOOS: darwin
-          CGO_ENABLED: "1"
-        run: |
-          set -euo pipefail
-          # Universal: lipo first, then UPX the fat binary (if supported), then package.
-          wails3 task darwin:build:universal
-          test -f bin/lrss
-          file bin/lrss || true
-          before=$(wc -c < bin/lrss | tr -d ' ')
-          if upx --best --lzma --force bin/lrss; then
-            after=$(wc -c < bin/lrss | tr -d ' ')
-            echo "UPX: ${before} → ${after} bytes"
-          else
-            echo "UPX skipped/failed on universal Mach-O; continuing uncompressed."
-          fi
-          wails3 task darwin:create:app:bundle
-          test -d "bin/lrss.app"
-          file bin/lrss.app/Contents/MacOS/lrss || true
-          ls -laR bin/lrss.app | head -50
+          ls -laR bin/lrss.app | head -40
 
       - name: Stage macOS .app zip
-        if: matrix.kind == 'macos-app' || matrix.kind == 'macos-universal'
+        if: matrix.kind == 'macos-app'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          # Rename bundle for clear download names
           rm -rf "dist/${{ matrix.artifact }}.app"
           cp -R bin/lrss.app "dist/${{ matrix.artifact }}.app"
-          # ditto preserves resource forks / signing better than zip alone on macOS
           if command -v ditto >/dev/null 2>&1; then
             ditto -c -k --sequesterRsrc --keepParent \
               "dist/${{ matrix.artifact }}.app" \
@@ -347,7 +295,8 @@ jobs:
           body: |
             ## LRSS ${{ github.ref_name }}
 
-            Multi-platform desktop builds (Wails v3). Binaries are **UPX-compressed** when the target arch is supported (typically ~½ size; first launch may unpack slightly slower).
+            Multi-platform desktop builds (Wails v3).
+            Windows/Linux binaries are **UPX**-packed (`-9`); macOS ships as `.app.zip` only (no UPX).
 
             | Asset | Platform |
             | --- | --- |
@@ -356,14 +305,13 @@ jobs:
             | `lrss-linux-amd64` / `.tar.gz` | Linux x64 |
             | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon (M1/M2/M3…)** |
             | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
-            | `LRSS-macOS-universal.app.zip` | **macOS Universal** (arm64 + amd64) |
             | `SHA256SUMS.txt` | Checksums |
 
             ### macOS
             1. Download `LRSS-macOS-*.app.zip` and unzip.
             2. Drag `LRSS-macOS-*.app` to Applications (optional).
             3. First launch: right-click → **Open** (unsigned CI builds; Gatekeeper).
-            4. Prefer **Apple Silicon** on M-series Macs; use **universal** if unsure.
+            4. Prefer **arm64** on M-series; **amd64** on Intel Macs.
 
             ### Linux
             Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` on recent Ubuntu/Debian).
