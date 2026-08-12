@@ -169,15 +169,18 @@ YouTube 字幕回退可选：将 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) �
 
 ## 下载 / 发布
 
-推送版本标签后，GitHub Actions 会编译多平台二进制并发布到 **Releases**：
+推送版本标签后，GitHub Actions 会编译多平台产物并发布到 **Releases**：
 
 | 资源 | 平台 |
 | --- | --- |
 | `lrss-windows-amd64.exe` | Windows x64 |
 | `lrss-windows-arm64.exe` | Windows ARM64 |
 | `lrss-linux-amd64` | Linux x64 |
-| `lrss-darwin-arm64` | macOS Apple Silicon |
-| `lrss-darwin-amd64` | macOS Intel |
+| `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon**（M1/M2/M3…） |
+| `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
+| `LRSS-macOS-universal.app.zip` | **macOS Universal**（arm64 + amd64） |
+
+macOS 为标准 **`.app` 包**（在 GitHub `macos-latest` 上构建并做 ad-hoc 签名）。首次打开若被拦截：右键 → **打开**。
 
 ```bash
 # 推送到 GitHub 后打标签发版：
@@ -185,7 +188,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-工作流：[`.github/workflows/release.yml`](.github/workflows/release.yml)（也可在 **Actions → Release → Run workflow** 手动触发）。
+工作流：[`.github/workflows/release.yml`](.github/workflows/release.yml)（也可 **Actions → Release → Run workflow**）。
 
 仓库：[github.com/hakuzero4/LRSS](https://github.com/hakuzero4/LRSS)
 

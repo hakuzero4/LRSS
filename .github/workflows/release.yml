@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       create_release:
-        description: "Create/update a GitHub Release from this run (uses the ref name or draft)"
+        description: "Create/update a GitHub Release from this run"
         type: boolean
         default: false
 
@@ -32,8 +32,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # —— Windows ——
           - name: Windows amd64
             os: windows-latest
+            kind: binary
             goos: windows
             goarch: amd64
             artifact: lrss-windows-amd64.exe
@@ -41,31 +43,43 @@ jobs:
 
           - name: Windows arm64
             os: windows-latest
+            kind: binary
             goos: windows
             goarch: arm64
             artifact: lrss-windows-arm64.exe
             out_name: lrss.exe
 
+          # —— Linux ——
           - name: Linux amd64
             os: ubuntu-latest
+            kind: binary
             goos: linux
             goarch: amd64
             artifact: lrss-linux-amd64
             out_name: lrss
 
+          # —— macOS (native runners, .app bundles) ——
           - name: macOS arm64
             os: macos-latest
+            kind: macos-app
             goos: darwin
             goarch: arm64
-            artifact: lrss-darwin-arm64
-            out_name: lrss
+            artifact: LRSS-macOS-arm64
+            # zip will be LRSS-macOS-arm64.app.zip
 
           - name: macOS amd64
             os: macos-latest
+            kind: macos-app
             goos: darwin
             goarch: amd64
-            artifact: lrss-darwin-amd64
-            out_name: lrss
+            artifact: LRSS-macOS-amd64
+
+          - name: macOS universal
+            os: macos-latest
+            kind: macos-universal
+            goos: darwin
+            goarch: universal
+            artifact: LRSS-macOS-universal
 
     steps:
       - name: Checkout
@@ -104,11 +118,13 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev
 
-      - name: Build frontend deps (cached path)
+      - name: Install frontend deps
         working-directory: frontend
         run: npm ci
 
-      - name: Build application
+      # ── Windows / Linux: bare binary ─────────────────────────────────
+      - name: Build binary
+        if: matrix.kind == 'binary'
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
@@ -116,24 +132,14 @@ jobs:
           CGO_ENABLED: ${{ matrix.goos == 'windows' && '0' || '1' }}
         run: |
           set -euo pipefail
-          # Prefer platform Taskfile ARCH= so bin layout matches Taskfile defaults.
           case "${{ matrix.goos }}" in
-            windows)
-              wails3 task windows:build ARCH=${{ matrix.goarch }}
-              ;;
-            darwin)
-              wails3 task darwin:build ARCH=${{ matrix.goarch }}
-              ;;
-            linux)
-              wails3 task linux:build ARCH=${{ matrix.goarch }}
-              ;;
-            *)
-              echo "unknown GOOS ${{ matrix.goos }}"
-              exit 1
-              ;;
+            windows) wails3 task windows:build ARCH=${{ matrix.goarch }} ;;
+            linux)   wails3 task linux:build ARCH=${{ matrix.goarch }} ;;
+            *) echo "unexpected goos"; exit 1 ;;
           esac
 
-      - name: Stage artifact
+      - name: Stage binary artifact
+        if: matrix.kind == 'binary'
         shell: bash
         run: |
           set -euo pipefail
@@ -158,14 +164,59 @@ jobs:
           fi
           ls -la dist/
 
+      # ── macOS: .app bundle (ad-hoc signed) ──────────────────────────
+      - name: Build macOS .app
+        if: matrix.kind == 'macos-app'
+        shell: bash
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+        run: |
+          set -euo pipefail
+          # package = build + create .app + ad-hoc codesign on macOS runners
+          wails3 task darwin:package ARCH=${{ matrix.goarch }}
+          test -d "bin/lrss.app"
+          ls -laR bin/lrss.app | head -50
+
+      - name: Build macOS universal .app
+        if: matrix.kind == 'macos-universal'
+        shell: bash
+        env:
+          GOOS: darwin
+          CGO_ENABLED: "1"
+        run: |
+          set -euo pipefail
+          wails3 task darwin:package:universal
+          test -d "bin/lrss.app"
+          file bin/lrss.app/Contents/MacOS/lrss || true
+          ls -laR bin/lrss.app | head -50
+
+      - name: Stage macOS .app zip
+        if: matrix.kind == 'macos-app' || matrix.kind == 'macos-universal'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Rename bundle for clear download names
+          rm -rf "dist/${{ matrix.artifact }}.app"
+          cp -R bin/lrss.app "dist/${{ matrix.artifact }}.app"
+          # ditto preserves resource forks / signing better than zip alone on macOS
+          if command -v ditto >/dev/null 2>&1; then
+            ditto -c -k --sequesterRsrc --keepParent \
+              "dist/${{ matrix.artifact }}.app" \
+              "dist/${{ matrix.artifact }}.app.zip"
+          else
+            (cd dist && zip -ry "${{ matrix.artifact }}.app.zip" "${{ matrix.artifact }}.app")
+          fi
+          ls -la dist/
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: |
-            dist/${{ matrix.artifact }}
-            dist/${{ matrix.artifact }}.zip
-            dist/${{ matrix.artifact }}.tar.gz
+            dist/*
           if-no-files-found: error
           retention-days: 14
 
@@ -173,12 +224,11 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    # Tags always release; manual runs only if create_release is checked.
     if: >
       startsWith(github.ref, 'refs/tags/v')
       || (github.event_name == 'workflow_dispatch' && inputs.create_release)
     steps:
-      - name: Checkout (for notes)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -192,12 +242,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          # artifacts/<artifact-name>/<files>
           find artifacts -type f | sort
           while IFS= read -r -d '' f; do
             base="$(basename "$f")"
             case "$base" in
-              *.zip|*.tar.gz|*.exe|lrss-*)
+              *.zip|*.tar.gz|*.exe|lrss-*|LRSS-*)
                 cp -v "$f" "release/$base"
                 ;;
             esac
@@ -215,7 +264,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # workflow_dispatch without a tag: draft release named after the run
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('draft-{0}', github.run_id) }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Draft build {0}', github.run_id) }}
           draft: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -231,13 +279,19 @@ jobs:
             | `lrss-windows-amd64.exe` / `.zip` | Windows x64 |
             | `lrss-windows-arm64.exe` / `.zip` | Windows ARM64 |
             | `lrss-linux-amd64` / `.tar.gz` | Linux x64 |
-            | `lrss-darwin-arm64` / `.tar.gz` | macOS Apple Silicon |
-            | `lrss-darwin-amd64` / `.tar.gz` | macOS Intel |
+            | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon (M1/M2/M3…)** |
+            | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
+            | `LRSS-macOS-universal.app.zip` | **macOS Universal** (arm64 + amd64) |
             | `SHA256SUMS.txt` | Checksums |
 
-            **macOS:** unsigned cross-CI builds may need right-click → Open the first time (Gatekeeper).
+            ### macOS
+            1. Download `LRSS-macOS-*.app.zip` and unzip.
+            2. Drag `LRSS-macOS-*.app` to Applications (optional).
+            3. First launch: right-click → **Open** (unsigned CI builds; Gatekeeper).
+            4. Prefer **Apple Silicon** on M-series Macs; use **universal** if unsure.
 
-            **Linux:** requires WebKitGTK at runtime (e.g. `libwebkit2gtk-4.1-0` on recent Ubuntu/Debian).
+            ### Linux
+            Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` on recent Ubuntu/Debian).
 
             Source: https://github.com/hakuzero4/LRSS
         env:
