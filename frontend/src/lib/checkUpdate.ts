@@ -11,7 +11,16 @@ import {
 
 export type UpdateCheckResult =
   | { status: "upToDate"; current: string; latest: string; htmlUrl: string }
-  | { status: "updateAvailable"; current: string; latest: string; htmlUrl: string; name?: string }
+  | {
+      status: "updateAvailable";
+      current: string;
+      latest: string;
+      htmlUrl: string;
+      name?: string;
+      /** Desktop backend can download+replace for this platform. */
+      canInstall?: boolean;
+      asset?: string;
+    }
   | { status: "error"; current: string; message: string };
 
 /** Strip leading v/V and pre-release/build metadata for numeric compare. */
@@ -109,6 +118,8 @@ export async function checkForUpdate(deps?: CheckUpdateDeps): Promise<UpdateChec
         latest,
         htmlUrl,
         name: data.name || tag,
+        // Browser/web path cannot replace the desktop binary.
+        canInstall: false,
       };
     }
     return {

@@ -72,6 +72,8 @@ func main() {
 	articleAPI := appsvc.NewArticleService(library, store)
 	aiAPI := appsvc.NewAI(store, library, database.SQL)
 	syncAPI := appsvc.NewSync(store, library)
+	// Keep in sync with frontend/src/lib/appMeta.ts APP_VERSION and git tags.
+	updateAPI := appsvc.NewUpdate("0.1.1")
 
 	// Optional browser access (same SPA; reader toolbar tools + star/read; no settings UI).
 	webServer := web.New(web.APIDeps{
@@ -111,6 +113,7 @@ func main() {
 			application.NewService(articleAPI),
 			application.NewService(aiAPI),
 			application.NewService(syncAPI),
+			application.NewService(updateAPI),
 			application.NewService(ns),
 			application.NewService(&GreetService{}),
 		},
@@ -131,6 +134,9 @@ func main() {
 		log.Printf("hardware acceleration disabled (WebView2 --disable-gpu)")
 	}
 	app := application.New(appOpts)
+	updateAPI.SetQuit(func() {
+		app.Quit()
+	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "LRSS",

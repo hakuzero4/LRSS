@@ -7,13 +7,15 @@ import * as FeedService from "./feedservice.js";
 import * as SearchService from "./searchservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as SyncService from "./syncservice.js";
+import * as UpdateService from "./updateservice.js";
 export {
     AIService,
     ArticleService,
     FeedService,
     SearchService,
     SettingsService,
-    SyncService
+    SyncService,
+    UpdateService
 };
 
 export type {
