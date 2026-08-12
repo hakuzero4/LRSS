@@ -9,14 +9,14 @@ Wails v3 + Vue 3 + shadcn-vue local RSS reader. Module path: `lrss`.
 - **SQLite**: `modernc.org/sqlite`, migrations in `internal/db/migrations/`
 - **Frontend**: `frontend/` (Vue 3, TS, Tailwind v4, **vue-i18n**, bindings in `frontend/bindings/`)
 - **i18n**: `frontend/src/i18n/` — locales `zh-CN` / `en-US`; use `t('key')` / `useLocale()`; persist `localStorage` key `lrss.locale`
-- **Plans**: `docs/plan-sN.md` — current backend stage lives in README
+- **Plans**: local only under `docs/dev/plans/` (gitignored — not product docs). Public docs live in `docs/*.md` + root `README.md`.
 
 ## Multi-agent stage development (required)
 
 When the user starts a roadmap stage, says **开干**, **multi-agent**, or runs **`/goal`** on a stage:
 
 1. **Plan first**  
-   Refresh or create `docs/plan-sN.md` with: goals, non-goals, package layout, Wails API, acceptance checklist, **agent split table**, and frozen interfaces between agents.
+   Create or refresh `docs/dev/plans/plan-sN.md` (gitignored) with: goals, non-goals, package layout, Wails API, acceptance checklist, **agent split table**, and frozen interfaces between agents.
 
 2. **Split by ownership, not by “layers of the same file”**  
    Prefer 3–4 agents with **non-overlapping paths** (e.g. `internal/opml/**` vs `internal/repo/**` vs `appsvc`+`main` vs `frontend/**`).  
@@ -35,7 +35,7 @@ When the user starts a roadmap stage, says **开干**, **multi-agent**, or runs 
 5. **Quality bar before stage complete**  
    - `go test ./...` green  
    - No drive-by refactors outside the stage  
-   - Update `docs/plan-sN.md` checkboxes and README **Current stage** line
+   - Update the local plan checkboxes and the root README feature/docs sections if user-facing behavior changed
 
 6. **Do not**  
    - Start coding a new stage without a plan file  
