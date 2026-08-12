@@ -4,15 +4,20 @@
   <img src="docs/brand/lrss-source-22.png" alt="LRSS icon" width="96" height="96" />
 </p>
 
-**Local-first desktop RSS reader** — subscribe, sync, search, optional AI, YouTube-friendly reading, and optional browser access on your LAN.
+<p align="center">
+  <strong>Local-first desktop RSS reader</strong><br />
+  Subscribe, sync, search, optional AI, YouTube-friendly reading, and optional browser access on your LAN.
+</p>
 
-本地优先的桌面 RSS 阅读器：订阅拉取入库、全文/语义搜索、可选大模型能力、YouTube 字幕时间轴，以及可选的浏览器 Web 访问。
+<p align="center">
+  <a href="README.zh-CN.md">中文说明</a>
+</p>
 
 ---
 
 ## Screenshot
 
-三栏资料库 · 列表 · 阅读器（摘要 deck、划词翻译、订阅文件夹与智能列表）
+Three-pane library · article list · reader (summary deck, selection translate, folders & smart lists)
 
 ![LRSS main UI — three-pane library, article list, and reader with AI summary and selection translate](docs/screenshots/main-reader.png)
 
@@ -118,7 +123,7 @@ Enable in **Settings → Advanced → Web access**.
 | --- | --- |
 | **Themes** | System / light / dark; accent presets + custom hex |
 | **Compact sidebar** | Denser feed list |
-| **i18n** | 简体中文 · English |
+| **i18n** | Simplified Chinese · English |
 | **Keyboard shortcuts** | j/k next-prev · s star · m read · r refresh · z zen · `,` settings (toggleable) |
 | **Notifications** | New-article system notifications; sound on/off; test notification |
 | **Sync (OPML only)** | WebDAV or S3-compatible (R2 / MinIO); push/pull subscription structure — **not** read/star/body |
@@ -130,7 +135,7 @@ Enable in **Settings → Advanced → Web access**.
 - **Local-first**: library in SQLite on disk (no cloud account required)
 - **API keys** stored only on-device (masked in UI)
 - **Outbound HTTP** via fingerprint-friendly client (`enetx/surf` / `internal/httpx`)
-- Data path: XDG data home; Windows typically `%LOCALAPPDATA%/LRSS/data/lrss.db`
+- Data path: XDG data home; on Windows typically `%LOCALAPPDATA%/LRSS/data/lrss.db`
 
 ---
 
@@ -259,11 +264,12 @@ frontend/
 
 | Doc | Content |
 | --- | --- |
+| [README.zh-CN.md](README.zh-CN.md) | Chinese README |
 | [docs/README.md](docs/README.md) | Documentation index |
 | [docs/database.md](docs/database.md) | Schema, FTS, migrations, data path |
 | [docs/embedding.md](docs/embedding.md) | Vector search & sqlite-vector notes |
 | [docs/llm.md](docs/llm.md) | LLM config and AI feature matrix |
-| [docs/screenshots/](docs/screenshots/) | UI screenshots for README |
+| [docs/screenshots/](docs/screenshots/) | UI screenshots |
 | [docs/brand/](docs/brand/) | App icon source asset |
 | [AGENTS.md](AGENTS.md) | Contributor / multi-agent conventions |
 

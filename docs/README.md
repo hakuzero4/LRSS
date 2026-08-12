@@ -1,6 +1,6 @@
 # LRSS documentation
 
-Technical docs for contributors and advanced users. Day-to-day usage lives in the app UI and the root [README](../README.md).
+Technical docs for contributors and advanced users. Day-to-day usage lives in the app UI and the root READMEs: [English](../README.md) · [中文](../README.zh-CN.md).
 
 ## Guides
 
