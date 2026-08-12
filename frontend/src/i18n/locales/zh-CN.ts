@@ -31,6 +31,8 @@ export default {
     officeModeTooltip:
       "开启后隐藏已标记为敏感的订阅（侧栏与智能列表）。与「设置 → 通用 → 显示敏感订阅」同步。",
     officeModeFailed: "切换模式失败",
+    webReadonly: "Web 阅读",
+    webReadonlyHint: "浏览器只读模式：可收藏与标记已读，无法打开设置或管理订阅。",
   },
 
   folderMenu: {
@@ -705,6 +707,37 @@ export default {
       resetConfirm: "将界面设置恢复为默认值？订阅与文章数据不会删除。",
       resetDone: "界面设置已重置",
       resetFailed: "重置失败",
+
+      webGroup: "Web 访问",
+      webGroupDesc:
+        "在浏览器中打开与本应用相同的阅读界面。可收藏、标记已读；不能改设置或管理订阅。",
+      webEnable: "允许 Web 访问",
+      webEnableDesc: "开启后在本地端口提供 HTTP 服务，用浏览器访问。",
+      webBind: "访问范围",
+      webBindLocal: "仅本机",
+      webBindLan: "局域网",
+      webBindHint:
+        "「仅本机」绑定 127.0.0.1；「局域网」绑定 0.0.0.0，同网设备可访问。局域网务必使用访问令牌，并在防火墙放行端口。",
+      webPort: "端口",
+      webPortDesc: "默认 18765。若被占用请更换。",
+      webToken: "访问令牌",
+      webTokenDesc:
+        "可选。局域网开启时若为空会自动生成。请求需带 Authorization: Bearer 或链接 ?token=。",
+      webTokenEmpty: "（未设置）",
+      webCopyToken: "复制令牌",
+      webRegenToken: "重新生成",
+      webTokenRegen: "令牌已更新",
+      webStatus: "运行状态",
+      webRunning: "服务运行中",
+      webStopped: "服务未运行",
+      webLocalUrl: "本机地址",
+      webLanUrl: "局域网地址",
+      webCopyUrl: "复制链接",
+      webCopied: "已复制到剪贴板",
+      webCopyFailed: "复制失败",
+      webOn: "Web 访问已开启",
+      webOff: "Web 访问已关闭",
+      webFailed: "Web 访问配置失败",
     },
 
     about: {
@@ -772,6 +805,13 @@ export default {
     searching: "搜索中…",
     searchBackend: "全文搜索",
     searchLocal: "当前列表筛选",
+  },
+
+  webAuth: {
+    title: "访问令牌无效",
+    body: "当前链接中的访问令牌缺失、错误或已失效，无法打开阅读界面。",
+    hint: "请向本机 LRSS 的使用者索取新的 Web 访问链接（设置 → 高级 → 允许 Web 访问）。",
+    reload: "清除并重试",
   },
 
   opml: {

@@ -27,5 +27,6 @@ export type {
     RefreshResult,
     SyncPullResult,
     SyncPushResult,
-    SyncTestResult
+    SyncTestResult,
+    WebAccessStatus
 } from "./models.js";

@@ -186,6 +186,8 @@ export interface UIPrefs {
   translateReplaceOriginal?: boolean;
   /** Reader header toolbar button visibility. */
   readerToolbar: ReaderToolbarButtons;
+  /** UI language: zh-CN | en-US (synced to Web access via backend). */
+  locale?: string;
 }
 
 export interface AppSettings {

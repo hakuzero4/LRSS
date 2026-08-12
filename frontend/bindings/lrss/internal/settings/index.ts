@@ -8,5 +8,6 @@ export type {
     ReaderToolbarButtons,
     SearchConfig,
     SyncConfig,
-    UIPrefs
+    UIPrefs,
+    WebAccessConfig
 } from "./models.js";

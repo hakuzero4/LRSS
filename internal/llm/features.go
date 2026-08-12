@@ -267,15 +267,21 @@ VERDICT: unclear
 
 Optional second line: one short reason in English.
 
-Signals of PARTIAL:
-- body ends mid-sentence or with "…", "..." , "read more", "继续阅读", "全文", "订阅后阅读"
+Signals of PARTIAL (be conservative — only when clearly truncated):
+- body ends mid-sentence or with "…", "..." , "read more", "继续阅读", "订阅后阅读"
 - only a lead paragraph / abstract while a full page URL exists
 - body is barely longer than the summary
-- obvious feed truncation
+- obvious feed truncation ("[…]", "Read the rest")
 
-Signals of FULL:
+Signals of FULL (prefer FULL when in doubt for normal blog/news posts):
 - complete multi-paragraph article that finishes cleanly
 - body is substantially longer and self-contained
+- short but complete posts (opinion notes, release notes) that end with a full sentence
+- YouTube / video items: a description under an embed is FULL for our reader (do NOT mark partial just because it is not a long essay)
+
+Do NOT mark partial merely because:
+- the article is shorter than a typical news story
+- there is an external URL (RSS full-text feeds still include a link)
 
 Title: %s
 URL: %s

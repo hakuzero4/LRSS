@@ -45,7 +45,8 @@ export function ClearTranslation(articleId: string): $CancellablePromise<void> {
 
 /**
  * DetectContentFullness judges whether the stored body looks complete or partial.
- * Verdict: full|partial|unclear|skipped_no_url|already_fetched. Does not fetch the page.
+ * Verdict: full|partial|unclear|skipped_no_url|already_fetched|skipped_youtube.
+ * Does not fetch the page. Avoids false "partial" on YouTube embeds and full RSS bodies.
  */
 export function DetectContentFullness(articleId: string): $CancellablePromise<$models.AIResult> {
     return $Call.ByID(1923791988, articleId);

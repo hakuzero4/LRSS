@@ -221,4 +221,33 @@ export interface UIPrefs {
      * ReaderToolbar: which header icons are visible in the article reader.
      */
     "readerToolbar": ReaderToolbarButtons;
+
+    /**
+     * Locale is the UI language: "zh-CN" | "en-US". Empty → default zh-CN.
+     * Shared with Web access so the browser UI matches the desktop app.
+     */
+    "locale": string;
+}
+
+/**
+ * WebAccessConfig controls the optional local HTTP server for browser reading.
+ */
+export interface WebAccessConfig {
+    "enabled": boolean;
+
+    /**
+     * Bind is "localhost" (127.0.0.1 only) or "lan" (0.0.0.0).
+     */
+    "bind": string;
+
+    /**
+     * Port is the listen port; default 18765; clamp [1024, 65535].
+     */
+    "port": number;
+
+    /**
+     * Token is an optional shared secret. Empty disables auth (OK for localhost).
+     * When Bind=lan and Enabled, empty token is auto-generated on save/apply.
+     */
+    "token": string;
 }

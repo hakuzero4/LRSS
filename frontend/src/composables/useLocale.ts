@@ -3,10 +3,19 @@ import { useI18n } from "vue-i18n";
 import {
   LOCALE_STORAGE_KEY,
   SUPPORTED_LOCALES,
+  applyAppLocale,
   type AppLocale,
   isAppLocale,
   resolveLocale,
 } from "@/i18n";
+
+/** Optional: persist locale into SQLite UIPrefs (wired by AppearancePanel). */
+let persistLocaleHook: ((locale: AppLocale) => void) | null = null;
+
+/** Register a callback so setLocale also saves to backend UIPrefs. */
+export function setLocalePersistHook(fn: ((locale: AppLocale) => void) | null) {
+  persistLocaleHook = fn;
+}
 
 /**
  * App locale: get/set, persist to localStorage (`lrss.locale`),
@@ -21,15 +30,11 @@ export function useLocale() {
   });
 
   function setLocale(next: AppLocale | string) {
-    const resolved = isAppLocale(next) ? next : resolveLocale(next);
-    locale.value = resolved;
+    const resolved = applyAppLocale(next);
     try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, resolved);
+      persistLocaleHook?.(resolved);
     } catch {
-      /* ignore quota / private mode */
-    }
-    if (typeof document !== "undefined") {
-      document.documentElement.lang = resolved;
+      /* ignore persist failures */
     }
   }
 

@@ -3,6 +3,9 @@ import { toast } from "vue-sonner";
 import i18n from "@/i18n";
 import { applyArticleFilters } from "@/lib/articleFilters";
 import { loadAppsvc, mapArticle, mapFeed, mapFolder } from "@/lib/backend";
+import { applyAppLocale, resolveLocale } from "@/i18n";
+import { setLocalePersistHook } from "@/composables/useLocale";
+import { isWebMode, webMode } from "@/lib/webMode";
 import { parseBilingualPairs, type BilingualPair } from "@/lib/bilingual";
 import { feedIdsInFolder, folderCollectionId } from "@/lib/folderMenu";
 import { applyShowUnreadOnly } from "@/lib/readingSettings";
@@ -548,6 +551,16 @@ async function maybeAutoSummarize(articleId: string) {
  * Skips articles already full-fetched (persisted flag) or checked this session.
  * Runs before auto-summarize so the deck can use the full text.
  */
+function isYouTubeArticleURL(url?: string): boolean {
+  const u = String(url ?? "").trim().toLowerCase();
+  if (!u) return false;
+  return (
+    u.includes("youtube.com/") ||
+    u.includes("youtu.be/") ||
+    u.includes("youtube-nocookie.com/")
+  );
+}
+
 async function maybeAutoFetchFull(articleId: string) {
   if (!settings.autoFetchFull) return;
   if (!backendReady.value) return;
@@ -556,6 +569,11 @@ async function maybeAutoFetchFull(articleId: string) {
   // Local pool may already know this was full-fetched (no toast / no LLM).
   const local = resolveSelectedArticle(articleId, articles.value, searchArticles.value);
   if (local?.fullContentFetched) {
+    autoFetchFullCheckedIds.add(articleId);
+    return;
+  }
+  // YouTube: content is embed (+ captions), not a partial HTML article.
+  if (isYouTubeArticleURL(local?.url)) {
     autoFetchFullCheckedIds.add(articleId);
     return;
   }
@@ -574,7 +592,7 @@ async function maybeAutoFetchFull(articleId: string) {
     if (selectedArticleId.value !== articleId) return;
 
     const verdict = String(det?.verdict ?? det?.Verdict ?? "").toLowerCase();
-    // already_fetched / full / unclear / no url → silent skip (never toast).
+    // already_fetched / full / unclear / skipped_* / no url → silent skip (never toast).
     if (verdict !== "partial") return;
 
     // Tell the user *before* the body is replaced.
@@ -978,6 +996,7 @@ function buildUIPrefs(): UIPrefs {
     autoFetchFull: settings.autoFetchFull,
     translateReplaceOriginal: settings.translateReplaceOriginal,
     readerToolbar: { ...settings.readerToolbar },
+    locale: resolveLocale(String(i18n.global.locale.value || "zh-CN")),
   };
 }
 
@@ -1002,6 +1021,12 @@ function pickBool(obj: Record<string, unknown>, ...keys: string[]): boolean | un
 function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null | undefined) {
   if (!prefs || typeof prefs !== "object") return;
   const p = prefs as Record<string, unknown>;
+
+  // UI language from backend (desktop settings → Web access same prefs).
+  const loc = p.locale ?? p.Locale;
+  if (typeof loc === "string" && loc.trim()) {
+    applyAppLocale(loc);
+  }
 
   const markOpen = pickBool(p, "markAsReadOnOpen", "MarkAsReadOnOpen");
   if (markOpen !== undefined) settings.markAsReadOnOpen = markOpen;
@@ -1162,6 +1187,14 @@ async function loadUIPrefs() {
   try {
     const prefs = (await getPrefs()) as UIPrefs | null | undefined;
     applyUIPrefs(prefs ?? undefined);
+    // Migrate: once locale is stored in SQLite, Web + desktop stay in sync.
+    // If backend has no locale yet, keep localStorage/navigator and write it back.
+    const raw = prefs as UIPrefs & { Locale?: string };
+    const loc = String(raw?.locale ?? raw?.Locale ?? "").trim();
+    if (!loc && !isWebMode()) {
+      // Desktop: persist current UI language into app.ui_prefs for Web clients.
+      void persistUIPrefs(true);
+    }
   } catch (e) {
     console.warn("[lrss] GetUIPrefs failed", e);
   }
@@ -1506,6 +1539,15 @@ async function createFolder(name: string): Promise<string> {
 }
 
 async function bootstrap() {
+  // Ensure appsvc (and web token probe) finish before library load.
+  await loadAppsvc();
+  const { webAuthState } = await import("@/lib/webMode");
+  if (webAuthState.value === "unauthorized") {
+    // App.vue shows only WebAuthBlocked — skip library UI work.
+    backendReady.value = false;
+    libraryLoading.value = false;
+    return;
+  }
   await reloadLibrary();
   if (backendReady.value) {
     await Promise.all([loadUIPrefs(), loadLibraryConfig()]);
@@ -1753,6 +1795,7 @@ function recomputeFeedUnread(feedId: string) {
 }
 
 function openAddFeed() {
+  if (isWebMode()) return;
   // Prefer explicit default folder from settings when opening from the chrome.
   const def = (settings.defaultFolderId ?? "").trim();
   addFeedTargetFolderId.value = def || null;
@@ -1761,6 +1804,7 @@ function openAddFeed() {
 
 /** Open add-feed dialog with a default folder (folder context menu). */
 function openAddFeedInFolder(folderId: string) {
+  if (isWebMode()) return;
   const id = folderId.trim();
   addFeedTargetFolderId.value = id || null;
   addFeedOpen.value = true;
@@ -1856,11 +1900,14 @@ async function runBackendSearch(query: string, seq: number) {
   }
 }
 function openSettings() {
+  // Web access: settings are desktop-only.
+  if (isWebMode()) return;
   settingsOpen.value = true;
 }
 
 /** Open the full subscription editor (name, interval, folder, pause, NSFW…). */
 function openFeedEdit(feedId: string) {
+  if (isWebMode()) return;
   const id = String(feedId || "").trim();
   if (!id) return;
   feedEditId.value = id;
@@ -2085,6 +2132,7 @@ async function addFeedsFromURLs(
 }
 
 async function refreshOneFeed(feedId: string): Promise<number> {
+  if (isWebMode()) return 0;
   const api = await loadAppsvc();
   const fn = api?.FeedService?.RefreshFeed;
   if (typeof fn !== "function") return 0;
@@ -2113,6 +2161,7 @@ async function markFeedRead(feedId: string): Promise<void> {
 }
 
 async function deleteFeed(feedId: string): Promise<void> {
+  if (isWebMode()) return;
   const api = await loadAppsvc();
   const fn = api?.FeedService?.DeleteFeed;
   if (typeof fn === "function") {
@@ -2304,6 +2353,7 @@ async function refreshFolderFeeds(folderId: string): Promise<{ refreshed: number
  * - smart lists (unread / today / starred / all) → RefreshAll
  */
 async function refreshFeeds() {
+  if (isWebMode()) return;
   if (refreshing.value) return;
   refreshing.value = true;
   try {
@@ -2576,11 +2626,21 @@ async function exportDiagnostics(): Promise<void> {
   }
 }
 
+// When Appearance (or useLocale) changes language, also write UIPrefs.locale.
+setLocalePersistHook(() => {
+  // Skip web: no SetUIPrefs; desktop is source of truth.
+  if (isWebMode()) return;
+  void persistUIPrefs(true);
+});
+
 // Kick off backend bootstrap once (browser-safe if bindings missing).
 void bootstrap();
 
 export function useRssStore() {
   return {
+    /** Browser web-access mode (no settings / feed management). */
+    isWebMode,
+    webMode,
     folders,
     feeds,
     sidebarFolders,

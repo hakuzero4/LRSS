@@ -15,16 +15,18 @@ import (
 	"lrss/internal/settings"
 	"lrss/internal/sysfont"
 	"lrss/internal/vector"
+	"lrss/internal/web"
 )
 
 // SettingsService is exposed to the Wails frontend.
 type SettingsService struct {
-	store   *settings.Store
-	search  *search.Service
-	embed   *job.EmbedWorker
-	index   *vector.Index
-	library *service.Library // optional; required for PurgeOldArticles
-	notify  *notify.Sender   // optional; test + permission helpers
+	store     *settings.Store
+	search    *search.Service
+	embed     *job.EmbedWorker
+	index     *vector.Index
+	library   *service.Library // optional; required for PurgeOldArticles
+	notify    *notify.Sender   // optional; test + permission helpers
+	webServer *web.Server      // optional; browser access HTTP server
 }
 
 // NewSettings constructs the service from shared deps.

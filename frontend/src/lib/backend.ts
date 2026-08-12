@@ -1,14 +1,81 @@
-/** Lazy load Wails-generated appsvc bindings. */
+/** Lazy load Wails-generated appsvc bindings, or HTTP adapter in web mode. */
 
 import { formatAuthor, plainText } from "./format";
+import { tryHttpAppsvc } from "./httpAppsvc";
+import {
+  captureWebTokenFromURL,
+  isWebMode,
+  setWebAuthState,
+  setWebModeFlag,
+  webAuthState,
+} from "./webMode";
+
+let cached: any | null | undefined;
+
+function forcedWebMode(): boolean {
+  try {
+    return !!(globalThis as unknown as { __LRSS_WEB__?: boolean }).__LRSS_WEB__;
+  } catch {
+    return false;
+  }
+}
 
 export async function loadAppsvc(): Promise<any | null> {
-  try {
-    const mod = await import("../../bindings/lrss/internal/appsvc/index.js");
-    return mod;
-  } catch {
+  if (cached !== undefined) return cached;
+
+  captureWebTokenFromURL();
+
+  // Browser web-access: server injects window.__LRSS_WEB__ into index.html.
+  // Prefer HTTP adapter so bundled Wails bindings are never used in a real browser.
+  if (forcedWebMode()) {
+    const http = await tryHttpAppsvc();
+    if (http) {
+      setWebModeFlag(true);
+      cached = http;
+      return cached;
+    }
+    setWebModeFlag(true);
+    // tryHttpAppsvc already sets unauthorized on 401; leave other failures as-is
+    // so a down server is not mislabeled as a bad token.
+    if (webAuthState.value === "pending") {
+      setWebAuthState("none");
+    }
+    cached = null;
     return null;
   }
+
+  // Desktop Wails: use generated bindings.
+  try {
+    const mod = await import("../../bindings/lrss/internal/appsvc/index.js");
+    if (mod && (mod.FeedService || mod.SettingsService || mod.ArticleService)) {
+      setWebModeFlag(false);
+      setWebAuthState("ok");
+      cached = mod;
+      return cached;
+    }
+  } catch {
+    /* not in Wails / bindings missing */
+  }
+
+  // Vite preview / fallback: try HTTP if a web server is on the same origin.
+  const http = await tryHttpAppsvc();
+  if (http) {
+    setWebModeFlag(true);
+    cached = http;
+    return cached;
+  }
+
+  setWebModeFlag(false);
+  if (webAuthState.value !== "unauthorized") {
+    setWebAuthState("none");
+  }
+  cached = null;
+  return null;
+}
+
+/** True after loadAppsvc resolved to the HTTP adapter. */
+export function isHttpBackend(): boolean {
+  return isWebMode();
 }
 
 /**

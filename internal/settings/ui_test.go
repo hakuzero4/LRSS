@@ -73,6 +73,21 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUIPrefs_NormalizeLocale(t *testing.T) {
+	got := (settings.UIPrefs{Locale: "en"}).Normalize().Locale
+	if got != "en-US" {
+		t.Fatalf("en → %q", got)
+	}
+	got = (settings.UIPrefs{Locale: "zh-Hans"}).Normalize().Locale
+	if got != "zh-CN" {
+		t.Fatalf("zh-Hans → %q", got)
+	}
+	got = (settings.UIPrefs{Locale: ""}).Normalize().Locale
+	if got != "" {
+		t.Fatalf("empty should stay empty, got %q", got)
+	}
+}
+
 func TestUIPrefs_NormalizeKeepArticlesDays(t *testing.T) {
 	c := settings.UIPrefs{KeepArticlesDays: 0}.Normalize()
 	if c.KeepArticlesDays != 7 {

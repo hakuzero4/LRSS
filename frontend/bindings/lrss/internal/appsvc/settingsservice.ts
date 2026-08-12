@@ -88,6 +88,20 @@ export function GetVectorStatus(): $CancellablePromise<db$0.VectorStatus> {
 }
 
 /**
+ * GetWebAccessConfig returns persisted web access settings.
+ */
+export function GetWebAccessConfig(): $CancellablePromise<settings$0.WebAccessConfig> {
+    return $Call.ByID(3029602495);
+}
+
+/**
+ * GetWebAccessStatus returns whether the HTTP server is running and its URL.
+ */
+export function GetWebAccessStatus(): $CancellablePromise<$models.WebAccessStatus> {
+    return $Call.ByID(1905500343);
+}
+
+/**
  * LLMCacheCount returns how many rows are in llm_feature_cache (diagnostics).
  */
 export function LLMCacheCount(): $CancellablePromise<number> {
@@ -116,6 +130,13 @@ export function PurgeOldArticles(): $CancellablePromise<$models.PurgeResult> {
  */
 export function RebuildAllEmbeddings(): $CancellablePromise<{ [_ in string]?: number } | null> {
     return $Call.ByID(900236041);
+}
+
+/**
+ * RegenerateWebAccessToken creates a new token, saves, and restarts if enabled.
+ */
+export function RegenerateWebAccessToken(): $CancellablePromise<settings$0.WebAccessConfig> {
+    return $Call.ByID(2397339906);
 }
 
 /**
@@ -161,6 +182,13 @@ export function SetSearchConfig(cfg: settings$0.SearchConfig): $CancellablePromi
  */
 export function SetUIPrefs(cfg: settings$0.UIPrefs): $CancellablePromise<void> {
     return $Call.ByID(3151085653, cfg);
+}
+
+/**
+ * SetWebAccessConfig saves settings and starts/stops/rebinds the HTTP server.
+ */
+export function SetWebAccessConfig(cfg: settings$0.WebAccessConfig): $CancellablePromise<$models.WebAccessStatus> {
+    return $Call.ByID(4119432731, cfg);
 }
 
 /**

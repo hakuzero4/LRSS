@@ -339,9 +339,13 @@ func (s *Service) TranslateStream(ctx context.Context, a ArticleInput, targetLan
 
 // DetectContentFullness judges whether the stored article body looks complete or partial.
 // Result.Verdict is full|partial|unclear; Markdown is the raw model reply.
+//
+// Auto-fetch must be conservative: only return "partial" when there is a strong
+// local truncation signal (empty body, "read more", body≈summary teaser).
+// LLM alone is not enough — models often mark normal full-text RSS as partial.
 func (s *Service) DetectContentFullness(ctx context.Context, a ArticleInput) (FeatureResult, error) {
 	body := strings.TrimSpace(a.Body)
-	// Cheap local signal: empty body is always partial when a URL exists.
+	// Empty body + URL → only strong partial case without extra cues.
 	if body == "" {
 		return FeatureResult{
 			Markdown: "VERDICT: partial\nempty body",
@@ -349,26 +353,118 @@ func (s *Service) DetectContentFullness(ctx context.Context, a ArticleInput) (Fe
 			Verdict:  FullnessPartial,
 		}, nil
 	}
-	// Very long self-contained body → skip model cost.
-	if utf8.RuneCountInString(body) >= 8000 {
+
+	// Local decision covers nearly all cases; avoid flaky model false-partials.
+	if v, reason, ok := localFullnessHeuristic(a.Title, a.Summary, body, a.URL); ok {
 		return FeatureResult{
-			Markdown: "VERDICT: full\nlong body heuristic",
+			Markdown: "VERDICT: " + v + "\n" + reason,
 			Feature:  FeatureContentFullness,
-			Verdict:  FullnessFull,
+			Verdict:  v,
 			Cached:   true,
 		}, nil
 	}
 
-	hashInput := ArticleInput{Title: a.Title, Summary: a.Summary, Body: a.Body, URL: a.URL}
-	hash := ContentFingerprint(hashInput)
-	system := SystemPromptFor(FeatureContentFullness, "en")
-	user := UserPromptContentFullness(a.Title, a.Summary, a.Body, a.URL)
-	res, err := s.runCached(ctx, a.ID, FeatureContentFullness, "v1", hash, system, user)
-	if err != nil {
-		return FeatureResult{}, err
+	// Ambiguous short body without truncation cue: do NOT auto-fetch.
+	// (User can still press 请求全文 manually.)
+	return FeatureResult{
+		Markdown: "VERDICT: full\nno truncation cue (conservative)",
+		Feature:  FeatureContentFullness,
+		Verdict:  FullnessFull,
+		Cached:   true,
+	}, nil
+}
+
+// localFullnessHeuristic returns (verdict, reason, ok).
+// partial only with strong truncation evidence; full when body looks complete.
+func localFullnessHeuristic(title, summary, body, pageURL string) (verdict, reason string, ok bool) {
+	_ = title
+	_ = pageURL
+	n := utf8.RuneCountInString(body)
+	sumN := utf8.RuneCountInString(strings.TrimSpace(summary))
+
+	// --- partial only with strong evidence ---
+	if hasStrongTruncationCue(body) {
+		return FullnessPartial, "truncation cue", true
 	}
-	res.Verdict = ParseFullnessVerdict(res.Markdown)
-	return res, nil
+	// Body ≈ feed summary and short → teaser / standfirst only.
+	if sumN > 40 && n > 0 && n <= sumN+100 && n < 800 {
+		return FullnessPartial, "body≈summary teaser", true
+	}
+	// Very short body with a page URL often means "title + blurb" only.
+	if n < 180 && strings.TrimSpace(pageURL) != "" && sumN > 0 && n <= sumN+40 {
+		return FullnessPartial, "very short body", true
+	}
+
+	// --- full when content is clearly enough ---
+	if n >= 600 && !hasStrongTruncationCue(body) {
+		return FullnessFull, "body length without truncation", true
+	}
+	if n >= 350 && endsCleanly(body) && !hasStrongTruncationCue(body) {
+		return FullnessFull, "clean medium body", true
+	}
+	if n >= 280 && sumN > 0 && n >= sumN*2 && endsCleanly(body) {
+		return FullnessFull, "body >> summary", true
+	}
+
+	// Leave ambiguous to caller (conservative full).
+	return "", "", false
+}
+
+// hasStrongTruncationCue detects explicit "read more" / cut-off markers near the end.
+// Bare "全文" in the middle of a Chinese essay is ignored (common word).
+func hasStrongTruncationCue(body string) bool {
+	low := strings.ToLower(body)
+	runes := []rune(low)
+	tail := low
+	if len(runes) > 280 {
+		tail = string(runes[len(runes)-280:])
+	}
+	// Explicit CTAs (high confidence).
+	strong := []string{
+		"read more", "continue reading", "continue to read", "read the rest",
+		"view full", "full article", "see more",
+		"继续阅读", "阅读全文", "订阅后阅读", "查看全文", "展开全文",
+		"点击查看", "点击阅读", "原文链接",
+		"[…]", "[...]", "(…)",
+	}
+	for _, c := range strong {
+		if strings.Contains(tail, c) {
+			return true
+		}
+	}
+	// Trailing ellipsis only counts for short/medium bodies (likely cut mid-sentence).
+	n := utf8.RuneCountInString(body)
+	if n < 1400 {
+		trimmed := strings.TrimSpace(body)
+		if strings.HasSuffix(trimmed, "…") || strings.HasSuffix(trimmed, "...") {
+			return true
+		}
+		// "… 全文" / "... 全文" style
+		if strings.Contains(tail, "…全文") || strings.Contains(tail, "...全文") ||
+			strings.Contains(tail, "… 全文") || strings.Contains(tail, "... 全文") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasTruncationCue is kept for tests / older call sites (same as strong).
+func hasTruncationCue(body string) bool {
+	return hasStrongTruncationCue(body)
+}
+
+func endsCleanly(body string) bool {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return false
+	}
+	runes := []rune(body)
+	last := runes[len(runes)-1]
+	switch last {
+	case '.', '!', '?', '。', '！', '？', '"', '\'', '”', '’', ')', '）', '」', '』':
+		return true
+	}
+	return false
 }
 
 // SelectTranslate translates a short user-selected snippet (fixed prompt, plain text only).

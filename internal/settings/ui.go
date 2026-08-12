@@ -83,6 +83,9 @@ type UIPrefs struct {
 	TranslateReplaceOriginal bool `json:"translateReplaceOriginal"`
 	// ReaderToolbar: which header icons are visible in the article reader.
 	ReaderToolbar ReaderToolbarButtons `json:"readerToolbar"`
+	// Locale is the UI language: "zh-CN" | "en-US". Empty → default zh-CN.
+	// Shared with Web access so the browser UI matches the desktop app.
+	Locale string `json:"locale"`
 }
 
 // DefaultUIPrefs matches frontend default settings in useRssStore.
@@ -117,6 +120,8 @@ func DefaultUIPrefs() UIPrefs {
 		AutoFetchFull:            false, // network + LLM; opt-in
 		TranslateReplaceOriginal: false, // keep original body; bilingual overlay only
 		ReaderToolbar:            DefaultReaderToolbarButtons(),
+		// Locale empty until first save — frontend migrates from localStorage.
+		Locale: "",
 	}
 }
 
@@ -156,6 +161,26 @@ func (c UIPrefs) Normalize() UIPrefs {
 	}
 	if c.ReaderWidth == "" {
 		c.ReaderWidth = "medium"
+	}
+	c.Locale = strings.TrimSpace(c.Locale)
+	if c.Locale != "" {
+		switch c.Locale {
+		case "zh-CN", "en-US":
+			// ok
+		case "zh", "zh-cn", "zh_CN", "zh-Hans":
+			c.Locale = "zh-CN"
+		case "en", "en-us", "en_US", "en-GB", "en-gb":
+			c.Locale = "en-US"
+		default:
+			low := strings.ToLower(c.Locale)
+			if strings.HasPrefix(low, "zh") {
+				c.Locale = "zh-CN"
+			} else if strings.HasPrefix(low, "en") {
+				c.Locale = "en-US"
+			} else {
+				c.Locale = "zh-CN"
+			}
+		}
 	}
 	return c
 }

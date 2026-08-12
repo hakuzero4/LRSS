@@ -35,6 +35,28 @@ export function detectInitialLocale(): AppLocale {
   return resolveLocale(nav);
 }
 
+/**
+ * Apply UI language (vue-i18n + localStorage + document.lang).
+ * Safe outside setup(); used when loading UIPrefs from backend / Web access.
+ */
+export function applyAppLocale(next: string | null | undefined): AppLocale {
+  const resolved = resolveLocale(next);
+  try {
+    i18n.global.locale.value = resolved;
+  } catch {
+    /* i18n not ready */
+  }
+  try {
+    localStorage.setItem(LOCALE_STORAGE_KEY, resolved);
+  } catch {
+    /* ignore */
+  }
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = resolved;
+  }
+  return resolved;
+}
+
 const i18n = createI18n({
   legacy: false,
   locale: detectInitialLocale(),

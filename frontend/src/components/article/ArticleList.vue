@@ -27,6 +27,7 @@ const {
   emptyListReason,
   articlesLoading,
   refreshing,
+  webMode,
   selectArticle,
   markAllRead,
   refreshFeeds,
@@ -95,7 +96,7 @@ const emptyHint = computed(() => {
       </div>
 
       <TooltipProvider :delay-duration="300">
-        <Tooltip>
+        <Tooltip v-if="!webMode">
           <TooltipTrigger as-child>
             <Button
               variant="ghost"
@@ -139,7 +140,7 @@ const emptyHint = computed(() => {
           {{ emptyHint }}
         </p>
         <Button
-          v-if="emptyListReason === 'no-feeds'"
+          v-if="emptyListReason === 'no-feeds' && !webMode"
           type="button"
           size="sm"
           class="mt-3"

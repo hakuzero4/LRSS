@@ -65,6 +65,7 @@ export function useKeyboardShortcuts() {
     settingsOpen,
     addFeedOpen,
     zenMode,
+    isWebMode,
     selectArticle,
     toggleStar,
     toggleRead,
@@ -109,8 +110,9 @@ export function useKeyboardShortcuts() {
     const mod = e.ctrlKey || e.metaKey;
     const editable = isEditableTarget(e.target);
 
-    // Ctrl/Meta+, — open settings (works while typing)
+    // Ctrl/Meta+, — open settings (desktop only; works while typing)
     if (mod && e.key === ",") {
+      if (isWebMode()) return;
       e.preventDefault();
       openSettings();
       return;
@@ -176,6 +178,7 @@ export function useKeyboardShortcuts() {
         break;
       }
       case "r":
+        if (isWebMode()) return;
         e.preventDefault();
         void refreshFeeds();
         break;
@@ -190,6 +193,7 @@ export function useKeyboardShortcuts() {
         focusSearchInput();
         break;
       case "n":
+        if (isWebMode()) return;
         e.preventDefault();
         openAddFeed();
         break;

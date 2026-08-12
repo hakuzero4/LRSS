@@ -8,6 +8,7 @@ import (
 
 	"lrss/internal/llm"
 	"lrss/internal/model"
+	"lrss/internal/rss"
 	"lrss/internal/service"
 	"lrss/internal/settings"
 )
@@ -241,7 +242,8 @@ func (s *AIService) ClearTranslation(articleId string) error {
 }
 
 // DetectContentFullness judges whether the stored body looks complete or partial.
-// Verdict: full|partial|unclear|skipped_no_url|already_fetched. Does not fetch the page.
+// Verdict: full|partial|unclear|skipped_no_url|already_fetched|skipped_youtube.
+// Does not fetch the page. Avoids false "partial" on YouTube embeds and full RSS bodies.
 func (s *AIService) DetectContentFullness(articleId string) (AIResult, error) {
 	ctx := context.Background()
 	// Prefer raw article so we can honor full_content_fetched without re-judging.
@@ -255,6 +257,14 @@ func (s *AIService) DetectContentFullness(articleId string) (AIResult, error) {
 				Feature:  llm.FeatureContentFullness,
 				Verdict:  "already_fetched",
 				Markdown: "VERDICT: full\nalready_fetched",
+				Cached:   true,
+			}, nil
+		}
+		if skip, verdict, md := fullnessSkipFromArticle(a); skip {
+			return AIResult{
+				Feature:  llm.FeatureContentFullness,
+				Verdict:  verdict,
+				Markdown: md,
 				Cached:   true,
 			}, nil
 		}
@@ -293,6 +303,26 @@ func (s *AIService) DetectContentFullness(articleId string) (AIResult, error) {
 	out := toAIResult(det)
 	out.Verdict = det.Verdict
 	return out, nil
+}
+
+// fullnessSkipFromArticle returns early full/skip when auto page-fetch must not run.
+func fullnessSkipFromArticle(a model.Article) (skip bool, verdict, markdown string) {
+	url := strings.TrimSpace(a.URL)
+	if rss.YouTubeVideoID(url) != "" {
+		// YouTube "body" is embed + description/captions — not an HTML article to expand.
+		return true, "skipped_youtube", "VERDICT: full\nskipped_youtube"
+	}
+	html := ""
+	if a.ContentHTML != nil {
+		html = *a.ContentHTML
+	}
+	// Already have embed / captions block → treat as complete for our reader.
+	if strings.Contains(html, "yt-embed") ||
+		strings.Contains(html, `data-yt-captions="1"`) ||
+		strings.Contains(html, `id="lrss-yt-captions"`) {
+		return true, llm.FullnessFull, "VERDICT: full\nyt_content_present"
+	}
+	return false, "", ""
 }
 
 // EnsureFullContent uses the LLM to judge whether the stored body is only a

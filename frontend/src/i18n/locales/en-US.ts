@@ -31,6 +31,9 @@ export default {
     officeModeTooltip:
       "When on, hides feeds marked sensitive from the sidebar and smart lists. Syncs with Settings → General → Show sensitive feeds.",
     officeModeFailed: "Could not switch mode",
+    webReadonly: "Web reading",
+    webReadonlyHint:
+      "Browser mode: star and mark read are allowed; settings and feed management are not.",
   },
 
   folderMenu: {
@@ -723,6 +726,37 @@ export default {
       resetConfirm: "Reset UI settings to defaults? Feeds and articles are not deleted.",
       resetDone: "UI settings reset",
       resetFailed: "Reset failed",
+
+      webGroup: "Web access",
+      webGroupDesc:
+        "Open the same reading UI in a browser. Star and mark-as-read work; settings and feed management do not.",
+      webEnable: "Allow web access",
+      webEnableDesc: "Start a local HTTP server so browsers can open LRSS.",
+      webBind: "Access scope",
+      webBindLocal: "This device only",
+      webBindLan: "Local network",
+      webBindHint:
+        "“This device only” binds 127.0.0.1. “Local network” binds 0.0.0.0 so other devices can connect. Use a token on LAN and open the port in your firewall.",
+      webPort: "Port",
+      webPortDesc: "Default 18765. Change if the port is already in use.",
+      webToken: "Access token",
+      webTokenDesc:
+        "Optional. Auto-generated when enabling LAN without one. Send Authorization: Bearer or ?token= on the URL.",
+      webTokenEmpty: "(none)",
+      webCopyToken: "Copy token",
+      webRegenToken: "Regenerate",
+      webTokenRegen: "Token updated",
+      webStatus: "Status",
+      webRunning: "Server running",
+      webStopped: "Server stopped",
+      webLocalUrl: "Local URL",
+      webLanUrl: "LAN URL",
+      webCopyUrl: "Copy link",
+      webCopied: "Copied to clipboard",
+      webCopyFailed: "Copy failed",
+      webOn: "Web access enabled",
+      webOff: "Web access disabled",
+      webFailed: "Web access configuration failed",
     },
 
     about: {
@@ -790,6 +824,13 @@ export default {
     searching: "Searching…",
     searchBackend: "Full-text search",
     searchLocal: "Filter current list",
+  },
+
+  webAuth: {
+    title: "Invalid access token",
+    body: "The access token in this link is missing, wrong, or no longer valid, so the reading UI cannot open.",
+    hint: "Ask the LRSS host for a fresh Web access URL (Settings → Advanced → Allow Web access).",
+    reload: "Clear and retry",
   },
 
   opml: {

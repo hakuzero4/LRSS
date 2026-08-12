@@ -239,7 +239,7 @@ func TestService_HTTPError(t *testing.T) {
 
 func TestService_DetectContentFullness(t *testing.T) {
 	store, database := testStore(t)
-	stub := &stubChat{model: "test-model", content: "VERDICT: partial\nends with read more"}
+	stub := &stubChat{model: "test-model", content: "VERDICT: partial\nmodel would say partial wrongly"}
 	svc := &llm.Service{
 		Store: store,
 		Cache: &llm.Cache{DB: database.SQL},
@@ -253,14 +253,38 @@ func TestService_DetectContentFullness(t *testing.T) {
 	if err != nil || r0.Verdict != llm.FullnessPartial || stub.calls != 0 {
 		t.Fatalf("empty: %+v calls=%d err=%v", r0, stub.calls, err)
 	}
-	r, err := svc.DetectContentFullness(ctx, llm.ArticleInput{
+	// truncation cue → local partial, no chat
+	r1, err := svc.DetectContentFullness(ctx, llm.ArticleInput{
 		ID: "a1", Title: "T", Body: "Short teaser. Read more…", URL: "https://x",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Verdict != llm.FullnessPartial || stub.calls != 1 {
-		t.Fatalf("got %+v calls=%d", r, stub.calls)
+	if r1.Verdict != llm.FullnessPartial || stub.calls != 0 {
+		t.Fatalf("truncation local: %+v calls=%d", r1, stub.calls)
+	}
+	// long clean body → local full, no chat
+	long := strings.Repeat("This is a complete paragraph about the topic. ", 80)
+	r2, err := svc.DetectContentFullness(ctx, llm.ArticleInput{
+		ID: "a2", Title: "Long", Body: long, URL: "https://x",
+	})
+	if err != nil || r2.Verdict != llm.FullnessFull || stub.calls != 0 {
+		t.Fatalf("long full: %+v calls=%d err=%v", r2, stub.calls, err)
+	}
+	// Full-looking medium article without truncation → full (no model; no false partial)
+	medium := strings.Repeat("Another sentence about the product launch. ", 25)
+	r3, err := svc.DetectContentFullness(ctx, llm.ArticleInput{
+		ID: "a3", Title: "Post", Body: medium, Summary: "Launch notes.", URL: "https://x",
+	})
+	if err != nil || r3.Verdict != llm.FullnessFull || stub.calls != 0 {
+		t.Fatalf("medium full: %+v calls=%d err=%v", r3, stub.calls, err)
+	}
+	// Ambiguous short, no cue → conservative full (do not auto-fetch)
+	r4, err := svc.DetectContentFullness(ctx, llm.ArticleInput{
+		ID: "a4", Title: "Amb", Body: "Only a short lead without a hard cue.", URL: "https://x",
+	})
+	if err != nil || r4.Verdict != llm.FullnessFull || stub.calls != 0 {
+		t.Fatalf("conservative full: %+v calls=%d err=%v", r4, stub.calls, err)
 	}
 }
 
