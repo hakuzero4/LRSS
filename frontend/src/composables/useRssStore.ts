@@ -891,8 +891,9 @@ async function reloadLibrary() {
     bootstrapError.value = "";
     libraryLoading.value = false;
     await Promise.all([reloadArticles(), reloadSmartCounts()]);
-  } catch (e: any) {
-    bootstrapError.value = e?.message || String(e);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message.trim() : "";
+    bootstrapError.value = msg || String(e);
     backendReady.value = false;
     libraryLoading.value = false;
   }

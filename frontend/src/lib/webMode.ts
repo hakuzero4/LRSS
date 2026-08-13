@@ -94,9 +94,19 @@ export function isWebMode(): boolean {
   return webMode.value || readForcedWeb();
 }
 
+/** Wails v3 serves the desktop WebView from this host (dev + production). */
+export function isWailsHost(hostname: string): boolean {
+  const h = (hostname || "").toLowerCase();
+  return h === "wails.localhost" || h.endsWith(".wails.localhost");
+}
+
 export function isWailsRuntime(): boolean {
   try {
-    const w = window as unknown as { wails?: unknown; runtime?: unknown };
+    if (typeof window !== "undefined" && isWailsHost(window.location.hostname)) {
+      return true;
+    }
+    // Wails v2 leftover; v3 does not set window.wails.
+    const w = window as unknown as { wails?: unknown };
     if (w.wails) return true;
   } catch {
     /* ignore */

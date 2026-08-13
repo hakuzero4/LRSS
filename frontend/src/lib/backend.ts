@@ -4,6 +4,7 @@ import { formatAuthor, plainText } from "./format";
 import { tryHttpAppsvc } from "./httpAppsvc";
 import {
   captureWebTokenFromURL,
+  isWailsRuntime,
   isWebMode,
   setWebAuthState,
   setWebModeFlag,
@@ -44,20 +45,28 @@ export async function loadAppsvc(): Promise<any | null> {
     return null;
   }
 
-  // Desktop Wails: use generated bindings.
-  try {
-    const mod = await import("../../bindings/lrss/internal/appsvc/index.js");
-    if (mod && (mod.FeedService || mod.SettingsService || mod.ArticleService)) {
-      setWebModeFlag(false);
-      setWebAuthState("ok");
-      cached = mod;
-      return cached;
+  // Desktop WebView (wails.localhost): always use generated bindings.
+  // Do not probe /api/meta here — that path is only on the web-access server.
+  if (isWailsRuntime()) {
+    try {
+      const mod = await import("../../bindings/lrss/internal/appsvc/index.js");
+      if (mod && (mod.FeedService || mod.SettingsService || mod.ArticleService)) {
+        setWebModeFlag(false);
+        setWebAuthState("ok");
+        cached = mod;
+        return cached;
+      }
+    } catch {
+      /* bindings missing */
     }
-  } catch {
-    /* not in Wails / bindings missing */
+    if (webAuthState.value !== "unauthorized") {
+      setWebAuthState("none");
+    }
+    cached = null;
+    return null;
   }
 
-  // Vite preview / fallback: try HTTP if a web server is on the same origin.
+  // Real browser (web access or Vite preview): HTTP adapter on this origin.
   const http = await tryHttpAppsvc();
   if (http) {
     setWebModeFlag(true);

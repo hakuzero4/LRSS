@@ -1,11 +1,38 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import vue from "@vitejs/plugin-vue";
 import tailwindcss from "@tailwindcss/vite";
 import wails from "@wailsio/runtime/plugins/vite";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Vite's SPA fallback would serve index.html for /api/*, so a probe of
+ * /api/meta on wails.localhost:9245 looks like "success" HTML.
+ * Answer JSON instead. Desktop IPC is Wails bindings, not this host.
+ */
+function lrssApiNotWeb(): Plugin {
+  return {
+    name: "lrss-api-not-web",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? "").split("?")[0];
+        if (!url.startsWith("/api")) {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        if ((req.method ?? "GET") === "GET" && url === "/api/meta") {
+          res.end(JSON.stringify({ mode: "wails", web: false, desktop: true }));
+          return;
+        }
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: "web API is not on the Vite/Wails origin" }));
+      });
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -17,7 +44,7 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },
-  plugins: [vue(), tailwindcss(), wails("./bindings")],
+  plugins: [lrssApiNotWeb(), vue(), tailwindcss(), wails("./bindings")],
   resolve: {
     alias: {
       "@": path.resolve(rootDir, "./src"),

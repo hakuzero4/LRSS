@@ -3,7 +3,7 @@
  * Method names match Wails bindings so useRssStore can call the same paths.
  */
 
-import { getWebToken, setWebAuthState } from "./webMode";
+import { getWebToken, isWailsHost, setWebAuthState } from "./webMode";
 
 /** Thrown when /api/* returns a non-2xx status (status preserved). */
 export class HttpApiError extends Error {
@@ -72,9 +72,16 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
 /** Probe /api/meta; returns adapter or null. Sets webAuthState on outcome. */
 export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
   try {
+    if (typeof window !== "undefined" && isWailsHost(window.location.hostname)) {
+      return null;
+    }
     const res = await apiFetch("/api/meta");
     if (!res.ok) return null;
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (!ct.includes("json")) return null;
     const meta = (await res.json()) as { mode?: string; web?: boolean };
+    // Vite/Wails origin answers { mode: "wails", web: false }; only the
+    // web-access server advertises mode=web.
     if (meta?.mode !== "web" && !meta?.web) return null;
   } catch (e) {
     if (e instanceof HttpApiError && isUnauthorizedStatus(e.status, e.message)) {

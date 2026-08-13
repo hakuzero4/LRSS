@@ -96,6 +96,27 @@ func TestInjectWebBootstrap(t *testing.T) {
 	}
 }
 
+func TestInjectWebBootstrap_MicaGuardDoesNotSkip(t *testing.T) {
+	t.Parallel()
+	in := `<!DOCTYPE html><html><head>
+    <script>
+      if (!window.__LRSS_WEB__ && /Windows/i.test(navigator.userAgent || "")) {
+        document.documentElement.classList.add("mica");
+      }
+    </script>
+  </head><body></body></html>`
+	out := injectWebBootstrap(in)
+	if !hasWebBootstrap(out) {
+		t.Fatalf("mica guard mention skipped inject: %s", out)
+	}
+	if strings.Count(out, "window.__LRSS_WEB__=true") != 1 {
+		t.Fatalf("expected one assignment, got %s", out)
+	}
+	if injectWebBootstrap(out) != out {
+		t.Fatal("second inject must be a no-op")
+	}
+}
+
 func TestSpaHandler_DiskIndex(t *testing.T) {
 	dir := t.TempDir()
 	html := "<!doctype html><html><head></head><body>disk</body></html>"

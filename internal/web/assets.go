@@ -237,13 +237,22 @@ func serveViteIndex(w http.ResponseWriter, target *url.URL) bool {
 }
 
 func injectWebBootstrap(html string) string {
-	if strings.Contains(html, "__LRSS_WEB__") {
+	// Only skip when the flag is actually assigned. A mere mention
+	// (e.g. the desktop Mica guard checking window.__LRSS_WEB__) must
+	// not block injection — otherwise the browser loads Wails bindings
+	// and library bootstrap fails with a blank "Error".
+	if hasWebBootstrap(html) {
 		return html
 	}
 	if strings.Contains(html, "<head>") {
 		return strings.Replace(html, "<head>", "<head>"+webBootstrap, 1)
 	}
 	return webBootstrap + html
+}
+
+func hasWebBootstrap(html string) bool {
+	return strings.Contains(html, "__LRSS_WEB__=true") ||
+		strings.Contains(html, "__LRSS_WEB__ = true")
 }
 
 func newViteProxy(target *url.URL) http.Handler {
