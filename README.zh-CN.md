@@ -59,10 +59,32 @@
 | **打开原文** | 桌面用系统浏览器；Web 访问新开标签 |
 | **正文外链** | 遵循「在浏览器中打开链接」设置 |
 | **HTML 安全** | 入库/展示前经 bluemonday 消毒 |
-| **请求全文** | 工具栏手动抓取；可选自动抓取（本地启发式判断摘要/截断，保守策略，跳过 YouTube/嵌入） |
+| **请求全文** | 工具栏、后台排队或打开时自动抓取 — [技术说明](#抓取全文) |
 | **排版** | 字号（小/中/大）、系统字体选择、阅读宽度（窄～铺满） |
 | **阅读器工具栏** | 可配置：禅模式、收藏、已读、摘要、翻译、AI 菜单、请求全文、Markdown、打开原文 |
 | **Markdown 面板** | 将正文转为 Markdown 侧栏预览 |
+
+### 抓取全文
+
+不少订阅源只给摘要。LRSS 可以下载原文页，抽正文后替换本地存储。
+
+**何时运行**
+
+| 触发 | 入口 | 行为 |
+| --- | --- | --- |
+| 手动 | 阅读器工具栏 | 立即抓取该篇原文 URL |
+| 新文章 | **设置 → 订阅 → 抓取全文** | 刷新后，看起来被截断的新文进入队列；与订阅刷新分开、限速消化 |
+| 打开时 | **设置 → AI 功能 → 自动请求全文** | 打开文章时先做保守的「是否只有摘要」判断，再抓取。默认关 |
+
+**流水线**（`internal/fulltext`）
+
+1. **URL 策略** — 仅 `http`/`https`。拦截回环、RFC1918、IPv6 ULA、CGNAT（`100.64/10`）、链路本地、`.localhost` / `.local`、云 metadata。每次重定向再检查一遍（防 SSRF 出站）。
+2. **下载** — [`enetx/surf`](https://github.com/enetx/surf)（`internal/httpx.Std`），指纹友好 TLS/HTTP，不用裸 `http.Client`。超时 45s，正文上限 8 MiB。
+3. **抽取** — Mozilla [Readability](https://github.com/mozilla/readability) 算法，实现为 [`codeberg.org/readeck/go-readability/v2`](https://codeberg.org/readeck/go-readability)。抽出正文 HTML + 纯文本，去掉导航/广告等壳。
+4. **消毒** — [bluemonday](https://github.com/microcosm-cc/bluemonday) UGC 策略后再写入 SQLite / 界面（与订阅源 HTML 相同）。
+5. **入库** — 覆盖 `content_html` / `content_text`，标记 `fullContentFetched`，更新 FTS。
+
+**截断启发式**（排队与自动抓取）只在本地、且偏保守：空正文、「阅读全文」类提示、或正文几乎等于源摘要。说不清的短文不动，请用工具栏。YouTube 观看页不走 Readability：字幕走 InnerTube → kkdai → 可选 `yt-dlp`，并保留阅读器内嵌播放器。
 
 ### 搜索与过滤
 
@@ -151,6 +173,7 @@
 | 前端 | Vue 3 · TypeScript · Vite · Tailwind CSS v4 · [shadcn-vue](https://www.shadcn-vue.com) |
 | 数据 | SQLite（[`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite)）· FTS5 · 可选向量 |
 | 出站 HTTP | [`github.com/enetx/surf`](https://github.com/enetx/surf)（`internal/httpx`） |
+| 全文抽取 | [`go-readability/v2`](https://codeberg.org/readeck/go-readability)（Mozilla Readability）· [bluemonday](https://github.com/microcosm-cc/bluemonday) |
 | 国际化 | vue-i18n（`zh-CN` / `en-US`） |
 
 Go 模块路径：`lrss`。
@@ -279,7 +302,7 @@ main.go
 ├── rss/             拉取与解析（gofeed）
 ├── search/          FTS + 可选向量
 ├── embed/ · llm/    OpenAI 兼容提供方
-├── fulltext/        全文页抓取（主机策略）
+├── fulltext/        页抓取（surf）+ Readability 抽取 + 主机策略
 ├── web/             可选浏览器 HTTP API + SPA
 ├── ytcaptions/      YouTube 字幕后端
 ├── cloudsync/       OPML 推送/拉取（WebDAV / S3）

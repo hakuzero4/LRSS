@@ -59,10 +59,32 @@ Three-pane library · article list · reader (summary deck, selection translate,
 | **Open original** | System browser (desktop) or new tab (web access) |
 | **In-body links** | Honor “open links in browser” preference |
 | **HTML safety** | Article HTML sanitized with bluemonday before store/display |
-| **Fetch full content** | Manual toolbar action; optional auto-fetch when local heuristics detect a truncated feed body (conservative — skips YouTube/embeds) |
+| **Fetch full content** | Toolbar, paced background queue, or optional on-open auto-fetch — [how it works](#fetch-full-content) |
 | **Typography** | Font size (sm/md/lg), system font picker, reader width (narrow → fill) |
 | **Reader toolbar** | Configurable: zen, star, read, summarize, translate, AI menu, fetch full, Markdown panel, open original |
 | **Markdown panel** | Side panel for Markdown conversion of the article |
+
+### Fetch full content
+
+Many feeds only ship a teaser. LRSS can download the original page and replace the stored body.
+
+**When it runs**
+
+| Trigger | Where | What happens |
+| --- | --- | --- |
+| Manual | Reader toolbar | Fetch this article’s URL now |
+| New articles | **Settings → Feeds → Fetch full content** | After a refresh, new items that look truncated are queued; a paced drain (separate from feed refresh) fetches them |
+| On open | **Settings → AI features → Auto fetch full** | Opening an article runs a conservative fullness check; only then fetch. Off by default |
+
+**Pipeline** (`internal/fulltext`)
+
+1. **URL policy** — `http`/`https` only. Block loopback, RFC1918, IPv6 ULA, CGNAT (`100.64/10`), link-local, `.localhost` / `.local`, and cloud metadata hosts. Every redirect is re-checked (SSRF-style egress).
+2. **Download** — outbound [`enetx/surf`](https://github.com/enetx/surf) via `internal/httpx.Std` (fingerprint-friendly TLS/HTTP; not a bare `http.Client`). Timeout 45s, body cap 8 MiB.
+3. **Extract** — [Mozilla Readability](https://github.com/mozilla/readability) algorithm via [`codeberg.org/readeck/go-readability/v2`](https://codeberg.org/readeck/go-readability). Main article HTML + plain text; chrome/nav/ads stripped.
+4. **Sanitize** — [bluemonday](https://github.com/microcosm-cc/bluemonday) UGC policy before SQLite / UI (same as feed HTML).
+5. **Store** — overwrite `content_html` / `content_text`, set `fullContentFetched`, refresh FTS.
+
+**Truncation heuristic** (queue + auto-fetch) is local and conservative: empty body, “read more” style cues, or body ≈ feed summary. Ambiguous short articles are left alone; use the toolbar. YouTube watch URLs skip Readability — captions use InnerTube → kkdai → optional `yt-dlp`, plus the in-reader embed.
 
 ### Search & filters
 
@@ -151,6 +173,7 @@ Enable in **Settings → Advanced → Web access**.
 | Frontend | Vue 3 · TypeScript · Vite · Tailwind CSS v4 · [shadcn-vue](https://www.shadcn-vue.com) |
 | Data | SQLite ([`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite)) · FTS5 · optional vectors |
 | HTTP (outbound) | [`github.com/enetx/surf`](https://github.com/enetx/surf) via `internal/httpx` |
+| Full-page extract | [`go-readability/v2`](https://codeberg.org/readeck/go-readability) (Mozilla Readability) · [bluemonday](https://github.com/microcosm-cc/bluemonday) |
 | i18n | vue-i18n (`zh-CN` / `en-US`) |
 
 Go module path: `lrss`.
@@ -279,7 +302,7 @@ main.go
 ├── rss/             Fetch + parse (gofeed)
 ├── search/          FTS + optional vector
 ├── embed/ · llm/    OpenAI-compatible providers
-├── fulltext/        Full-page extract (host policy)
+├── fulltext/        Page fetch (surf) + Readability extract + host policy
 ├── web/             Optional browser HTTP API + SPA
 ├── ytcaptions/      YouTube caption backends
 ├── cloudsync/       OPML push/pull (WebDAV / S3)
