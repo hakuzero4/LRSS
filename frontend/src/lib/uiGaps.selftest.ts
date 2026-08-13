@@ -99,6 +99,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const store = readFileSync(join(root, "composables/useRssStore.ts"), "utf8");
 const sidebar = readFileSync(join(root, "components/layout/AppSidebar.vue"), "utf8");
 const list = readFileSync(join(root, "components/article/ArticleList.vue"), "utf8");
+const search = readFileSync(join(root, "components/article/ArticleSearch.vue"), "utf8");
 const layout = readFileSync(join(root, "layouts/AppLayout.vue"), "utf8");
 const sync = readFileSync(join(root, "components/settings/panels/SyncPanel.vue"), "utf8");
 const advanced = readFileSync(join(root, "components/settings/panels/AdvancedPanel.vue"), "utf8");
@@ -146,11 +147,24 @@ assert(
   sidebar.includes("ContextMenuSub") && sidebar.includes("moveFolderTargets"),
   "feed move uses submenu",
 );
+assert(
+  sidebar.includes("onLibraryContextCapture") &&
+    sidebar.includes("data-feed-id") &&
+    sidebar.includes("feedsByFolderId"),
+  "sidebar shares one context menu and groups feeds by folder",
+);
 assert(css.includes("sidebar-compact"), "css compact");
 
 // search UI
-assert(list.includes("setSearchQuery") || list.includes("searchModel"), "list search wired");
+assert(
+  list.includes("setSearchQuery") ||
+    list.includes("searchModel") ||
+    search.includes("searchModel") ||
+    search.includes("setSearchQuery"),
+  "list search wired",
+);
 assert(list.includes("empty.noFeeds") || list.includes("emptyListReason"), "empty states");
+assert(list.includes("virtualWindow") && list.includes("windowed"), "article list is windowed");
 
 // honesty
 assert(sync.includes("disabled") && sync.includes("unavailable"), "sync marked unavailable");
@@ -176,6 +190,9 @@ assert(addFeed.includes("w-full"), "folder select full width");
 assert(addFeed.includes("createFolder") || addFeed.includes("newFolder"), "add feed new folder");
 assert(addFeed.includes("feed.add.advanced") || addFeed.includes("advancedOpen"), "add feed advanced");
 assert(addFeed.includes("isNsfw") && addFeed.includes("refreshInterval"), "add feed nsfw/interval");
+assert(addFeed.includes("parseFeedUrlsFromText"), "shared dialog parses many urls");
+assert(feedsPanel.includes("openAddFeed"), "settings add uses shared AddFeedDialog");
+assert(!feedsPanel.includes("settings-add-urls"), "settings has no duplicate add dialog");
 assert(store.includes("AddFeedOptions") || store.includes("isNsfw"), "addFeedFromURL options");
 assert(layout.includes("bootstrapError"), "bootstrap error UI");
 

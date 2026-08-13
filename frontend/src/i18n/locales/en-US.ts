@@ -193,9 +193,9 @@ export default {
     add: {
       title: "Add feed",
       description:
-        "Paste an RSS / Atom URL. Title is optional; leave blank to use the feed title. Public feed lists are often documented on the site’s RSS page.",
+        "One RSS / Atom URL per line; you can add several at once. Lines starting with # are ignored. An optional title applies only when adding a single feed.",
       descriptionInFolder:
-        "Will be added to folder “{name}”. Paste an RSS / Atom URL.",
+        "Will be added to folder “{name}”. One RSS / Atom URL per line; you can add several at once.",
       urlLabel: "Feed URL",
       urlPlaceholder: "https://example.com/feed.xml",
       titleLabel: "Title",

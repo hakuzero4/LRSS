@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import { ChevronDown, FolderPlus } from "@lucide/vue";
 import { useRssStore } from "@/composables/useRssStore";
+import { parseFeedUrlsFromText } from "@/lib/feedUrls";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,10 +35,11 @@ const {
   closeAddFeed,
   setAddFeedFolderId,
   addFeedFromURL,
+  addFeedsFromURLs,
   createFolder,
 } = useRssStore();
 
-const feedUrl = ref("");
+const urlsText = ref("");
 const title = ref("");
 const submitting = ref(false);
 const error = ref("");
@@ -44,6 +47,7 @@ const advancedOpen = ref(false);
 const isNsfw = ref(false);
 /** "0" = follow global; otherwise minutes as string. */
 const refreshInterval = ref("0");
+const addProgress = ref({ current: 0, total: 0 });
 
 const creatingFolder = ref(false);
 const newFolderName = ref("");
@@ -52,8 +56,10 @@ const newFolderInputRef = ref<HTMLInputElement | null>(null);
 
 const INTERVAL_OPTIONS = [0, 5, 15, 30, 60, 120, 180] as const;
 
+const parsedUrls = computed(() => parseFeedUrlsFromText(urlsText.value));
+
 const canSubmit = computed(
-  () => feedUrl.value.trim().length > 8 && !submitting.value && !folderBusy.value,
+  () => parsedUrls.value.length > 0 && !submitting.value && !folderBusy.value,
 );
 
 const folderModel = computed({
@@ -100,13 +106,14 @@ function suggestNsfwFromUrl(raw: string): boolean {
 }
 
 function resetForm() {
-  feedUrl.value = "";
+  urlsText.value = "";
   title.value = "";
   error.value = "";
   submitting.value = false;
   advancedOpen.value = false;
   isNsfw.value = false;
   refreshInterval.value = "0";
+  addProgress.value = { current: 0, total: 0 };
   creatingFolder.value = false;
   newFolderName.value = "";
   folderBusy.value = false;
@@ -120,15 +127,15 @@ watch(addFeedOpen, (open) => {
   }
 });
 
-watch(feedUrl, (url) => {
+watch(parsedUrls, (urls) => {
   if (!advancedOpen.value) {
-    isNsfw.value = suggestNsfwFromUrl(url.trim());
+    isNsfw.value = urls.some((u) => suggestNsfwFromUrl(u));
   }
 });
 
 function toggleAdvanced() {
   advancedOpen.value = !advancedOpen.value;
-  if (advancedOpen.value && suggestNsfwFromUrl(feedUrl.value.trim())) {
+  if (advancedOpen.value && parsedUrls.value.some((u) => suggestNsfwFromUrl(u))) {
     isNsfw.value = true;
   }
 }
@@ -168,28 +175,55 @@ async function confirmCreateFolder() {
 
 async function onSubmit() {
   error.value = "";
-  const url = feedUrl.value.trim();
-  if (!url) {
-    error.value = t("feed.add.errorEmpty");
-    return;
-  }
-  try {
-    // eslint-disable-next-line no-new
-    new URL(url);
-  } catch {
-    error.value = t("feed.add.errorInvalid");
+  const urls = parsedUrls.value;
+  if (urls.length === 0) {
+    error.value = t("settings.feeds.addEmpty");
     return;
   }
 
   submitting.value = true;
+  addProgress.value = { current: 0, total: urls.length };
+  const folderId = addFeedTargetFolderId.value;
+  const interval = Number(refreshInterval.value) || 0;
   try {
-    await addFeedFromURL(url, {
-      title: title.value.trim() || undefined,
+    if (urls.length === 1) {
+      await addFeedFromURL(urls[0]!, {
+        title: title.value.trim() || undefined,
+        isNsfw: isNsfw.value,
+        refreshIntervalMinutes: interval,
+        folderId: folderId ?? "",
+      });
+      toast.success(t("settings.feeds.addDone", { n: 1 }));
+      return;
+    }
+
+    const result = await addFeedsFromURLs(urls, {
+      folderId: folderId ?? "",
       isNsfw: isNsfw.value,
-      refreshIntervalMinutes: Number(refreshInterval.value) || 0,
+      refreshIntervalMinutes: interval,
+      selectLast: true,
+      onProgress: (current, total) => {
+        addProgress.value = { current, total };
+      },
     });
+    closeAddFeed();
+    if (result.added > 0 && result.failed.length === 0) {
+      toast.success(t("settings.feeds.addDone", { n: result.added }));
+    } else if (result.added > 0 && result.failed.length > 0) {
+      toast.success(t("settings.feeds.addPartial", { ok: result.added, fail: result.failed.length }), {
+        description: result.failed
+          .slice(0, 3)
+          .map((f) => `${f.url}: ${f.message}`)
+          .join("\n"),
+      });
+    } else {
+      toast.error(t("settings.feeds.addAllFailed"), {
+        description: result.failed[0]?.message,
+      });
+    }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.feeds.addFailed"), { description: error.value });
   } finally {
     submitting.value = false;
   }
@@ -197,8 +231,9 @@ async function onSubmit() {
 </script>
 
 <template>
-  <Dialog :open="addFeedOpen" @update:open="(v) => !v && closeAddFeed()">
-    <DialogContent class="sm:max-w-md">
+  <Dialog :open="addFeedOpen" @update:open="(v) => !submitting && !v && closeAddFeed()">
+    <!-- Above Settings (z-50) when opened from Settings → Feeds. -->
+    <DialogContent class="z-[70] sm:max-w-lg" overlay-class="z-[70]">
       <DialogHeader>
         <DialogTitle>{{ t("feed.add.title") }}</DialogTitle>
         <DialogDescription>
@@ -212,29 +247,25 @@ async function onSubmit() {
       </DialogHeader>
 
       <form class="grid gap-4 py-1" @submit.prevent="onSubmit">
-        <div class="grid gap-2">
-          <Label for="feed-url">{{ t("feed.add.urlLabel") }}</Label>
-          <Input
-            id="feed-url"
-            v-model="feedUrl"
-            type="url"
-            :placeholder="t('feed.add.urlPlaceholder')"
-            autocomplete="off"
-            autofocus
-          />
-        </div>
-        <div class="grid gap-2">
-          <Label for="feed-title">
-            {{ t("feed.add.titleLabel") }}
-            <span class="font-normal text-muted-foreground">{{ t("common.optional") }}</span>
-          </Label>
-          <Input
-            id="feed-title"
-            v-model="title"
-            type="text"
-            :placeholder="t('feed.add.titlePlaceholder')"
+        <div class="grid gap-1.5">
+          <Label for="feed-urls">{{ t("settings.feeds.addUrlsLabel") }}</Label>
+          <textarea
+            id="feed-urls"
+            v-model="urlsText"
+            rows="6"
+            class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 placeholder:text-muted-foreground w-full min-w-0 resize-y rounded-lg border bg-transparent px-2.5 py-2 font-mono text-[12.5px] leading-relaxed outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+            :placeholder="t('settings.feeds.addUrlsPlaceholder')"
+            :disabled="submitting"
+            spellcheck="false"
             autocomplete="off"
           />
+          <p class="text-[11.5px] leading-snug text-muted-foreground">
+            {{
+              parsedUrls.length > 0
+                ? t("settings.feeds.addUrlsCount", { n: parsedUrls.length })
+                : t("settings.feeds.addUrlsHint")
+            }}
+          </p>
         </div>
 
         <div class="grid gap-2">
@@ -256,7 +287,10 @@ async function onSubmit() {
             <SelectTrigger class="h-9 w-full text-[13px]">
               <SelectValue :placeholder="t('settings.feeds.unfiled')" />
             </SelectTrigger>
-            <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+            <SelectContent
+              position="popper"
+              class="z-[80] w-[var(--reka-select-trigger-width)]"
+            >
               <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
               <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
                 {{ f.name }}
@@ -300,7 +334,6 @@ async function onSubmit() {
           </div>
         </div>
 
-        <!-- Advanced options (NSFW / interval) — collapsible, shadcn-style -->
         <div class="rounded-lg border border-border/80 bg-muted/20">
           <button
             type="button"
@@ -311,7 +344,7 @@ async function onSubmit() {
             <span class="flex items-center gap-2">
               {{ t("feed.add.advanced") }}
               <span
-                v-if="isNsfw || Number(refreshInterval) > 0"
+                v-if="isNsfw || Number(refreshInterval) > 0 || title.trim()"
                 class="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-normal text-primary"
               >
                 {{ t("feed.add.advancedActive") }}
@@ -326,6 +359,21 @@ async function onSubmit() {
           <div v-if="advancedOpen" class="grid gap-3 px-3 pb-3 pt-0">
             <Separator class="opacity-60" />
 
+            <div v-if="parsedUrls.length <= 1" class="grid gap-1.5">
+              <Label for="feed-title">
+                {{ t("feed.add.titleLabel") }}
+                <span class="font-normal text-muted-foreground">{{ t("common.optional") }}</span>
+              </Label>
+              <Input
+                id="feed-title"
+                v-model="title"
+                type="text"
+                :placeholder="t('feed.add.titlePlaceholder')"
+                autocomplete="off"
+                :disabled="submitting"
+              />
+            </div>
+
             <div class="flex items-start justify-between gap-3">
               <div class="grid gap-0.5 pr-2">
                 <Label for="feed-nsfw" class="text-[13px] font-medium leading-none">
@@ -335,16 +383,16 @@ async function onSubmit() {
                   {{ t("feed.add.nsfwDesc") }}
                 </p>
               </div>
-              <Switch id="feed-nsfw" v-model:checked="isNsfw" class="mt-0.5" />
+              <Switch id="feed-nsfw" v-model:checked="isNsfw" class="mt-0.5" :disabled="submitting" />
             </div>
 
             <div class="grid gap-2">
               <Label class="text-[13px]">{{ t("feed.add.refreshInterval") }}</Label>
-              <Select v-model="refreshInterval">
+              <Select v-model="refreshInterval" :disabled="submitting">
                 <SelectTrigger class="h-9 w-full text-[13px]">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent position="popper" class="w-[var(--reka-select-trigger-width)]">
+                <SelectContent position="popper" class="z-[80] w-[var(--reka-select-trigger-width)]">
                   <SelectItem
                     v-for="m in INTERVAL_OPTIONS"
                     :key="m"
@@ -361,14 +409,34 @@ async function onSubmit() {
           </div>
         </div>
 
+        <p
+          v-if="submitting && addProgress.total > 1"
+          class="text-[12px] tabular-nums text-muted-foreground"
+          role="status"
+        >
+          {{
+            t("settings.feeds.addProgress", {
+              current: addProgress.current,
+              total: addProgress.total,
+            })
+          }}
+        </p>
         <p v-if="error" class="text-[12.5px] text-destructive">{{ error }}</p>
 
         <DialogFooter class="gap-2 sm:gap-0">
-          <Button type="button" variant="ghost" @click="closeAddFeed">
+          <Button type="button" variant="ghost" :disabled="submitting" @click="closeAddFeed">
             {{ t("common.cancel") }}
           </Button>
           <Button type="submit" :disabled="!canSubmit">
-            {{ submitting ? t("feed.add.submitting") : t("feed.add.submit") }}
+            {{
+              submitting
+                ? parsedUrls.length > 1
+                  ? t("settings.feeds.adding")
+                  : t("feed.add.submitting")
+                : parsedUrls.length > 1
+                  ? t("settings.feeds.addSubmitMany", { n: parsedUrls.length })
+                  : t("feed.add.submit")
+            }}
           </Button>
         </DialogFooter>
       </form>

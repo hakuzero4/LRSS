@@ -191,8 +191,9 @@ export default {
     add: {
       title: "添加订阅",
       description:
-        "粘贴 RSS / Atom 地址。可选标题；留空则使用拉取到的源标题。公开源示例可参考各站的 RSS 说明页。",
-      descriptionInFolder: "将添加到文件夹「{name}」。粘贴 RSS / Atom 地址。",
+        "每行一个 RSS / Atom 地址，可一次添加多个。支持 # 注释。可选标题仅在添加单个源时生效。",
+      descriptionInFolder:
+        "将添加到文件夹「{name}」。每行一个 RSS / Atom 地址，可一次添加多个。",
       urlLabel: "Feed URL",
       urlPlaceholder: "https://example.com/feed.xml",
       titleLabel: "标题",

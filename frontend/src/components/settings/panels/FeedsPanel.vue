@@ -18,16 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -37,7 +28,6 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { parseFeedUrlsFromText } from "@/lib/feedUrls";
 import { relativeTime } from "@/lib/format";
 import { virtualWindow } from "@/lib/virtualWindow";
 import type { Feed } from "@/types/rss";
@@ -60,7 +50,7 @@ const {
   purgeOldArticles,
   deleteFeed,
   deleteFailedFeeds,
-  addFeedsFromURLs,
+  openAddFeed,
   openFeedEdit,
 } = useRssStore();
 
@@ -201,7 +191,6 @@ const busy = computed(
     exporting.value ||
     clearing.value ||
     purging.value ||
-    addingFeeds.value ||
     deleteFailedBusy.value,
 );
 
@@ -235,71 +224,8 @@ async function confirmDeleteFailed(ev: Event) {
   }
 }
 
-// ── Add feed(s) dialog (multi-line) ────────────────────────────
-const addOpen = ref(false);
-const addUrlsText = ref("");
-const addFolderId = ref("none");
-const addNsfw = ref(false);
-const addingFeeds = ref(false);
-const addProgress = ref({ current: 0, total: 0 });
-
-const parsedAddUrls = computed(() => parseFeedUrlsFromText(addUrlsText.value));
-
 function openAddFeeds() {
-  addUrlsText.value = "";
-  addFolderId.value = settings.defaultFolderId?.trim() || "none";
-  addNsfw.value = false;
-  addingFeeds.value = false;
-  addProgress.value = { current: 0, total: 0 };
-  addOpen.value = true;
-}
-
-async function confirmAddFeeds() {
-  if (addingFeeds.value) return;
-  const urls = parsedAddUrls.value;
-  if (urls.length === 0) {
-    toast.error(t("settings.feeds.addEmpty"));
-    return;
-  }
-  addingFeeds.value = true;
-  addProgress.value = { current: 0, total: urls.length };
-  try {
-    // Sequential with progress: call one-by-one via batch helper is all-or-reload;
-    // use batch API which is sequential and reports result.
-    const folder = addFolderId.value === "none" ? null : addFolderId.value;
-    // Progress: reimplement loop here for UI, or enhance store — simple toast after batch is OK.
-    // For live progress, loop with addFeedsFromURLs is one-shot; show indeterminate then result.
-    const result = await addFeedsFromURLs(urls, {
-      folderId: folder,
-      isNsfw: addNsfw.value,
-      selectLast: true,
-      onProgress: (current, total) => {
-        addProgress.value = { current, total };
-      },
-    });
-
-    if (result.added > 0 && result.failed.length === 0) {
-      toast.success(t("settings.feeds.addDone", { n: result.added }));
-      addOpen.value = false;
-    } else if (result.added > 0 && result.failed.length > 0) {
-      toast.success(t("settings.feeds.addPartial", { ok: result.added, fail: result.failed.length }), {
-        description: result.failed
-          .slice(0, 3)
-          .map((f) => `${f.url}: ${f.message}`)
-          .join("\n"),
-      });
-      addOpen.value = false;
-    } else {
-      toast.error(t("settings.feeds.addAllFailed"), {
-        description: result.failed[0]?.message,
-      });
-    }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("settings.feeds.addFailed"), { description: msg });
-  } finally {
-    addingFeeds.value = false;
-  }
+  openAddFeed();
 }
 
 // ── Row unsubscribe (full edit dialog is shared FeedEditDialog) ─
@@ -805,98 +731,6 @@ async function confirmClearAll(ev: Event) {
         {{ clearStatus }}
       </p>
     </SettingsGroup>
-
-    <!-- Add one or many feed URLs -->
-    <Dialog :open="addOpen" @update:open="(v) => !addingFeeds && (addOpen = v)">
-      <!-- Nested over Settings (z-50). -->
-      <DialogContent class="z-[70] sm:max-w-lg" overlay-class="z-[70]">
-        <DialogHeader>
-          <DialogTitle>{{ t("settings.feeds.addTitle") }}</DialogTitle>
-          <DialogDescription>{{ t("settings.feeds.addDesc") }}</DialogDescription>
-        </DialogHeader>
-        <form class="grid gap-3.5 py-1" @submit.prevent="confirmAddFeeds">
-          <div class="grid gap-1.5">
-            <Label for="settings-add-urls">{{ t("settings.feeds.addUrlsLabel") }}</Label>
-            <textarea
-              id="settings-add-urls"
-              v-model="addUrlsText"
-              rows="7"
-              class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 placeholder:text-muted-foreground w-full min-w-0 resize-y rounded-lg border bg-transparent px-2.5 py-2 font-mono text-[12.5px] leading-relaxed outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
-              :placeholder="t('settings.feeds.addUrlsPlaceholder')"
-              :disabled="addingFeeds"
-              spellcheck="false"
-              autocomplete="off"
-            />
-            <p class="text-[11.5px] leading-snug text-muted-foreground">
-              {{
-                parsedAddUrls.length > 0
-                  ? t("settings.feeds.addUrlsCount", { n: parsedAddUrls.length })
-                  : t("settings.feeds.addUrlsHint")
-              }}
-            </p>
-          </div>
-          <div class="grid gap-1.5">
-            <Label>{{ t("settings.feeds.folderLabel") }}</Label>
-            <Select v-model="addFolderId" :disabled="addingFeeds">
-              <SelectTrigger class="h-9 w-full text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent
-                position="popper"
-                class="z-[80] w-[var(--reka-select-trigger-width)]"
-              >
-                <SelectItem value="none">{{ t("settings.feeds.unfiled") }}</SelectItem>
-                <SelectItem v-for="f in folders" :key="f.id" :value="f.id">
-                  {{ f.name }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div
-            class="flex items-start justify-between gap-3 rounded-md border border-border/60 px-3 py-2.5"
-          >
-            <div class="min-w-0">
-              <p class="text-[13px] font-medium">{{ t("settings.feeds.nsfw") }}</p>
-              <p class="mt-0.5 text-[11.5px] text-muted-foreground">
-                {{ t("settings.feeds.addNsfwDesc") }}
-              </p>
-            </div>
-            <Switch v-model:checked="addNsfw" :disabled="addingFeeds" class="mt-0.5" />
-          </div>
-          <p
-            v-if="addingFeeds && addProgress.total > 0"
-            class="text-[12px] tabular-nums text-muted-foreground"
-            role="status"
-          >
-            {{
-              t("settings.feeds.addProgress", {
-                current: addProgress.current,
-                total: addProgress.total,
-              })
-            }}
-          </p>
-          <DialogFooter class="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="ghost"
-              :disabled="addingFeeds"
-              @click="addOpen = false"
-            >
-              {{ t("common.cancel") }}
-            </Button>
-            <Button type="submit" :disabled="addingFeeds || parsedAddUrls.length === 0">
-              {{
-                addingFeeds
-                  ? t("settings.feeds.adding")
-                  : parsedAddUrls.length > 1
-                    ? t("settings.feeds.addSubmitMany", { n: parsedAddUrls.length })
-                    : t("settings.feeds.addSubmit")
-              }}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
 
     <AlertDialog
       :open="deleteFeedOpen"
