@@ -11,11 +11,12 @@ import (
 // When nil, embedding enqueue is skipped.
 type EmbeddingEnabledFunc func(ctx context.Context) bool
 
-// Repos groups folder/feed/article repositories over one DB.
+// Repos groups folder/feed/article/briefing repositories over one DB.
 type Repos struct {
-	Folders  *FolderRepo
-	Feeds    *FeedRepo
-	Articles *ArticleRepo
+	Folders   *FolderRepo
+	Feeds     *FeedRepo
+	Articles  *ArticleRepo
+	Briefings *BriefingRepo
 }
 
 // Option configures Repos construction.
@@ -40,7 +41,7 @@ func WithVectorIndex(idx *vector.Index) Option {
 	}
 }
 
-// New constructs folder/feed/article repositories sharing db.
+// New constructs folder/feed/article/briefing repositories sharing db.
 func New(db *sql.DB, opts ...Option) *Repos {
 	cfg := reposConfig{}
 	for _, o := range opts {
@@ -56,5 +57,6 @@ func New(db *sql.DB, opts ...Option) *Repos {
 			EmbeddingEnabled: cfg.embeddingEnabled,
 			Vector:           cfg.vec,
 		}),
+		Briefings: NewBriefingRepo(db),
 	}
 }

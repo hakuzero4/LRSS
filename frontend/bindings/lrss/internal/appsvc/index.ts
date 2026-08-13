@@ -3,6 +3,7 @@
 
 import * as AIService from "./aiservice.js";
 import * as ArticleService from "./articleservice.js";
+import * as BriefingService from "./briefingservice.js";
 import * as FeedService from "./feedservice.js";
 import * as SearchService from "./searchservice.js";
 import * as SettingsService from "./settingsservice.js";
@@ -11,6 +12,7 @@ import * as UpdateService from "./updateservice.js";
 export {
     AIService,
     ArticleService,
+    BriefingService,
     FeedService,
     SearchService,
     SettingsService,

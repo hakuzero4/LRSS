@@ -50,6 +50,19 @@ type ArticleStore interface {
 	CountSmart(ctx context.Context, excludeNsfw bool) (repo.SmartCounts, error)
 }
 
+// BriefingStore persists AI briefings (satisfied by *repo.BriefingRepo).
+type BriefingStore interface {
+	Insert(ctx context.Context, b *model.Briefing) error
+	UpdateGenerated(ctx context.Context, id, status, model, overview, errMsg string, articleCount, omittedCount int, payload model.BriefingPayload) error
+	Get(ctx context.Context, id string) (model.Briefing, error)
+	List(ctx context.Context, limit int) ([]model.Briefing, error)
+	SetRead(ctx context.Context, id string, read bool) error
+	SetStarred(ctx context.Context, id string, starred bool) error
+	Delete(ctx context.Context, id string) error
+	UnreadCount(ctx context.Context) (int, error)
+	PruneOld(ctx context.Context, keepUnstarred int) (int, error)
+}
+
 // FulltextFetcher downloads a page and extracts readable HTML (tests can stub).
 type FulltextFetcher interface {
 	Fetch(ctx context.Context, pageURL string) (html string, text string, err error)

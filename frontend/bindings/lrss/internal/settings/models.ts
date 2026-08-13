@@ -211,6 +211,11 @@ export interface UIPrefs {
     "autoSummarize": boolean;
 
     /**
+     * SmartBriefing: after feed refresh, generate an AI digest of new articles.
+     */
+    "smartBriefing": boolean;
+
+    /**
      * SelectTranslate: when true, selecting text in the reader shows AI 划词翻译.
      */
     "selectTranslate": boolean;

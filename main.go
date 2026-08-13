@@ -76,21 +76,26 @@ func main() {
 		prefs, err := store.LoadUIPrefs(c)
 		return err == nil && prefs.FetchFullContent
 	}
+	llmSvc := &llm.Service{Store: store, Cache: &llm.Cache{DB: database.SQL}}
+	briefingWorker := service.NewBriefingWorker(store, repos.Briefings, repos.Articles, repos.Feeds, repos.Folders, llmSvc)
+	library.OnArticlesInserted = briefingWorker.Enqueue
 	settingsAPI.SetLibrary(library)
 	feedAPI := appsvc.NewFeedService(library)
 	feedAPI.SetNotifier(notifier)
 	articleAPI := appsvc.NewArticleService(library, store)
 	aiAPI := appsvc.NewAI(store, library, database.SQL)
+	briefingAPI := appsvc.NewBriefingService(briefingWorker)
 	syncAPI := appsvc.NewSync(store, library)
 	// Keep in sync with frontend/src/lib/appMeta.ts APP_VERSION and git tags.
-	updateAPI := appsvc.NewUpdate("0.1.3")
+	updateAPI := appsvc.NewUpdate("0.1.4")
 
 	// Optional browser access (same SPA; reader toolbar tools + star/read; no settings UI).
 	webServer := web.New(web.APIDeps{
-		Library: library,
-		Store:   store,
-		Search:  searchSvc,
-		AI:      appsvc.NewWebAI(aiAPI),
+		Library:  library,
+		Store:    store,
+		Search:   searchSvc,
+		AI:       appsvc.NewWebAI(aiAPI),
+		Briefing: briefingWorker,
 	}, assets)
 	settingsAPI.SetWebServer(webServer)
 	defer func() {
@@ -109,7 +114,8 @@ func main() {
 	}
 
 	// Background auto-refresh (reads LibraryConfig each tick).
-	go runAutoRefresh(ctx, library, store, notifier)
+	go runAutoRefresh(ctx, library, store, notifier, briefingWorker)
+	go runBriefingDrain(ctx, briefingWorker)
 	// Delayed retention purge so startup is not contending on SQLite.
 	go runStartupPurge(ctx, library, store)
 
@@ -122,6 +128,7 @@ func main() {
 			application.NewService(feedAPI),
 			application.NewService(articleAPI),
 			application.NewService(aiAPI),
+			application.NewService(briefingAPI),
 			application.NewService(syncAPI),
 			application.NewService(updateAPI),
 			application.NewService(ns),
@@ -259,7 +266,7 @@ func runStartupPurge(ctx context.Context, library *service.Library, store *setti
 
 // runAutoRefresh periodically refreshes all feeds when enabled in settings.
 // On each iteration it reloads config so SetLibraryConfig takes effect without restart.
-func runAutoRefresh(ctx context.Context, library *service.Library, store *settings.Store, notifier *notify.Sender) {
+func runAutoRefresh(ctx context.Context, library *service.Library, store *settings.Store, notifier *notify.Sender, briefing *service.BriefingWorker) {
 	// Short initial delay so UI/startup is not contending on SQLite.
 	timer := time.NewTimer(15 * time.Second)
 	defer timer.Stop()
@@ -288,6 +295,7 @@ func runAutoRefresh(ctx context.Context, library *service.Library, store *settin
 		}
 
 		if includeDue || hasForce {
+			hadForce := hasForce
 			// Tick: short intervals (e.g. 5m) and force-queue batches progress.
 			res, ok, err := library.TryRefreshWork(ctx, cfg.RefreshIntervalMinutes, includeDue)
 			if err != nil {
@@ -299,6 +307,9 @@ func runAutoRefresh(ctx context.Context, library *service.Library, store *settin
 					res.FeedsOK, res.FeedsErr, res.ArticlesAdded, res.FeedsPending)
 				if notifier != nil {
 					notifier.AfterRefresh(ctx, res.ArticlesAdded)
+				}
+				if briefing != nil && hadForce && library.ForceQueueLen() == 0 {
+					briefing.NotifyForceQueueEmpty()
 				}
 			}
 		}
@@ -319,6 +330,27 @@ func runAutoRefresh(ctx context.Context, library *service.Library, store *settin
 			timer.Reset(15 * time.Second)
 		} else {
 			timer.Reset(time.Minute)
+		}
+	}
+}
+
+func runBriefingDrain(ctx context.Context, w *service.BriefingWorker) {
+	if w == nil {
+		return
+	}
+	t := time.NewTicker(15 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			did, err := w.TryGenerate(ctx)
+			if err != nil {
+				log.Printf("briefing generate: %v", err)
+			} else if did {
+				log.Printf("briefing: generated")
+			}
 		}
 	}
 }

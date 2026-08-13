@@ -35,6 +35,9 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 	if cfg.RecentReadLimit != 50 {
 		t.Fatalf("RecentReadLimit = %d want 50", cfg.RecentReadLimit)
 	}
+	if cfg.SmartBriefing {
+		t.Fatal("SmartBriefing should default false")
+	}
 	if !cfg.EnableKeyboardShortcuts || !cfg.MarkAsReadOnOpen {
 		t.Fatal("expected keyboard shortcuts and markAsReadOnOpen true")
 	}

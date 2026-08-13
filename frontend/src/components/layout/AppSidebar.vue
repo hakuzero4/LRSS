@@ -12,6 +12,7 @@ import {
   FolderPlus,
   Inbox,
   ListFilter,
+  Newspaper,
   Settings,
   Star,
   X,
@@ -78,6 +79,7 @@ const {
   sidebarFolders,
   sidebarFeeds,
   smartCounts,
+  briefingUnreadCount,
   collectionId,
   settings,
   libraryLoading,
@@ -679,6 +681,16 @@ const smartItems = computed(() => [
     icon: Clock,
     count: smartCounts.recent,
   },
+  ...(settings.smartBriefing
+    ? [
+        {
+          id: "briefing" as const,
+          label: t("nav.briefing"),
+          icon: Newspaper,
+          count: briefingUnreadCount.value,
+        },
+      ]
+    : []),
 ]);
 </script>
 

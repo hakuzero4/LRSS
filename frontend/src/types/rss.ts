@@ -1,4 +1,13 @@
-export type SmartCollectionId = "unread" | "today" | "starred" | "all" | "recent";
+export type SmartCollectionId =
+  | "unread"
+  | "today"
+  | "starred"
+  | "all"
+  | "recent"
+  | "briefing";
+
+/** Article smart lists only — never include briefing in open-on-startup. */
+export type StartupCollectionId = Exclude<SmartCollectionId, "briefing">;
 
 export type CollectionId = SmartCollectionId | `feed:${string}` | `folder:${string}`;
 
@@ -73,6 +82,47 @@ export interface Article {
 export interface ReaderSelection {
   collectionId: CollectionId;
   articleId: string | null;
+}
+
+export interface BriefingCite {
+  articleId: string;
+  title: string;
+  feedTitle: string;
+}
+
+export interface BriefingBullet {
+  point: string;
+  articleId: string;
+  title: string;
+  feedTitle: string;
+  cites?: BriefingCite[];
+}
+
+export interface BriefingTheme {
+  title: string;
+  bullets: BriefingBullet[];
+}
+
+export interface BriefingPayload {
+  overview: string;
+  themes: BriefingTheme[];
+  watch: BriefingBullet[];
+  sourceIds?: string[];
+}
+
+export interface Briefing {
+  id: string;
+  createdAt: string;
+  status: "pending" | "ready" | "error";
+  locale: string;
+  model?: string;
+  overview: string;
+  error?: string;
+  articleCount: number;
+  omittedCount: number;
+  isRead: boolean;
+  isStarred: boolean;
+  payload: BriefingPayload;
 }
 
 /** Result of FeedService.ImportOPML */
@@ -150,7 +200,7 @@ export const READER_TOOLBAR_KEYS = [
 export interface UIPrefs {
   markAsReadOnOpen: boolean;
   markAsReadOnScrollEnd: boolean;
-  openOnStartup: string; // unread|today|starred|recent|all
+  openOnStartup: string; // unread|today|starred|recent|all — not briefing
   hideReadOnStartup: boolean;
   /** Recently-read rows to keep. 10–200, default 50. */
   recentReadLimit: number;
@@ -180,6 +230,8 @@ export interface UIPrefs {
   nsfwMode: boolean;
   /** When true, open article triggers LLM summarize (if LLM configured). */
   autoSummarize: boolean;
+  /** When true, sidebar shows 智能汇报 and the app loads briefing history. */
+  smartBriefing: boolean;
   /** When true, selecting text in the reader shows AI 划词翻译. */
   selectTranslate: boolean;
   /**
@@ -210,7 +262,7 @@ export interface AppSettings {
   // 通用 · 启动
   /** Unused local leftover; OS launch-at-login lives in Settings → Advanced (not UIPrefs). */
   launchAtLogin: boolean;
-  openOnStartup: SmartCollectionId;
+  openOnStartup: StartupCollectionId;
   hideReadOnStartup: boolean;
   /** Recently-read rows to keep. 10–200, default 50. */
   recentReadLimit: number;
@@ -264,6 +316,8 @@ export interface AppSettings {
   nsfwMode: boolean;
   /** Auto-run LLM summarize when opening an article (if LLM configured). */
   autoSummarize: boolean;
+  /** Show 智能汇报 in the sidebar and generate/load briefing history. */
+  smartBriefing: boolean;
   /** Select text in reader to AI-translate (划词翻译). */
   selectTranslate: boolean;
   /** AI judges partial body on open and auto-fetches full page when needed. */

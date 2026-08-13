@@ -59,6 +59,11 @@ type Library struct {
 	// FullContentEnabled reports Settings → Feeds "fetch full content".
 	// Nil means never auto-queue full-content work.
 	FullContentEnabled func(ctx context.Context) bool
+
+	// OnArticlesInserted is called with newly inserted article IDs after a
+	// successful upsert (refresh / add feed). Optional. Must not call LLM
+	// while holding refresh locks — enqueue only.
+	OnArticlesInserted func(ctx context.Context, ids []string)
 }
 
 // AutoFulltextMaxPerTick caps original-page fetches per background drain.
@@ -99,6 +104,13 @@ func NewLibrary(feeds FeedStore, articles ArticleStore, folders FolderStore, rss
 // NewLibraryFromRepos wires a repo.Repos + rss client.
 func NewLibraryFromRepos(r *repo.Repos, rssClient RSSFetcher) *Library {
 	return NewLibrary(r.Feeds, r.Articles, r.Folders, rssClient)
+}
+
+func (lib *Library) emitInserted(ctx context.Context, ids []string) {
+	if lib == nil || lib.OnArticlesInserted == nil || len(ids) == 0 {
+		return
+	}
+	lib.OnArticlesInserted(ctx, ids)
 }
 
 func (lib *Library) sanitizeHTML(raw string) string {
@@ -212,6 +224,7 @@ func (lib *Library) AddFeed(ctx context.Context, feedURL string, folderID *strin
 		return model.Feed{}, err
 	}
 	lib.maybeQueueFullContent(ctx, up.InsertedIDs)
+	lib.emitInserted(ctx, up.InsertedIDs)
 
 	// Best-effort favicon; never fail AddFeed for icon discovery.
 	lib.ensureFavicon(ctx, feed.ID, siteURL, feedURL, nil)
@@ -867,6 +880,7 @@ func (lib *Library) refreshOne(ctx context.Context, feed model.Feed) (int, error
 	}
 	// Queue partial new articles for paced full-content fetch (does not block this feed).
 	lib.maybeQueueFullContent(ctx, up.InsertedIDs)
+	lib.emitInserted(ctx, up.InsertedIDs)
 	// Existing YouTube rows use ON CONFLICT DO NOTHING — fill captions for those
 	// that still lack a captions section (one pass after upsert).
 	lib.backfillYouTubeCaptionsForFeed(ctx, feed.ID, items)

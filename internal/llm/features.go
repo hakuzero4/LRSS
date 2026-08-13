@@ -20,6 +20,7 @@ const (
 	FeatureAsk             = "ask"
 	FeatureSuggest         = "suggest"
 	FeatureClassify        = "classify"
+	FeatureBriefing        = "briefing"
 )
 
 // Content fullness verdicts (DetectContentFullness / EnsureFullContent).
@@ -184,6 +185,8 @@ func SystemPromptFor(feature, locale string) string {
 		base = "You classify RSS items as organic editorial content vs ads/soft-promo/sponsored. Be conservative: only flag clear promotional content. Reply in Markdown with a clear verdict line."
 	case FeatureContentFullness:
 		base = "You judge whether an RSS item body is a full article or only a partial/truncated excerpt. Reply with a strict VERDICT line only—no long essays."
+	case FeatureBriefing:
+		base = briefingSystemPromptBase
 	default:
 		base = "You are a helpful RSS reading assistant. Reply in Markdown."
 	}

@@ -63,6 +63,22 @@ func NewClient(cfg settings.LLMConfig) (*Client, error) {
 	if !cfg.IsConfigured() {
 		return nil, fmt.Errorf("llm: not configured")
 	}
+	return NewClientWithTimeout(cfg, defaultTimeout)
+}
+
+// NewClientWithTimeout is NewClient with an explicit HTTP timeout
+// (briefing needs several minutes; single-article features stay at 60s).
+func NewClientWithTimeout(cfg settings.LLMConfig, timeout time.Duration) (*Client, error) {
+	cfg = cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if !cfg.IsConfigured() {
+		return nil, fmt.Errorf("llm: not configured")
+	}
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
 	return &Client{
 		baseURL:     cfg.BaseURL,
 		apiKey:      cfg.APIKey,
@@ -71,7 +87,7 @@ func NewClient(cfg settings.LLMConfig) (*Client, error) {
 		maxTokens:   cfg.MaxTokens,
 		system:      cfg.SystemPrompt,
 		http: httpx.Std(httpx.Options{
-			Timeout:   defaultTimeout,
+			Timeout:   timeout,
 			UserAgent: defaultUA,
 		}),
 	}, nil

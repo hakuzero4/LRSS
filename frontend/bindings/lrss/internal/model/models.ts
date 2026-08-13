@@ -35,6 +35,63 @@ export interface Article {
 }
 
 /**
+ * Briefing is one stored AI briefing (智能汇报).
+ * Status is pending | ready | error.
+ */
+export interface Briefing {
+    "id": string;
+    "createdAt": string;
+    "status": string;
+    "locale": string;
+    "model"?: string;
+    "overview": string;
+    "error"?: string;
+    "articleCount": number;
+    "omittedCount": number;
+    "isRead": boolean;
+    "isStarred": boolean;
+    "payload": BriefingPayload;
+}
+
+/**
+ * BriefingBullet is one insight. Cites holds all sources (do not duplicate the point).
+ */
+export interface BriefingBullet {
+    "point": string;
+    "articleId": string;
+    "title": string;
+    "feedTitle": string;
+    "cites"?: BriefingCite[] | null;
+}
+
+/**
+ * BriefingCite is one source article under a briefing point.
+ */
+export interface BriefingCite {
+    "articleId": string;
+    "title": string;
+    "feedTitle": string;
+}
+
+/**
+ * BriefingPayload is the generated briefing body stored as payload_json.
+ */
+export interface BriefingPayload {
+    "overview": string;
+    "themes": BriefingTheme[] | null;
+    "watch": BriefingBullet[] | null;
+    "sourceIds"?: string[] | null;
+}
+
+/**
+ * BriefingTheme groups related bullets under a heading.
+ */
+export interface BriefingTheme {
+    "title": string;
+    "bullets": BriefingBullet[] | null;
+}
+
+/**
  * Feed is an RSS/Atom subscription.
  */
 export interface Feed {

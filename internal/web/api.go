@@ -20,6 +20,8 @@ type APIDeps struct {
 	Search  *search.Service
 	// AI powers reader toolbar: summarize / translate / ask / fulltext helpers.
 	AI AI
+	// Briefing is optional (desktop worker). Web is read + star/read only.
+	Briefing *service.BriefingWorker
 }
 
 func (d APIDeps) excludeNsfw(ctx context.Context) bool {
@@ -56,6 +58,13 @@ func (s *Server) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/articles/{id}/star", s.handleSetStarred)
 	mux.HandleFunc("POST /api/articles/{id}/opened", s.handleRecordOpened)
 	mux.HandleFunc("POST /api/articles/mark-all-read", s.handleMarkAllRead)
+	mux.HandleFunc("GET /api/briefings", s.handleListBriefings)
+	mux.HandleFunc("GET /api/briefings/{id}", s.handleGetBriefing)
+	mux.HandleFunc("POST /api/briefings/{id}/read", s.handleSetBriefingRead)
+	mux.HandleFunc("POST /api/briefings/{id}/star", s.handleSetBriefingStar)
+	mux.HandleFunc("POST /api/briefings/{id}/retry", s.handleRetryBriefing)
+	mux.HandleFunc("DELETE /api/briefings/{id}", s.handleDeleteBriefing)
+	mux.HandleFunc("POST /api/briefings/{id}/delete", s.handleDeleteBriefing)
 
 	// Reader toolbar tools (mirror desktop appsvc when enabled in UIPrefs.readerToolbar)
 	mux.HandleFunc("POST /api/articles/{id}/fetch-full", s.handleFetchFull)
@@ -243,6 +252,105 @@ func (s *Server) handleRecordOpened(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleListBriefings(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Briefing == nil {
+		writeJSON(w, http.StatusOK, []model.Briefing{})
+		return
+	}
+	list, err := s.deps.Briefing.List(r.Context(), 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if list == nil {
+		list = []model.Briefing{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) handleGetBriefing(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Briefing == nil {
+		writeError(w, http.StatusServiceUnavailable, "briefings unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	b, err := s.deps.Briefing.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
+}
+
+func (s *Server) handleSetBriefingRead(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Briefing == nil {
+		writeError(w, http.StatusServiceUnavailable, "briefings unavailable")
+		return
+	}
+	var body struct {
+		Read bool `json:"read"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.deps.Briefing.SetRead(r.Context(), r.PathValue("id"), body.Read); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleSetBriefingStar(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Briefing == nil {
+		writeError(w, http.StatusServiceUnavailable, "briefings unavailable")
+		return
+	}
+	var body struct {
+		Starred bool `json:"starred"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.deps.Briefing.SetStarred(r.Context(), r.PathValue("id"), body.Starred); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleDeleteBriefing(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Briefing == nil {
+		writeError(w, http.StatusServiceUnavailable, "briefings unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.deps.Briefing.Delete(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleRetryBriefing(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Briefing == nil {
+		writeError(w, http.StatusServiceUnavailable, "briefings unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.deps.Briefing.Retry(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	b, err := s.deps.Briefing.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
 }
 
 func (s *Server) handleSetRead(w http.ResponseWriter, r *http.Request) {

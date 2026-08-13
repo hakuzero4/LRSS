@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowLeft } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -6,8 +7,11 @@ import ArticleList from "@/components/article/ArticleList.vue";
 import ArticleReader from "@/components/article/ArticleReader.vue";
 import AIResultPanel from "@/components/article/AIResultPanel.vue";
 import MarkdownPanel from "@/components/article/MarkdownPanel.vue";
+import BriefingList from "@/components/briefing/BriefingList.vue";
+import BriefingReader from "@/components/briefing/BriefingReader.vue";
 import { useRssStore } from "@/composables/useRssStore";
 import { articleToMarkdown } from "@/lib/htmlToMarkdown";
+import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -19,12 +23,23 @@ const {
   selectedArticle,
   selectedFeed,
   selectedArticleId,
+  collectionId,
   collectionDisplayMode,
   zenMode,
   aiPanel,
   closeAIPanel,
   aiApplyFolder,
+  selectArticle,
 } = useRssStore();
+
+const isBriefingCollection = computed(() => collectionId.value === "briefing");
+const briefingShowsArticle = computed(
+  () => isBriefingCollection.value && !!selectedArticleId.value,
+);
+
+function backToBriefing() {
+  selectArticle(null);
+}
 
 const markdownOpen = ref(false);
 
@@ -74,8 +89,25 @@ watch(selectedArticleId, (id) => {
     v-if="zenMode"
     class="flex h-full min-h-0 w-full flex-1 overflow-hidden"
   >
-    <div class="min-h-0 min-w-0 flex-1">
-      <ArticleReader v-model:markdown-open="markdownOpen" />
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        v-if="briefingShowsArticle"
+        class="pane-chrome flex h-10 shrink-0 items-center px-3"
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="h-8 gap-1.5 px-2 text-[12.5px] text-muted-foreground"
+          @click="backToBriefing"
+        >
+          <ArrowLeft class="size-3.5" />
+          {{ t("briefing.backToBriefing") }}
+        </Button>
+      </div>
+      <div class="min-h-0 min-w-0 flex-1">
+        <ArticleReader v-model:markdown-open="markdownOpen" />
+      </div>
     </div>
     <div
       v-if="aiPanel.open"
@@ -120,7 +152,8 @@ watch(selectedArticleId, (id) => {
       :max-size="collectionDisplayMode === 'cards' ? 70 : 50"
       class="min-w-0"
     >
-      <ArticleList />
+      <BriefingList v-if="collectionId === 'briefing'" />
+      <ArticleList v-else />
     </ResizablePanel>
 
     <ResizableHandle with-handle />
@@ -131,7 +164,28 @@ watch(selectedArticleId, (id) => {
       :min-size="28"
       class="min-w-0"
     >
-      <ArticleReader v-model:markdown-open="markdownOpen" />
+      <div
+        v-if="briefingShowsArticle"
+        class="flex h-full min-h-0 flex-col"
+      >
+        <div class="pane-chrome flex h-10 shrink-0 items-center px-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            class="h-8 gap-1.5 px-2 text-[12.5px] text-muted-foreground"
+            @click="backToBriefing"
+          >
+            <ArrowLeft class="size-3.5" />
+            {{ t("briefing.backToBriefing") }}
+          </Button>
+        </div>
+        <div class="min-h-0 flex-1">
+          <ArticleReader v-model:markdown-open="markdownOpen" />
+        </div>
+      </div>
+      <BriefingReader v-else-if="collectionId === 'briefing'" />
+      <ArticleReader v-else v-model:markdown-open="markdownOpen" />
     </ResizablePanel>
 
     <template v-if="aiPanel.open">

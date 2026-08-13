@@ -3,6 +3,11 @@
 
 export type {
     Article,
+    Briefing,
+    BriefingBullet,
+    BriefingCite,
+    BriefingPayload,
+    BriefingTheme,
     Feed,
     Folder
 } from "./models.js";

@@ -124,6 +124,18 @@ export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
       GetLibraryConfig: () => getJSON("/api/library-config"),
       // Mutations intentionally absent (management read-only)
     },
+    BriefingService: {
+      List: () => getJSON("/api/briefings"),
+      Get: (id: string) => getJSON(`/api/briefings/${encodeURIComponent(id)}`),
+      SetRead: (id: string, read: boolean) =>
+        postJSON(`/api/briefings/${encodeURIComponent(id)}/read`, { read }),
+      SetStarred: (id: string, starred: boolean) =>
+        postJSON(`/api/briefings/${encodeURIComponent(id)}/star`, { starred }),
+      Retry: (id: string) =>
+        postJSON(`/api/briefings/${encodeURIComponent(id)}/retry`, {}),
+      Delete: (id: string) =>
+        postJSON(`/api/briefings/${encodeURIComponent(id)}/delete`, {}),
+    },
     SearchService: {
       Search: (query: string, mode: string, limit: number) => {
         const q = new URLSearchParams({

@@ -2,7 +2,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import i18n from "@/i18n";
 import { applyArticleFilters } from "@/lib/articleFilters";
-import { loadAppsvc, mapArticle, mapFeed, mapFolder } from "@/lib/backend";
+import { loadAppsvc, mapArticle, mapBriefing, mapFeed, mapFolder } from "@/lib/backend";
 import { applyAppLocale, resolveLocale } from "@/i18n";
 import { setLocalePersistHook } from "@/composables/useLocale";
 import { isWebMode, webMode } from "@/lib/webMode";
@@ -25,6 +25,7 @@ import {
 import type {
   AppSettings,
   Article,
+  Briefing,
   CollectionId,
   Feed,
   FeedFolder,
@@ -34,6 +35,7 @@ import type {
   OPMLImportResult,
   ReaderToolbarButtons,
   SmartCollectionId,
+  StartupCollectionId,
   UIPrefs,
 } from "@/types/rss";
 import {
@@ -54,6 +56,11 @@ const articles = ref<Article[]>([]);
 
 const collectionId = ref<CollectionId>("unread");
 const selectedArticleId = ref<string | null>(null);
+const briefings = ref<Briefing[]>([]);
+const selectedBriefingId = ref<string | null>(null);
+const briefingUnreadCount = ref(0);
+const briefingsLoading = ref(false);
+let briefingGetSeq = 0;
 const searchQuery = ref("");
 /** Articles from SearchService (null = not in backend-search mode). */
 const searchArticles = ref<Article[] | null>(null);
@@ -670,6 +677,7 @@ const settings = reactive<AppSettings>({
   developerMode: false,
   nsfwMode: true,
   autoSummarize: false,
+  smartBriefing: false,
   selectTranslate: true,
   autoFetchFull: false,
   translateReplaceOriginal: false,
@@ -697,7 +705,7 @@ const smartCounts = reactive({
   starred: 0,
   recent: 0,
   all: 0,
-} satisfies Record<SmartCollectionId, number>);
+} satisfies Record<Exclude<SmartCollectionId, "briefing">, number>);
 
 /** Offline / mock fallback: derive from currently loaded articles only. */
 function applySmartCountsFromArticles() {
@@ -775,6 +783,7 @@ const collectionTitle = computed(() => {
   if (id === "today") return t("nav.today");
   if (id === "starred") return t("nav.starred");
   if (id === "recent") return t("nav.recent");
+  if (id === "briefing") return t("nav.briefing");
   if (id === "all") return t("nav.all");
   if (id.startsWith("feed:")) {
     return feeds.value.find((f) => f.id === id.slice(5))?.title ?? t("nav.feedFallback");
@@ -917,6 +926,9 @@ async function reloadLibrary() {
     bootstrapError.value = "";
     libraryLoading.value = false;
     await Promise.all([reloadArticles(), reloadSmartCounts()]);
+    if (settings.smartBriefing) {
+      void reloadBriefings();
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message.trim() : "";
     bootstrapError.value = msg || String(e);
@@ -926,6 +938,11 @@ async function reloadLibrary() {
 }
 
 async function reloadArticles() {
+  // Briefing is not an article collection — skip ArticleService list for this id.
+  if (collectionId.value === "briefing") {
+    articlesLoading.value = false;
+    return;
+  }
   const api = await loadAppsvc();
   if (!api?.ArticleService) return;
   const seq = ++articlesLoadSeq;
@@ -987,14 +1004,25 @@ async function persistLibraryConfig(): Promise<void> {
   }
 }
 
-const SMART_COLLECTIONS: SmartCollectionId[] = ["unread", "today", "starred", "all", "recent"];
+/** Article lists only. Briefing is a smart-nav item but never an open-on-startup target. */
+const SMART_COLLECTIONS: StartupCollectionId[] = [
+  "unread",
+  "today",
+  "starred",
+  "all",
+  "recent",
+];
 const THEMES = new Set(["system", "light", "dark"]);
 
 const FONT_SIZES = new Set(["sm", "md", "lg"]);
 const READER_WIDTHS = new Set(["narrow", "medium", "wide", "fill"]);
 
-function isSmartCollection(v: unknown): v is SmartCollectionId {
-  return typeof v === "string" && (SMART_COLLECTIONS as string[]).includes(v);
+function isSmartCollection(v: unknown): v is StartupCollectionId {
+  return (
+    typeof v === "string" &&
+    v !== "briefing" &&
+    (SMART_COLLECTIONS as string[]).includes(v)
+  );
 }
 
 function buildUIPrefs(): UIPrefs {
@@ -1026,6 +1054,7 @@ function buildUIPrefs(): UIPrefs {
     developerMode: settings.developerMode,
     nsfwMode: settings.nsfwMode,
     autoSummarize: settings.autoSummarize,
+    smartBriefing: settings.smartBriefing,
     selectTranslate: settings.selectTranslate,
     autoFetchFull: settings.autoFetchFull,
     translateReplaceOriginal: settings.translateReplaceOriginal,
@@ -1207,6 +1236,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const autoSum = pickBool(p, "autoSummarize", "AutoSummarize");
   if (autoSum !== undefined) settings.autoSummarize = autoSum;
+
+  const smartBr = pickBool(p, "smartBriefing", "SmartBriefing");
+  if (smartBr !== undefined) settings.smartBriefing = smartBr;
 
   const selTr = pickBool(p, "selectTranslate", "SelectTranslate");
   if (selTr !== undefined) settings.selectTranslate = selTr;
@@ -1614,6 +1646,9 @@ async function bootstrap() {
     applyStartupPrefs();
     // Re-fetch articles if startup collection differs from default "unread" load.
     await reloadArticles();
+    if (settings.smartBriefing) {
+      void reloadBriefings();
+    }
   }
 }
 
@@ -1634,9 +1669,18 @@ function selectCollection(id: CollectionId) {
     if (!same) {
       articles.value = [];
     }
-    void reloadArticles();
+    if (id === "briefing") {
+      void reloadBriefings();
+    } else {
+      void reloadArticles();
+    }
   } else {
-    applySmartCountsFromArticles();
+    if (id === "briefing") {
+      briefings.value = [];
+      briefingUnreadCount.value = 0;
+    } else {
+      applySmartCountsFromArticles();
+    }
   }
 }
 
@@ -2496,6 +2540,207 @@ async function refreshFeeds() {
   } finally {
     // Always clear the header spinner — never leave it spinning after a hang/timeout.
     refreshing.value = false;
+    if (settings.smartBriefing) {
+      void reloadBriefings();
+    }
+  }
+}
+
+function briefingCreatedAtMs(iso: string | undefined): number {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function applyBriefingUnreadFromList() {
+  briefingUnreadCount.value = briefings.value.filter((b) => !b.isRead).length;
+}
+
+function upsertBriefing(next: Briefing) {
+  if (!next.id) return;
+  const idx = briefings.value.findIndex((b) => b.id === next.id);
+  if (idx >= 0) {
+    const prev = briefings.value[idx];
+    briefings.value[idx] = {
+      ...prev,
+      ...next,
+      payload: {
+        overview: next.payload.overview || prev.payload.overview,
+        themes: next.payload.themes.length ? next.payload.themes : prev.payload.themes,
+        watch: next.payload.watch.length ? next.payload.watch : prev.payload.watch,
+      },
+    };
+  } else {
+    briefings.value = [next, ...briefings.value];
+  }
+}
+
+function extractBriefingRows(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== "object") return [];
+  const o = raw as Record<string, unknown>;
+  const rows = o.items ?? o.Items ?? o.briefings ?? o.Briefings ?? o.list ?? o.List;
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function reloadBriefings() {
+  const api = await loadAppsvc();
+  const fn = api?.BriefingService?.List;
+  if (typeof fn !== "function") {
+    // Offline / mock: empty history — never invent briefings.
+    briefings.value = [];
+    briefingUnreadCount.value = 0;
+    briefingsLoading.value = false;
+    if (
+      selectedBriefingId.value &&
+      !briefings.value.some((b) => b.id === selectedBriefingId.value)
+    ) {
+      selectedBriefingId.value = null;
+    }
+    return;
+  }
+  briefingsLoading.value = true;
+  try {
+    const raw = await fn();
+    const mapped = extractBriefingRows(raw)
+      .map(mapBriefing)
+      .filter((b) => !!b.id);
+    mapped.sort((a, b) => briefingCreatedAtMs(b.createdAt) - briefingCreatedAtMs(a.createdAt));
+    briefings.value = mapped;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const o = raw as Record<string, unknown>;
+      const n = parseCountField(o.unreadCount ?? o.UnreadCount);
+      if (n > 0 || "unreadCount" in o || "UnreadCount" in o) {
+        briefingUnreadCount.value = n;
+      } else {
+        applyBriefingUnreadFromList();
+      }
+    } else {
+      applyBriefingUnreadFromList();
+    }
+    if (
+      selectedBriefingId.value &&
+      !briefings.value.some((b) => b.id === selectedBriefingId.value)
+    ) {
+      selectedBriefingId.value = null;
+    }
+  } catch (e) {
+    console.warn("[lrss] reloadBriefings failed", e);
+  } finally {
+    briefingsLoading.value = false;
+  }
+}
+
+async function reloadBriefingCount() {
+  const api = await loadAppsvc();
+  const countFn = api?.BriefingService?.UnreadCount;
+  if (typeof countFn === "function") {
+    try {
+      briefingUnreadCount.value = parseCountField(await countFn());
+      return;
+    } catch (e) {
+      console.warn("[lrss] Briefing UnreadCount failed", e);
+    }
+  }
+  if (briefings.value.length > 0 || typeof api?.BriefingService?.List !== "function") {
+    applyBriefingUnreadFromList();
+    return;
+  }
+  await reloadBriefings();
+}
+
+const selectedBriefing = computed(
+  () => briefings.value.find((b) => b.id === selectedBriefingId.value) ?? null,
+);
+
+async function selectBriefing(id: string | null) {
+  selectedBriefingId.value = id;
+  selectedArticleId.value = null;
+  if (!id) return;
+  const seq = ++briefingGetSeq;
+  const api = await loadAppsvc();
+  const getFn = api?.BriefingService?.Get;
+  if (typeof getFn === "function") {
+    try {
+      const raw = await getFn(id);
+      if (seq !== briefingGetSeq || selectedBriefingId.value !== id) return;
+      if (raw) upsertBriefing(mapBriefing(raw));
+    } catch (e) {
+      if (seq !== briefingGetSeq) return;
+      console.warn("[lrss] Briefing Get failed", e);
+    }
+  }
+  if (selectedBriefingId.value !== id) return;
+  const row = briefings.value.find((b) => b.id === id);
+  if (row && !row.isRead) {
+    row.isRead = true;
+    applyBriefingUnreadFromList();
+    const setRead = api?.BriefingService?.SetRead;
+    if (typeof setRead === "function") {
+      try {
+        await setRead(id, true);
+      } catch (e) {
+        row.isRead = false;
+        applyBriefingUnreadFromList();
+        console.warn("[lrss] Briefing SetRead failed", e);
+      }
+    }
+  }
+}
+
+async function retryBriefing(id: string): Promise<void> {
+  const api = await loadAppsvc();
+  const fn = api?.BriefingService?.Retry;
+  if (typeof fn !== "function") {
+    throw new Error("retry unavailable");
+  }
+  const row = briefings.value.find((b) => b.id === id);
+  if (row) row.status = "pending";
+  try {
+    const raw = await fn(id);
+    if (raw) upsertBriefing(mapBriefing(raw));
+    else await reloadBriefings();
+  } catch (e) {
+    await reloadBriefings();
+    throw e;
+  }
+}
+
+async function deleteBriefing(id: string): Promise<void> {
+  const prev = briefings.value;
+  const wasSelected = selectedBriefingId.value === id;
+  briefings.value = briefings.value.filter((b) => b.id !== id);
+  applyBriefingUnreadFromList();
+  if (wasSelected) {
+    selectedBriefingId.value = briefings.value[0]?.id ?? null;
+  }
+  const api = await loadAppsvc();
+  const fn = api?.BriefingService?.Delete;
+  if (typeof fn !== "function") return;
+  try {
+    await fn(id);
+  } catch (e) {
+    briefings.value = prev;
+    applyBriefingUnreadFromList();
+    if (wasSelected) selectedBriefingId.value = id;
+    console.warn("[lrss] Briefing Delete failed", e);
+    throw e;
+  }
+}
+
+async function setBriefingStarred(id: string, starred: boolean) {
+  const row = briefings.value.find((b) => b.id === id);
+  const prev = row?.isStarred;
+  if (row) row.isStarred = starred;
+  const api = await loadAppsvc();
+  const fn = api?.BriefingService?.SetStarred;
+  if (typeof fn !== "function") return;
+  try {
+    await fn(id, starred);
+  } catch (e) {
+    if (row && prev !== undefined) row.isStarred = prev;
+    console.warn("[lrss] Briefing SetStarred failed", e);
+    throw e;
   }
 }
 
@@ -2692,6 +2937,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     developerMode: false,
     nsfwMode: true,
     autoSummarize: false,
+    smartBriefing: false,
     selectTranslate: true,
     autoFetchFull: false,
     translateReplaceOriginal: false,
@@ -2773,6 +3019,19 @@ async function exportDiagnostics(): Promise<void> {
   }
 }
 
+watch(
+  () => settings.smartBriefing,
+  (enabled) => {
+    if (enabled) {
+      void reloadBriefings();
+      return;
+    }
+    if (collectionId.value === "briefing") {
+      selectCollection("unread");
+    }
+  },
+);
+
 // When Appearance (or useLocale) changes language, also write UIPrefs.locale.
 setLocalePersistHook(() => {
   // Skip web: no SetUIPrefs; desktop is source of truth.
@@ -2814,6 +3073,17 @@ export function useRssStore() {
     bootstrapError,
     settings,
     smartCounts,
+    briefings,
+    selectedBriefingId,
+    selectedBriefing,
+    briefingUnreadCount,
+    briefingsLoading,
+    reloadBriefings,
+    reloadBriefingCount,
+    selectBriefing,
+    retryBriefing,
+    deleteBriefing,
+    setBriefingStarred,
     collectionTitle,
     collectionDisplayMode,
     filteredArticles,

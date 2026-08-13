@@ -40,6 +40,7 @@ func TestMigrate_Empty(t *testing.T) {
 		"jobs",
 		"articles_fts",
 		"schema_migrations",
+		"ai_briefings",
 	}
 	for _, name := range tables {
 		var n int

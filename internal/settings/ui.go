@@ -77,6 +77,8 @@ type UIPrefs struct {
 	NsfwMode bool `json:"nsfwMode"`
 	// AutoSummarize: when true, opening an article requests an LLM summary (if LLM configured).
 	AutoSummarize bool `json:"autoSummarize"`
+	// SmartBriefing: after feed refresh, generate an AI digest of new articles.
+	SmartBriefing bool `json:"smartBriefing"`
 	// SelectTranslate: when true, selecting text in the reader shows AI 划词翻译.
 	SelectTranslate bool `json:"selectTranslate"`
 	// AutoFetchFull: when true, opening an article asks the LLM if the body is
@@ -122,6 +124,7 @@ func DefaultUIPrefs() UIPrefs {
 		DeveloperMode:            false,
 		NsfwMode:                 true, // show all until user enables office hide
 		AutoSummarize:            false,
+		SmartBriefing:            false,
 		SelectTranslate:          true,  // 划词翻译 on by default when LLM is configured
 		AutoFetchFull:            false, // network + LLM; opt-in
 		TranslateReplaceOriginal: false, // keep original body; bilingual overlay only

@@ -9,7 +9,7 @@ const { t } = useI18n();
 const { settings, persistUIPrefs } = useRssStore();
 
 function patchBool(
-  key: "autoSummarize" | "selectTranslate" | "autoFetchFull",
+  key: "autoSummarize" | "selectTranslate" | "autoFetchFull" | "smartBriefing",
   v: boolean,
 ) {
   settings[key] = v;
@@ -42,6 +42,17 @@ function patchBool(
           <Switch
             :checked="settings.autoSummarize"
             @update:checked="(v: boolean) => patchBool('autoSummarize', v)"
+          />
+        </SettingsRow>
+      </div>
+      <div class="py-2.5">
+        <SettingsRow
+          :title="t('settings.aiFeatures.smartBriefing')"
+          :description="t('settings.aiFeatures.smartBriefingDesc')"
+        >
+          <Switch
+            :checked="settings.smartBriefing"
+            @update:checked="(v: boolean) => patchBool('smartBriefing', v)"
           />
         </SettingsRow>
       </div>

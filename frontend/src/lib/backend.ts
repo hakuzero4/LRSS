@@ -3,6 +3,13 @@
 import { formatAuthor, plainText } from "./format";
 import { normalizeFolderDisplayMode } from "./folderMenu";
 import { tryHttpAppsvc } from "./httpAppsvc";
+import type {
+  Briefing,
+  BriefingBullet,
+  BriefingCite,
+  BriefingPayload,
+  BriefingTheme,
+} from "@/types/rss";
 import {
   captureWebTokenFromURL,
   isWailsRuntime,
@@ -166,6 +173,155 @@ export function mapFeed(f: any) {
     keepArticlesDays: keepDays,
     lastError: typeof lastErr === "string" && lastErr.trim() ? lastErr.trim() : undefined,
     isNsfw: !!(f.isNsfw ?? f.IsNsfw),
+  };
+}
+
+function pickStr(obj: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    if (!(k in obj)) continue;
+    const v = obj[k];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function pickNum(obj: Record<string, unknown>, ...keys: string[]): number {
+  for (const k of keys) {
+    if (!(k in obj)) continue;
+    const v = obj[k];
+    if (typeof v === "number" && Number.isFinite(v)) return Math.max(0, Math.floor(v));
+    if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) {
+      return Math.max(0, Math.floor(Number(v)));
+    }
+  }
+  return 0;
+}
+
+function emptyBriefingPayload(): BriefingPayload {
+  return { overview: "", themes: [], watch: [], sourceIds: [] };
+}
+
+function mapBriefingCite(raw: unknown): BriefingCite | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const articleId = pickStr(o, "articleId", "ArticleId", "article_id", "ArticleID");
+  if (!articleId) return null;
+  return {
+    articleId,
+    title: pickStr(o, "title", "Title") || articleId,
+    feedTitle: pickStr(o, "feedTitle", "FeedTitle", "feed_title"),
+  };
+}
+
+function mapBriefingBullet(raw: unknown): BriefingBullet | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const citesRaw = o.cites ?? o.Cites ?? [];
+  const cites = Array.isArray(citesRaw)
+    ? citesRaw.map(mapBriefingCite).filter((c): c is BriefingCite => !!c)
+    : [];
+  const articleId =
+    pickStr(o, "articleId", "ArticleId", "article_id", "ArticleID") || cites[0]?.articleId || "";
+  if (!articleId) return null;
+  return {
+    articleId,
+    title: pickStr(o, "title", "Title") || cites[0]?.title || articleId,
+    feedTitle: pickStr(o, "feedTitle", "FeedTitle", "feed_title") || cites[0]?.feedTitle || "",
+    point: pickStr(o, "point", "Point"),
+    cites,
+  };
+}
+
+function mapBriefingTheme(raw: unknown): BriefingTheme | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const bulletsRaw = o.bullets ?? o.Bullets ?? [];
+  const bullets = Array.isArray(bulletsRaw)
+    ? bulletsRaw.map(mapBriefingBullet).filter((b): b is BriefingBullet => !!b)
+    : [];
+  return {
+    title: pickStr(o, "title", "Title"),
+    bullets,
+  };
+}
+
+function parseBriefingPayload(raw: unknown): BriefingPayload {
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (!s) return emptyBriefingPayload();
+    try {
+      obj = JSON.parse(s);
+    } catch {
+      return emptyBriefingPayload();
+    }
+  }
+  if (!obj || typeof obj !== "object") return emptyBriefingPayload();
+  const o = obj as Record<string, unknown>;
+  const themesRaw = o.themes ?? o.Themes ?? [];
+  const watchRaw = o.watch ?? o.Watch ?? [];
+  const idsRaw = o.sourceIds ?? o.SourceIDs ?? o.SourceIds;
+  return {
+    overview: pickStr(o, "overview", "Overview"),
+    themes: Array.isArray(themesRaw)
+      ? themesRaw.map(mapBriefingTheme).filter((t): t is BriefingTheme => !!t)
+      : [],
+    watch: Array.isArray(watchRaw)
+      ? watchRaw.map(mapBriefingBullet).filter((b): b is BriefingBullet => !!b)
+      : [],
+    sourceIds: Array.isArray(idsRaw)
+      ? idsRaw.map((x) => String(x ?? "").trim()).filter(Boolean)
+      : [],
+  };
+}
+
+function normalizeBriefingStatus(raw: unknown): Briefing["status"] {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === "pending" || s === "ready" || s === "error") return s;
+  return "ready";
+}
+
+/** Map a backend briefing (camelCase or PascalCase) into the frontend Briefing shape. */
+export function mapBriefing(raw: any): Briefing {
+  if (!raw || typeof raw !== "object") {
+    return {
+      id: "",
+      createdAt: "",
+      status: "error",
+      locale: "",
+      overview: "",
+      articleCount: 0,
+      omittedCount: 0,
+      isRead: false,
+      isStarred: false,
+      payload: emptyBriefingPayload(),
+    };
+  }
+  const o = raw as Record<string, unknown>;
+  const payload = parseBriefingPayload(o.payload ?? o.Payload);
+  const overview = pickStr(o, "overview", "Overview") || payload.overview;
+  const err = pickStr(o, "error", "Error");
+  const model = pickStr(o, "model", "Model");
+  return {
+    id: pickStr(o, "id", "ID", "Id"),
+    createdAt: pickStr(o, "createdAt", "CreatedAt", "created_at") || new Date().toISOString(),
+    status: normalizeBriefingStatus(o.status ?? o.Status),
+    locale: pickStr(o, "locale", "Locale"),
+    model: model || undefined,
+    overview,
+    error: err || undefined,
+    articleCount: pickNum(o, "articleCount", "ArticleCount", "article_count"),
+    omittedCount: pickNum(o, "omittedCount", "OmittedCount", "omitted_count"),
+    isRead: !!(o.isRead ?? o.IsRead ?? o.read),
+    isStarred: !!(o.isStarred ?? o.IsStarred ?? o.starred),
+    payload: {
+      overview: payload.overview || overview,
+      themes: payload.themes,
+      watch: payload.watch,
+      sourceIds: payload.sourceIds,
+    },
   };
 }
 

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import type { SmartCollectionId } from "@/types/rss";
+import type { StartupCollectionId } from "@/types/rss";
 
 const { t } = useI18n();
 const { settings, persistLibraryConfig, persistUIPrefs, reloadLibrary, setRecentReadLimit } =
@@ -37,8 +37,8 @@ const intervalModel = computed({
 
 const openOnStartupModel = computed({
   get: () => settings.openOnStartup,
-  set: (v: SmartCollectionId) => {
-    settings.openOnStartup = v;
+  set: (v: StartupCollectionId) => {
+    settings.openOnStartup = v as StartupCollectionId;
     persistUIPrefs();
   },
 });

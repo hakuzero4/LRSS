@@ -5,6 +5,7 @@ export default {
     today: "Today",
     starred: "Starred",
     recent: "Recently read",
+    briefing: "Briefing",
     all: "All articles",
     library: "Library",
     smartLists: "Smart lists",
@@ -196,6 +197,45 @@ export default {
     feedFallback: "Feed",
     summaryLabel: "Summary",
     bodyLabel: "Article",
+  },
+
+  briefing: {
+    empty: "No briefings yet",
+    emptyHint:
+      "Refresh feeds to generate a briefing in the background. Turn the feature on and configure an LLM under Settings → Search/AI.",
+    selectTitle: "Select a briefing",
+    selectHint:
+      "Open a briefing from the list to read the overview, theme bullets, and items to watch.",
+    pending: "Generating…",
+    pendingHint: "Summarizing new articles from the last refresh. A local model may take a minute or two.",
+    error: "Could not generate",
+    retry: "Retry",
+    retrying: "Retrying…",
+    retryFailed: "Retry failed",
+    delete: "Delete briefing",
+    deleteTitle: "Delete this briefing?",
+    deleteDesc: "This cannot be undone, including starred briefings.",
+    deleteConfirm: "Delete",
+    deleteFailed: "Could not delete",
+    watch: "Watch",
+    backToBriefing: "Back to briefing",
+    omitted: "{n} more articles were left out of this briefing",
+    omittedOne: "1 more article was left out of this briefing",
+    starred: "Starred briefing",
+    star: "Star briefing",
+    unstar: "Unstar briefing",
+    markRead: "Mark read",
+    markUnread: "Mark unread",
+    count: "{n} briefings",
+    countOne: "1 briefing",
+    articleCount: "{n} articles covered",
+    articleCountOne: "1 article covered",
+    statusReady: "Ready",
+    statusPending: "Generating",
+    statusError: "Failed",
+    overview: "What matters in this batch",
+    themes: "Themes",
+    model: "Model",
   },
 
   feed: {
@@ -523,6 +563,9 @@ export default {
       autoFetchFull: "Auto fetch full article",
       autoFetchFullDesc:
         "When you open an article, AI judges if the body is only a teaser/excerpt; if so, fetch the original page. Off by default (uses the network).",
+      smartBriefing: "Smart briefing",
+      smartBriefingDesc:
+        "Adds Briefing to the sidebar. When a refresh brings new articles, the LLM extracts what changed by theme; bullets open the source article. Requires an LLM under Settings → Search/AI.",
       llmFeatureAutoFetchFull:
         "· Auto fetch full — on open, AI detects partial body and fetches the page (Settings → AI features).",
     },
