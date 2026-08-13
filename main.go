@@ -83,7 +83,7 @@ func main() {
 	aiAPI := appsvc.NewAI(store, library, database.SQL)
 	syncAPI := appsvc.NewSync(store, library)
 	// Keep in sync with frontend/src/lib/appMeta.ts APP_VERSION and git tags.
-	updateAPI := appsvc.NewUpdate("0.1.1")
+	updateAPI := appsvc.NewUpdate("0.1.2")
 
 	// Optional browser access (same SPA; reader toolbar tools + star/read; no settings UI).
 	webServer := web.New(web.APIDeps{
