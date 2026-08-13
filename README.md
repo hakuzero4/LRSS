@@ -21,6 +21,10 @@ Three-pane library · article list · reader (summary deck, selection translate,
 
 ![LRSS main UI — three-pane library, article list, and reader with AI summary and selection translate](docs/screenshots/main-reader.png)
 
+Folder **image-card** layout — covers in a grid, switch from the list header or the folder context menu
+
+![Folder image-card layout — article covers in a grid next to the reader](docs/screenshots/folder-cards.png)
+
 ---
 
 ## Features
@@ -31,11 +35,21 @@ Three-pane library · article list · reader (summary deck, selection translate,
 | --- | --- |
 | **Three-pane layout** | Sidebar (smart lists / folders / feeds) · article list · reader |
 | **Smart lists** | Unread · Today · Starred · All — with live counts |
-| **Folders** | Nested-style organization; create / rename / delete; mark all read; refresh folder; move feeds |
+| **Folders** | Nested-style organization; create / rename / delete; mark all read; refresh folder; move feeds; [list or image-card display](#folder-display) per folder |
 | **Feeds** | Favicons, unread badges, context menus, per-feed editor |
 | **Office / NSFW mode** | Mark feeds or folders sensitive; hide them from sidebar & smart lists when office mode is on |
 | **Zen mode** | Hide sidebar + list; focus on the article (`z`) |
 | **Resizable panes** | Layout sizes persist across sessions |
+
+### Folder display
+
+Some folders are all image feeds. Set **Display → Image cards** on the folder (right-click), or use the grid / list icon in the article-list header (next to refresh).
+
+- **List** — existing title + teaser rows
+- **Image cards** — cover grid (feed image, or the first `<img>` in the body). Click a card to open the reader
+- Saved on the folder; feeds inside inherit it. Smart lists stay as a list
+
+![Image-card folder view](docs/screenshots/folder-cards.png)
 
 ### Subscriptions
 

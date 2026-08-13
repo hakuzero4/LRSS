@@ -3,7 +3,7 @@
  * Kept free of Vue/Wails so they can be unit-tested and reused by the store.
  */
 
-import type { CollectionId } from "@/types/rss";
+import type { CollectionId, FolderDisplayMode } from "@/types/rss";
 
 export type FolderMenuAction =
   | "open"
@@ -37,6 +37,68 @@ export function feedIdsInFolder(
   const id = folderId.trim();
   if (!id) return [];
   return feeds.filter((f) => (f.folderId ?? "") === id).map((f) => f.id);
+}
+
+export function normalizeFolderDisplayMode(raw: unknown): FolderDisplayMode {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === "cards" || s === "card" || s === "gallery" || s === "grid") return "cards";
+  return "list";
+}
+
+/** Layout for the current collection: folder mode, or a feed's parent folder. */
+export function resolveCollectionDisplayMode(
+  collectionId: string,
+  folders: ReadonlyArray<{ id: string; displayMode?: string | null }>,
+  feeds: ReadonlyArray<{ id: string; folderId?: string | null }>,
+): FolderDisplayMode {
+  const col = (collectionId ?? "").trim();
+  if (col.startsWith("folder:")) {
+    const id = col.slice("folder:".length);
+    const folder = folders.find((f) => f.id === id);
+    return normalizeFolderDisplayMode(folder?.displayMode);
+  }
+  if (col.startsWith("feed:")) {
+    const feedId = col.slice("feed:".length);
+    const feed = feeds.find((f) => f.id === feedId);
+    const folderId = feed?.folderId ?? "";
+    if (!folderId) return "list";
+    const folder = folders.find((f) => f.id === folderId);
+    return normalizeFolderDisplayMode(folder?.displayMode);
+  }
+  return "list";
+}
+
+/** Folder whose displayMode applies to this collection; empty for smart lists / unfiled feeds. */
+export function folderIdForDisplayMode(
+  collectionId: string,
+  feeds: ReadonlyArray<{ id: string; folderId?: string | null }>,
+): string {
+  const col = (collectionId ?? "").trim();
+  if (col.startsWith("folder:")) return col.slice("folder:".length);
+  if (col.startsWith("feed:")) {
+    const feedId = col.slice("feed:".length);
+    return (feeds.find((f) => f.id === feedId)?.folderId ?? "").trim();
+  }
+  return "";
+}
+
+/** First usable image for a card: enclosure URL, then first <img> in HTML. */
+export function articleCardImage(article: {
+  imageUrl?: string | null;
+  contentHtml?: string | null;
+  summary?: string | null;
+}): string {
+  const direct = (article.imageUrl ?? "").trim();
+  if (direct && !direct.startsWith("data:")) return direct;
+  return firstHtmlImage(article.contentHtml) || firstHtmlImage(article.summary);
+}
+
+function firstHtmlImage(html: string | null | undefined): string {
+  if (!html) return "";
+  const m = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i.exec(html);
+  const src = (m?.[1] ?? "").trim();
+  if (!src || src.startsWith("data:")) return "";
+  return src;
 }
 
 /** Unread sum for feeds in a folder. */

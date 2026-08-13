@@ -16,12 +16,16 @@ export type SettingsSectionId =
   | "advanced"
   | "about";
 
+export type FolderDisplayMode = "list" | "cards";
+
 export interface FeedFolder {
   id: string;
   name: string;
   feedIds: string[];
   /** Sensitive folder; hidden (with its feeds) when nsfwMode is false. */
   isNsfw?: boolean;
+  /** Article list layout for this folder (and feeds inside it). */
+  displayMode?: FolderDisplayMode;
 }
 
 export interface Feed {

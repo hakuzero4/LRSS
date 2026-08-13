@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { CheckCheck, RefreshCw } from "@lucide/vue";
+import { CheckCheck, LayoutGrid, LayoutList, RefreshCw } from "@lucide/vue";
+import { toast } from "vue-sonner";
+import { folderIdForDisplayMode } from "@/lib/folderMenu";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
@@ -28,14 +30,37 @@ const {
   articlesLoading,
   refreshing,
   webMode,
+  collectionDisplayMode,
   selectArticle,
   markAllRead,
   refreshFeeds,
   openAddFeed,
+  setFolderDisplayMode,
 } = useRssStore();
 
 const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
 const empty = computed(() => filteredArticles.value.length === 0);
+
+const displayFolderId = computed(() =>
+  folderIdForDisplayMode(collectionId.value, feeds.value),
+);
+const showDisplayToggle = computed(() => !webMode.value && !!displayFolderId.value);
+const cardsOn = computed(() => collectionDisplayMode.value === "cards");
+const displayToggleLabel = computed(() =>
+  cardsOn.value ? t("article.displayToggleToList") : t("article.displayToggleToCards"),
+);
+
+async function toggleDisplayMode() {
+  const id = displayFolderId.value;
+  if (!id) return;
+  const next = cardsOn.value ? "list" : "cards";
+  try {
+    await setFolderDisplayMode(id, next);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("folderMenu.displayModeFailed"), { description: msg });
+  }
+}
 
 const listEl = ref<HTMLElement | null>(null);
 
@@ -109,6 +134,23 @@ const emptyHint = computed(() => {
       </div>
 
       <TooltipProvider :delay-duration="300">
+        <Tooltip v-if="showDisplayToggle">
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              :class="cardsOn ? 'text-primary' : 'text-muted-foreground'"
+              :aria-label="displayToggleLabel"
+              :aria-pressed="cardsOn"
+              @click="toggleDisplayMode"
+            >
+              <LayoutGrid v-if="!cardsOn" class="size-4" />
+              <LayoutList v-else class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ displayToggleLabel }}</TooltipContent>
+        </Tooltip>
+
         <Tooltip v-if="!webMode">
           <TooltipTrigger as-child>
             <Button
@@ -146,7 +188,11 @@ const emptyHint = computed(() => {
     <!-- Independent search module (not part of title chrome) -->
     <ArticleSearch />
 
-    <div ref="listEl" class="scroll-pane flex-1">
+    <div
+      ref="listEl"
+      class="scroll-pane flex-1"
+      :class="collectionDisplayMode === 'cards' && !empty ? 'article-card-scroll' : ''"
+    >
       <div v-if="empty" class="flex h-48 flex-col items-center justify-center px-6 text-center">
         <p class="text-[13px] font-medium text-foreground/80">{{ emptyTitle }}</p>
         <p class="mt-1 text-[12px] leading-relaxed text-muted-foreground">
@@ -163,15 +209,32 @@ const emptyHint = computed(() => {
         </Button>
       </div>
 
-      <ArticleListItem
-        v-for="article in filteredArticles"
-        :key="article.id"
-        :data-article-id="article.id"
-        :article="article"
-        :feed="feedById.get(article.feedId)"
-        :active="article.id === selectedArticleId"
-        @select="selectArticle(article.id)"
-      />
+      <div
+        v-else-if="collectionDisplayMode === 'cards'"
+        class="article-card-grid"
+      >
+        <ArticleListItem
+          v-for="article in filteredArticles"
+          :key="article.id"
+          :data-article-id="article.id"
+          layout="card"
+          :article="article"
+          :feed="feedById.get(article.feedId)"
+          :active="article.id === selectedArticleId"
+          @select="selectArticle(article.id)"
+        />
+      </div>
+      <template v-else>
+        <ArticleListItem
+          v-for="article in filteredArticles"
+          :key="article.id"
+          :data-article-id="article.id"
+          :article="article"
+          :feed="feedById.get(article.feedId)"
+          :active="article.id === selectedArticleId"
+          @select="selectArticle(article.id)"
+        />
+      </template>
     </div>
   </section>
 </template>

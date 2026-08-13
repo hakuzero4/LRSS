@@ -174,6 +174,11 @@ func (s *FeedService) SetFolderNsfw(id string, nsfw bool) error {
 	return s.lib.SetFolderNsfw(context.Background(), id, nsfw)
 }
 
+// SetFolderDisplayMode sets the article list layout for a folder: "list" or "cards".
+func (s *FeedService) SetFolderDisplayMode(id, mode string) error {
+	return s.lib.SetFolderDisplayMode(context.Background(), id, mode)
+}
+
 // RenameFeed sets a custom display title (will not be overwritten by refresh).
 func (s *FeedService) RenameFeed(id, title string) error {
 	return s.lib.RenameFeed(context.Background(), id, title)

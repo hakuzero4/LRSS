@@ -1,6 +1,7 @@
 /** Lazy load Wails-generated appsvc bindings, or HTTP adapter in web mode. */
 
 import { formatAuthor, plainText } from "./format";
+import { normalizeFolderDisplayMode } from "./folderMenu";
 import { tryHttpAppsvc } from "./httpAppsvc";
 import {
   captureWebTokenFromURL,
@@ -175,5 +176,6 @@ export function mapFolder(f: any, feeds: { id: string; folderId?: string }[]) {
     name: f.name ?? "",
     feedIds,
     isNsfw: !!(f.isNsfw ?? f.IsNsfw),
+    displayMode: normalizeFolderDisplayMode(f.displayMode ?? f.DisplayMode),
   };
 }

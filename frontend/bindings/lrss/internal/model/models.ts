@@ -90,6 +90,12 @@ export interface Folder {
      * this folder and its feeds; article lists/search also exclude them.
      */
     "isNsfw": boolean;
+
+    /**
+     * DisplayMode is the article-list layout when viewing this folder
+     * (or a feed inside it): "list" (default) or "cards" (image grid).
+     */
+    "displayMode": string;
     "createdAt": string;
     "updatedAt": string;
 }

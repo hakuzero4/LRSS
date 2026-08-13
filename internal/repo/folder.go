@@ -20,10 +20,26 @@ func NewFolderRepo(db *sql.DB) *FolderRepo {
 	return &FolderRepo{DB: db}
 }
 
+const folderCols = `id, name, parent_id, sort_order, is_nsfw, display_mode, created_at, updated_at`
+
+func scanFolder(row interface{ Scan(dest ...any) error }) (model.Folder, error) {
+	var f model.Folder
+	var parent sql.NullString
+	var nsfw int
+	var mode string
+	if err := row.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &nsfw, &mode, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		return model.Folder{}, err
+	}
+	f.ParentID = strPtr(parent)
+	f.IsNsfw = nsfw != 0
+	f.DisplayMode = model.NormalizeFolderDisplayMode(mode)
+	return f, nil
+}
+
 // List returns all folders ordered by sort_order, name.
 func (r *FolderRepo) List(ctx context.Context) ([]model.Folder, error) {
 	rows, err := r.DB.QueryContext(ctx, `
-		SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
+		SELECT `+folderCols+`
 		FROM folders
 		ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
 	if err != nil {
@@ -33,14 +49,10 @@ func (r *FolderRepo) List(ctx context.Context) ([]model.Folder, error) {
 
 	var out []model.Folder
 	for rows.Next() {
-		var f model.Folder
-		var parent sql.NullString
-		var nsfw int
-		if err := rows.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &nsfw, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		f, err := scanFolder(rows)
+		if err != nil {
 			return nil, err
 		}
-		f.ParentID = strPtr(parent)
-		f.IsNsfw = nsfw != 0
 		out = append(out, f)
 	}
 	if out == nil {
@@ -60,49 +72,40 @@ func (r *FolderRepo) FindByNameAndParent(ctx context.Context, name string, paren
 	var row *sql.Row
 	if parentID == nil || strings.TrimSpace(*parentID) == "" {
 		row = r.DB.QueryRowContext(ctx, `
-			SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
+			SELECT `+folderCols+`
 			FROM folders
 			WHERE name = ? COLLATE NOCASE AND parent_id IS NULL
 			ORDER BY sort_order ASC, created_at ASC
 			LIMIT 1`, name)
 	} else {
 		row = r.DB.QueryRowContext(ctx, `
-			SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
+			SELECT `+folderCols+`
 			FROM folders
 			WHERE name = ? COLLATE NOCASE AND parent_id = ?
 			ORDER BY sort_order ASC, created_at ASC
 			LIMIT 1`, name, strings.TrimSpace(*parentID))
 	}
-	var f model.Folder
-	var parent sql.NullString
-	var nsfw int
-	if err := row.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &nsfw, &f.CreatedAt, &f.UpdatedAt); err != nil {
+	f, err := scanFolder(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return model.Folder{}, sql.ErrNoRows
 		}
 		return model.Folder{}, fmt.Errorf("find folder by name: %w", err)
 	}
-	f.ParentID = strPtr(parent)
-	f.IsNsfw = nsfw != 0
 	return f, nil
 }
 
 // Get loads one folder by id.
 func (r *FolderRepo) Get(ctx context.Context, folderID string) (model.Folder, error) {
 	row := r.DB.QueryRowContext(ctx, `
-		SELECT id, name, parent_id, sort_order, is_nsfw, created_at, updated_at
-		FROM folders WHERE id = ?`, folderID)
-	var f model.Folder
-	var parent sql.NullString
-	var nsfw int
-	if err := row.Scan(&f.ID, &f.Name, &parent, &f.SortOrder, &nsfw, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		SELECT `+folderCols+` FROM folders WHERE id = ?`, folderID)
+	f, err := scanFolder(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return model.Folder{}, fmt.Errorf("folder not found: %s", folderID)
 		}
 		return model.Folder{}, fmt.Errorf("get folder: %w", err)
 	}
-	f.ParentID = strPtr(parent)
-	f.IsNsfw = nsfw != 0
 	return f, nil
 }
 
@@ -117,10 +120,11 @@ func (r *FolderRepo) Create(ctx context.Context, name string, parentID *string) 
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	f.DisplayMode = model.FolderDisplayList
 	_, err := r.DB.ExecContext(ctx, `
-		INSERT INTO folders (id, name, parent_id, sort_order, is_nsfw, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		f.ID, f.Name, nullStr(f.ParentID), f.SortOrder, boolToInt(f.IsNsfw), f.CreatedAt, f.UpdatedAt,
+		INSERT INTO folders (id, name, parent_id, sort_order, is_nsfw, display_mode, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		f.ID, f.Name, nullStr(f.ParentID), f.SortOrder, boolToInt(f.IsNsfw), f.DisplayMode, f.CreatedAt, f.UpdatedAt,
 	)
 	if err != nil {
 		return model.Folder{}, fmt.Errorf("create folder: %w", err)
@@ -136,6 +140,23 @@ func (r *FolderRepo) SetNsfw(ctx context.Context, folderID string, nsfw bool) er
 		boolToInt(nsfw), now, folderID)
 	if err != nil {
 		return fmt.Errorf("set folder nsfw: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("folder not found: %s", folderID)
+	}
+	return nil
+}
+
+// SetDisplayMode sets the article-list layout for a folder (list|cards).
+func (r *FolderRepo) SetDisplayMode(ctx context.Context, folderID, mode string) error {
+	mode = model.NormalizeFolderDisplayMode(mode)
+	now := nowUTC()
+	res, err := r.DB.ExecContext(ctx, `
+		UPDATE folders SET display_mode = ?, updated_at = ? WHERE id = ?`,
+		mode, now, folderID)
+	if err != nil {
+		return fmt.Errorf("set folder display mode: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {

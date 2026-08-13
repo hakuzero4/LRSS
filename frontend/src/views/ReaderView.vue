@@ -19,6 +19,7 @@ const {
   selectedArticle,
   selectedFeed,
   selectedArticleId,
+  collectionDisplayMode,
   zenMode,
   aiPanel,
   closeAIPanel,
@@ -114,9 +115,9 @@ watch(selectedArticleId, (id) => {
   >
     <ResizablePanel
       id="article-list"
-      :default-size="sidePanelOpen ? 24 : 34"
-      :min-size="18"
-      :max-size="50"
+      :default-size="collectionDisplayMode === 'cards' ? (sidePanelOpen ? 36 : 50) : sidePanelOpen ? 24 : 34"
+      :min-size="collectionDisplayMode === 'cards' ? 28 : 18"
+      :max-size="collectionDisplayMode === 'cards' ? 70 : 50"
       class="min-w-0"
     >
       <ArticleList />

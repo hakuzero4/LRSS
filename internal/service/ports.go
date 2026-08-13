@@ -62,6 +62,7 @@ type FolderStore interface {
 	Get(ctx context.Context, folderID string) (model.Folder, error)
 	Rename(ctx context.Context, folderID, name string) error
 	SetNsfw(ctx context.Context, folderID string, nsfw bool) error
+	SetDisplayMode(ctx context.Context, folderID, mode string) error
 	Delete(ctx context.Context, folderID string) error
 	DeleteAll(ctx context.Context) (int, error)
 }

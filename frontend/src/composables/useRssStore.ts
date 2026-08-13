@@ -7,7 +7,12 @@ import { applyAppLocale, resolveLocale } from "@/i18n";
 import { setLocalePersistHook } from "@/composables/useLocale";
 import { isWebMode, webMode } from "@/lib/webMode";
 import { parseBilingualPairs, type BilingualPair } from "@/lib/bilingual";
-import { feedIdsInFolder, folderCollectionId } from "@/lib/folderMenu";
+import {
+  feedIdsInFolder,
+  folderCollectionId,
+  normalizeFolderDisplayMode,
+  resolveCollectionDisplayMode,
+} from "@/lib/folderMenu";
 import { applyShowUnreadOnly } from "@/lib/readingSettings";
 import { filterArticlesByNsfwMode, filterFeedsForSidebar } from "@/lib/nsfw";
 import {
@@ -23,6 +28,7 @@ import type {
   CollectionId,
   Feed,
   FeedFolder,
+  FolderDisplayMode,
   LibraryConfig,
   OPMLImportProgress,
   OPMLImportResult,
@@ -772,6 +778,10 @@ const collectionTitle = computed(() => {
   }
   return t("nav.library");
 });
+
+const collectionDisplayMode = computed(() =>
+  resolveCollectionDisplayMode(collectionId.value, folders.value, feeds.value),
+);
 
 const filteredArticles = computed(() => {
   // Backend search results replace collection list while a query is active.
@@ -2546,6 +2556,17 @@ async function setFeedNsfw(id: string, nsfw: boolean): Promise<void> {
   }
 }
 
+async function setFolderDisplayMode(id: string, mode: FolderDisplayMode): Promise<void> {
+  const next = normalizeFolderDisplayMode(mode);
+  const folder = folders.value.find((f) => f.id === id);
+  if (folder) folder.displayMode = next;
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.SetFolderDisplayMode;
+  if (typeof fn === "function") {
+    await fn(id, next);
+  }
+}
+
 async function setFolderNsfw(id: string, nsfw: boolean): Promise<void> {
   const api = await loadAppsvc();
   const fn = api?.FeedService?.SetFolderNsfw;
@@ -2724,6 +2745,7 @@ export function useRssStore() {
     settings,
     smartCounts,
     collectionTitle,
+    collectionDisplayMode,
     filteredArticles,
     selectedArticle,
     selectedFeed,
@@ -2775,6 +2797,7 @@ export function useRssStore() {
     clearAllSubscriptions,
     createFolder,
     renameFolder,
+    setFolderDisplayMode,
     deleteFolder,
     markFolderRead,
     refreshFolderFeeds,

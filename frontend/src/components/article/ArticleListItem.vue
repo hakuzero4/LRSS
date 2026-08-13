@@ -4,6 +4,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { Article, Feed } from "@/types/rss";
 import FeedIcon from "@/components/feed/FeedIcon.vue";
+import { articleCardImage } from "@/lib/folderMenu";
 import { plainText, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +12,7 @@ const props = defineProps<{
   article: Article;
   feed?: Feed | null;
   active?: boolean;
+  layout?: "list" | "card";
 }>();
 
 const emit = defineEmits<{
@@ -25,10 +27,62 @@ const meta = computed(() => {
 });
 
 const teaser = computed(() => plainText(props.article.summary, 160));
+const cardImage = computed(() => articleCardImage(props.article));
+const isCard = computed(() => props.layout === "card");
 </script>
 
 <template>
   <button
+    v-if="isCard"
+    type="button"
+    :class="
+      cn(
+        'article-card group text-left',
+        active && 'article-card-active',
+        !article.read && 'is-unread',
+      )
+    "
+    @click="emit('select')"
+  >
+    <div class="article-card-thumb">
+      <img
+        v-if="cardImage"
+        :src="cardImage"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        class="article-card-img"
+      />
+      <div v-else class="article-card-fallback">
+        <span class="line-clamp-4 px-2 text-center text-[12px] font-medium leading-snug text-muted-foreground">
+          {{ article.title }}
+        </span>
+      </div>
+      <span
+        v-if="!article.read"
+        class="article-card-unread"
+        aria-hidden="true"
+      />
+      <Star
+        v-if="article.starred"
+        class="article-card-star size-3.5 fill-amber-500 text-amber-500"
+        :aria-label="t('article.starred')"
+      />
+    </div>
+    <div class="article-card-meta">
+      <h3
+        class="line-clamp-2 text-[12.5px] leading-snug tracking-[-0.01em]"
+        :class="article.read ? 'font-medium text-foreground/75' : 'font-semibold text-foreground'"
+      >
+        {{ article.title }}
+      </h3>
+      <p class="mt-0.5 truncate text-[10.5px] text-muted-foreground">
+        {{ meta }}
+      </p>
+    </div>
+  </button>
+  <button
+    v-else
     type="button"
     :class="
       cn(

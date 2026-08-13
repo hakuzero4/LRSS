@@ -161,6 +161,13 @@ export function SetFeedURL(id: string, feedURL: string): $CancellablePromise<voi
 }
 
 /**
+ * SetFolderDisplayMode sets the article list layout for a folder: "list" or "cards".
+ */
+export function SetFolderDisplayMode(id: string, mode: string): $CancellablePromise<void> {
+    return $Call.ByID(3043437529, id, mode);
+}
+
+/**
  * SetFolderNsfw marks or unmarks a folder as sensitive (NSFW).
  * In office mode the folder and its feeds are hidden from the sidebar and lists.
  */

@@ -630,6 +630,48 @@ func TestLibrary_FolderNSFWOfficeMode(t *testing.T) {
 	}
 }
 
+func TestLibrary_FolderDisplayMode(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	folder, err := lib.CreateFolder(ctx, "Photos", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if folder.DisplayMode != model.FolderDisplayList {
+		t.Fatalf("new folder mode = %q", folder.DisplayMode)
+	}
+	if err := lib.SetFolderDisplayMode(ctx, folder.ID, "gallery"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repos.Folders.Get(ctx, folder.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayMode != model.FolderDisplayCards {
+		t.Fatalf("after set = %q want cards", got.DisplayMode)
+	}
+	list, err := repos.Folders.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].DisplayMode != model.FolderDisplayCards {
+		t.Fatalf("list mode = %+v", list)
+	}
+	if err := lib.SetFolderDisplayMode(ctx, folder.ID, "nope"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = repos.Folders.Get(ctx, folder.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayMode != model.FolderDisplayList {
+		t.Fatalf("unknown mode should normalize to list, got %q", got.DisplayMode)
+	}
+}
+
 func TestEffectiveRefreshMinutesAndDue(t *testing.T) {
 	now := mustTime(t, "2026-01-01T12:00:00Z")
 

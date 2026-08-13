@@ -1,5 +1,7 @@
 package model
 
+import "strings"
+
 // Folder groups feeds in the sidebar.
 type Folder struct {
 	ID        string  `json:"id"`
@@ -8,9 +10,27 @@ type Folder struct {
 	SortOrder int     `json:"sortOrder"`
 	// IsNsfw marks a sensitive folder. When UIPrefs.nsfwMode is false, UI hides
 	// this folder and its feeds; article lists/search also exclude them.
-	IsNsfw    bool   `json:"isNsfw"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	IsNsfw bool `json:"isNsfw"`
+	// DisplayMode is the article-list layout when viewing this folder
+	// (or a feed inside it): "list" (default) or "cards" (image grid).
+	DisplayMode string `json:"displayMode"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
+}
+
+const (
+	FolderDisplayList  = "list"
+	FolderDisplayCards = "cards"
+)
+
+// NormalizeFolderDisplayMode maps aliases to list|cards. Empty/unknown → list.
+func NormalizeFolderDisplayMode(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case FolderDisplayCards, "card", "gallery", "grid":
+		return FolderDisplayCards
+	default:
+		return FolderDisplayList
+	}
 }
 
 // Feed is an RSS/Atom subscription.
@@ -35,8 +55,8 @@ type Feed struct {
 	// TitleUserSet is true when the user renamed the feed; refresh must not overwrite title.
 	TitleUserSet bool `json:"titleUserSet"`
 	// IsNsfw marks a sensitive feed. When UIPrefs.nsfwMode is false, UI hides this feed.
-	IsNsfw      bool `json:"isNsfw"`
-	UnreadCount int  `json:"unreadCount"`
+	IsNsfw      bool   `json:"isNsfw"`
+	UnreadCount int    `json:"unreadCount"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
 }

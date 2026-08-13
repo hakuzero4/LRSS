@@ -48,6 +48,14 @@ func (lib *Library) SetFolderNsfw(ctx context.Context, folderID string, nsfw boo
 	return lib.Folders.SetNsfw(ctx, folderID, nsfw)
 }
 
+// SetFolderDisplayMode sets list vs cards layout for a folder's article list.
+func (lib *Library) SetFolderDisplayMode(ctx context.Context, folderID, mode string) error {
+	if strings.TrimSpace(folderID) == "" {
+		return fmt.Errorf("folder id is required")
+	}
+	return lib.Folders.SetDisplayMode(ctx, folderID, mode)
+}
+
 // MoveFeed assigns a feed to a folder. Empty folderID string means unfiled.
 func (lib *Library) MoveFeed(ctx context.Context, feedID string, folderID *string) error {
 	if strings.TrimSpace(feedID) == "" {

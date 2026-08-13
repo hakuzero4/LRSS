@@ -27,7 +27,7 @@ import {
 import { folderCollectionId } from "@/lib/folderMenu";
 import { compactSidebarClass } from "@/lib/uiGaps";
 import { cn } from "@/lib/utils";
-import type { CollectionId, Feed, FeedFolder } from "@/types/rss";
+import type { CollectionId, Feed, FeedFolder, FolderDisplayMode } from "@/types/rss";
 import FeedIcon from "@/components/feed/FeedIcon.vue";
 import {
   Tooltip,
@@ -96,6 +96,7 @@ const {
   setFeedPaused,
   setFeedNsfw,
   setFolderNsfw,
+  setFolderDisplayMode,
   setNsfwMode,
   moveFeedToFolder,
   deleteFeed,
@@ -613,6 +614,18 @@ async function onFolderNsfwToggle(folder: FeedFolder) {
   }
 }
 
+async function onFolderDisplayMode(folder: FeedFolder, mode: FolderDisplayMode) {
+  try {
+    await setFolderDisplayMode(folder.id, mode);
+    toast.success(
+      mode === "cards" ? t("folderMenu.displayCardsOn") : t("folderMenu.displayListOn"),
+    );
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("folderMenu.displayModeFailed"), { description: msg });
+  }
+}
+
 /** Folders a feed can be moved into (exclude current; sorted by name). */
 function moveFolderTargets(feed: Feed): FeedFolder[] {
   const cur = feed.folderId ?? null;
@@ -930,6 +943,27 @@ const smartItems = computed(() => [
               ctxFolder.isNsfw ? t("folderMenu.unmarkNsfw") : t("folderMenu.markNsfw")
             }}
           </ContextMenuItem>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              {{ t("folderMenu.displayMode") }}
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent class="w-44">
+              <ContextMenuItem @select="onFolderDisplayMode(ctxFolder, 'list')">
+                {{ t("folderMenu.displayList") }}
+                <span
+                  v-if="(ctxFolder.displayMode || 'list') === 'list'"
+                  class="ml-auto text-[11px] text-muted-foreground"
+                >✓</span>
+              </ContextMenuItem>
+              <ContextMenuItem @select="onFolderDisplayMode(ctxFolder, 'cards')">
+                {{ t("folderMenu.displayCards") }}
+                <span
+                  v-if="ctxFolder.displayMode === 'cards'"
+                  class="ml-auto text-[11px] text-muted-foreground"
+                >✓</span>
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
           <ContextMenuItem @select="openRename(ctxFolder)">
             {{ t("folderMenu.rename") }}
           </ContextMenuItem>

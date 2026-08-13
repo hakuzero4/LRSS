@@ -71,6 +71,12 @@ export default {
     markNsfw: "Mark as sensitive",
     unmarkNsfw: "Unmark sensitive",
     nsfwFailed: "Could not update sensitive flag",
+    displayMode: "Display",
+    displayList: "List",
+    displayCards: "Image cards",
+    displayListOn: "Switched to list",
+    displayCardsOn: "Switched to image cards",
+    displayModeFailed: "Could not change display mode",
   },
 
   common: {
@@ -159,6 +165,8 @@ export default {
     refreshAllQueued: "Refreshed {done}; {pending} more will continue in the background",
     refreshAllDone: "Refresh done ({ok} ok, {err} failed)",
     markAllRead: "Mark all as read",
+    displayToggleToCards: "Switch to image cards",
+    displayToggleToList: "Switch to list",
     emptyTitle: "No articles here",
     emptyHint: "Try another list, clear search, or refresh your feeds.",
     selectTitle: "Select an article",

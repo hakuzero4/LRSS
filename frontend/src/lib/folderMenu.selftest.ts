@@ -8,8 +8,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FOLDER_MENU_ACTIONS,
+  articleCardImage,
   feedIdsInFolder,
   folderCollectionId,
+  folderIdForDisplayMode,
+  normalizeFolderDisplayMode,
+  resolveCollectionDisplayMode,
   unreadInFolder,
 } from "./folderMenu";
 
@@ -28,6 +32,47 @@ assert(
   ])) === JSON.stringify(["a", "c"]),
   "feedIdsInFolder",
 );
+assert(normalizeFolderDisplayMode("cards") === "cards", "cards");
+assert(normalizeFolderDisplayMode("gallery") === "cards", "gallery alias");
+assert(normalizeFolderDisplayMode("") === "list", "empty is list");
+assert(
+  resolveCollectionDisplayMode(
+    "folder:f1",
+    [{ id: "f1", displayMode: "cards" }],
+    [],
+  ) === "cards",
+  "folder collection cards",
+);
+assert(
+  resolveCollectionDisplayMode(
+    "feed:a",
+    [{ id: "f1", displayMode: "cards" }],
+    [{ id: "a", folderId: "f1" }],
+  ) === "cards",
+  "feed inherits folder cards",
+);
+assert(
+  resolveCollectionDisplayMode("unread", [{ id: "f1", displayMode: "cards" }], []) ===
+    "list",
+  "smart lists stay list",
+);
+assert(folderIdForDisplayMode("folder:f1", []) === "f1", "folder id from collection");
+assert(
+  folderIdForDisplayMode("feed:a", [{ id: "a", folderId: "f1" }]) === "f1",
+  "folder id from feed",
+);
+assert(folderIdForDisplayMode("unread", []) === "", "smart list has no folder");
+assert(
+  articleCardImage({ imageUrl: "https://ex.com/a.jpg" }) === "https://ex.com/a.jpg",
+  "direct image",
+);
+assert(
+  articleCardImage({
+    contentHtml: '<p>x</p><img src="https://ex.com/b.png" alt="">',
+  }) === "https://ex.com/b.png",
+  "html image",
+);
+
 assert(
   unreadInFolder("f1", [
     { folderId: "f1", unreadCount: 3 },
@@ -63,6 +108,7 @@ for (const name of [
   "addFeedFromURL",
   "MarkAllRead",
   "RenameFolder",
+  "SetFolderDisplayMode",
   "DeleteFolder",
   "RefreshFeed",
 ]) {
@@ -82,6 +128,9 @@ assert(sidebar.includes("deleteFolder"), "sidebar deleteFolder");
 assert(sidebar.includes("markFolderRead"), "sidebar markFolderRead");
 assert(sidebar.includes("refreshFolderFeeds"), "sidebar refreshFolderFeeds");
 assert(sidebar.includes("openAddFeedInFolder"), "sidebar openAddFeedInFolder");
+assert(sidebar.includes("setFolderDisplayMode") || sidebar.includes("onFolderDisplayMode"), "sidebar display mode");
+const list = readFileSync(join(root, "components/article/ArticleList.vue"), "utf8");
+assert(list.includes("toggleDisplayMode") && list.includes("LayoutGrid"), "list header display toggle");
 
 for (const key of [
   "folderMenu.open",
@@ -94,6 +143,8 @@ for (const key of [
   "folderMenu.delete",
   "folderMenu.deleteConfirmTitle",
   "folderMenu.deleteConfirmBody",
+  "folderMenu.displayMode",
+  "folderMenu.displayCards",
 ]) {
   // i18n files use nested objects; keys appear as property names
   const leaf = key.split(".").pop()!;

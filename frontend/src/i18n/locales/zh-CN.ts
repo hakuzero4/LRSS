@@ -70,6 +70,12 @@ export default {
     markNsfw: "标记为敏感",
     unmarkNsfw: "取消敏感标记",
     nsfwFailed: "敏感标记失败",
+    displayMode: "展示模式",
+    displayList: "列表",
+    displayCards: "图片卡片",
+    displayListOn: "已切换为列表",
+    displayCardsOn: "已切换为图片卡片",
+    displayModeFailed: "切换展示模式失败",
   },
 
   common: {
@@ -158,6 +164,8 @@ export default {
     refreshAllQueued: "已刷新 {done} 个，剩余 {pending} 个将在后台分批继续",
     refreshAllDone: "刷新完成（成功 {ok}，失败 {err}）",
     markAllRead: "全部标为已读",
+    displayToggleToCards: "切换为图片卡片",
+    displayToggleToList: "切换为列表",
     emptyTitle: "这里没有文章",
     emptyHint: "试试其他列表、清除搜索，或刷新订阅源。",
     selectTitle: "选择一篇文章",
