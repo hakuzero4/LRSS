@@ -17,6 +17,8 @@ export default {
     newFolderPrompt: "New folder name",
     expandAllFolders: "Expand all folders",
     collapseAllFolders: "Collapse all folders",
+    locateFeed: "Locate current feed",
+    locateFeedMissing: "This article’s feed is not in the sidebar",
     filterFeeds: "Filter feeds",
     filterFeedsPlaceholder: "Filter folders or feeds…",
     filterFeedsEmpty: "No matching feeds",

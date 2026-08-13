@@ -12,6 +12,7 @@ import {
   FolderPlus,
   Inbox,
   ListFilter,
+  LocateFixed,
   Newspaper,
   Settings,
   Star,
@@ -85,6 +86,8 @@ const {
   libraryLoading,
   webMode,
   selectCollection,
+  selectedArticle,
+  selectedFeed,
   openAddFeedInFolder,
   openSettings,
   openFeedEdit,
@@ -336,6 +339,7 @@ function clearFeedFilter() {
 
 onUnmounted(() => {
   if (feedFilterTimer) clearTimeout(feedFilterTimer);
+  if (locateFlashTimer) clearTimeout(locateFlashTimer);
 });
 
 // While filtering, auto-expand folders that still have visible feeds.
@@ -374,6 +378,60 @@ function isActive(id: CollectionId) {
 
 function goCollection(id: CollectionId) {
   selectCollection(id);
+}
+
+const locateFeedId = computed(() => {
+  const fromArticle = selectedArticle.value?.feedId;
+  if (fromArticle) return fromArticle;
+  if (selectedFeed.value?.id) return selectedFeed.value.id;
+  const col = collectionId.value;
+  if (col.startsWith("feed:")) return col.slice(5);
+  return "";
+});
+
+const canLocateFeed = computed(() => {
+  const id = locateFeedId.value;
+  if (!id) return false;
+  return sidebarFeeds.value.some((f) => f.id === id) || feeds.value.some((f) => f.id === id);
+});
+
+const locateFlashId = ref("");
+let locateFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function locateCurrentFeed() {
+  const feedId = locateFeedId.value;
+  if (!feedId) return;
+  const feed =
+    sidebarFeeds.value.find((f) => f.id === feedId) ?? feeds.value.find((f) => f.id === feedId);
+  if (!feed) {
+    toast.error(t("nav.locateFeedMissing"));
+    return;
+  }
+  if (feedFilterNeedle.value && !feedMatchesFilter(feed)) {
+    clearFeedFilter();
+  }
+  // Accordion: only the feed's folder is open; every other folder collapses.
+  const next: Record<string, boolean> = {};
+  for (const folder of sidebarFolders.value) {
+    if (folder.id !== feed.folderId) next[folder.id] = true;
+  }
+  collapsedFolders.value = next;
+  selectCollection(`feed:${feed.id}`, { keepArticle: true });
+  await nextTick();
+  const row = document.querySelector<HTMLElement>(
+    `[data-feed-id="${CSS.escape(feed.id)}"]`,
+  );
+  if (!row) {
+    toast.error(t("nav.locateFeedMissing"));
+    return;
+  }
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  locateFlashId.value = feed.id;
+  if (locateFlashTimer) clearTimeout(locateFlashTimer);
+  locateFlashTimer = setTimeout(() => {
+    locateFlashId.value = "";
+    locateFlashTimer = null;
+  }, 1600);
 }
 
 function toggleFolder(id: string) {
@@ -742,6 +800,18 @@ const smartItems = computed(() => [
                 variant="ghost"
                 size="icon-xs"
                 class="text-muted-foreground"
+                :disabled="!canLocateFeed"
+                :aria-label="t('nav.locateFeed')"
+                :title="t('nav.locateFeed')"
+                @click="locateCurrentFeed"
+              >
+                <LocateFixed class="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                class="text-muted-foreground"
                 :disabled="!sidebarFolders.length"
                 :aria-label="
                   allFoldersCollapsed ? t('nav.expandAllFolders') : t('nav.collapseAllFolders')
@@ -857,7 +927,7 @@ const smartItems = computed(() => [
                   <button
                     type="button"
                     :data-feed-id="feed.id"
-                    :class="cn('nav-row', isActive(`feed:${feed.id}`) && 'nav-row-active')"
+                    :class="cn('nav-row', isActive(`feed:${feed.id}`) && 'nav-row-active', locateFlashId === feed.id && 'nav-row-locate')"
                     @click="goCollection(`feed:${feed.id}`)"
                   >
                     <FeedIcon :src="feed.favicon" :title="feed.title" size="sm" />
@@ -900,7 +970,7 @@ const smartItems = computed(() => [
               <button
                 type="button"
                 :data-feed-id="feed.id"
-                :class="cn('nav-row', isActive(`feed:${feed.id}`) && 'nav-row-active')"
+                :class="cn('nav-row', isActive(`feed:${feed.id}`) && 'nav-row-active', locateFlashId === feed.id && 'nav-row-locate')"
                 @click="goCollection(`feed:${feed.id}`)"
               >
                 <FeedIcon :src="feed.favicon" :title="feed.title" size="sm" />

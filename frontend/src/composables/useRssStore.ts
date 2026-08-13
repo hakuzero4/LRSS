@@ -1652,21 +1652,23 @@ async function bootstrap() {
   }
 }
 
-function selectCollection(id: CollectionId) {
+function selectCollection(id: CollectionId, opts?: { keepArticle?: boolean }) {
   const same = collectionId.value === id;
   collectionId.value = id;
-  selectedArticleId.value = null;
+  if (!opts?.keepArticle) {
+    selectedArticleId.value = null;
+    clearSummaryStream();
+    clearTranslateView();
+    lastAutoSummarizeId = null;
+  }
   searchQuery.value = "";
   searchArticles.value = null;
   searchSource.value = "none";
-  clearSummaryStream();
-  clearTranslateView();
-  lastAutoSummarizeId = null;
   if (backendReady.value) {
     // Invalidate in-flight List calls and clear the middle pane immediately so
     // a slow FetchFullContent / previous List cannot leave the old feed visible.
     articlesLoadSeq++;
-    if (!same) {
+    if (!same && !opts?.keepArticle) {
       articles.value = [];
     }
     if (id === "briefing") {

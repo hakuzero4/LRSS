@@ -549,6 +549,20 @@ html.mica.dark [data-slot="alert-dialog-content"] {
   color: var(--primary);
 }
 
+.nav-row-locate {
+  animation: nav-locate-flash 1.5s ease-out;
+}
+
+@keyframes nav-locate-flash {
+  0%,
+  35% {
+    background: color-mix(in oklab, var(--primary) 22%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .brand-mark {
   display: inline-flex;
   align-items: center;

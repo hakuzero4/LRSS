@@ -17,6 +17,8 @@ export default {
     newFolderPrompt: "新建文件夹名称",
     expandAllFolders: "展开全部文件夹",
     collapseAllFolders: "收起全部文件夹",
+    locateFeed: "定位到当前订阅",
+    locateFeedMissing: "当前文章的订阅不在侧栏中",
     filterFeeds: "筛选订阅",
     filterFeedsPlaceholder: "筛选文件夹或订阅…",
     filterFeedsEmpty: "没有匹配的订阅",
