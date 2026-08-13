@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
-import FeedIcon from "@/components/feed/FeedIcon.vue";
+import SettingsFeedRow from "@/components/settings/SettingsFeedRow.vue";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
 import {
@@ -39,8 +39,13 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { parseFeedUrlsFromText } from "@/lib/feedUrls";
 import { relativeTime } from "@/lib/format";
+import { virtualWindow } from "@/lib/virtualWindow";
 import type { Feed } from "@/types/rss";
-import { AlertCircle, Pencil, Plus, Search, Trash2, TriangleAlert } from "@lucide/vue";
+import { AlertCircle, Plus, Search, Trash2, TriangleAlert } from "@lucide/vue";
+
+/** Fixed row height for the virtualized subscription list (px). */
+const FEED_ROW_H = 68;
+const FEED_LIST_MAX_H = 280;
 
 const { t } = useI18n();
 
@@ -74,8 +79,18 @@ const deleteFailedOpen = ref(false);
 const deleteFailedBusy = ref(false);
 
 const feedFilter = ref("");
+/** Debounced query so typing in a large library does not re-filter every key. */
+const feedFilterQ = ref("");
 /** When true, only show feeds with a non-empty lastError. */
 const feedErrorsOnly = ref(false);
+
+let filterTimer: ReturnType<typeof setTimeout> | null = null;
+watch(feedFilter, (v) => {
+  if (filterTimer) clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    feedFilterQ.value = v;
+  }, 120);
+});
 
 const subscriptionCount = computed(() => feeds.value.length);
 
@@ -83,9 +98,18 @@ const errorFeedCount = computed(
   () => feeds.value.filter((f) => !!f.lastError?.trim()).length,
 );
 
+const folderNameById = computed(() => {
+  const m = new Map<string, string>();
+  for (const f of folders.value) m.set(f.id, f.name);
+  return m;
+});
+
+const unfiledLabel = computed(() => t("settings.feeds.unfiled"));
+const neverUpdatedLabel = computed(() => t("settings.feeds.neverUpdated"));
+
 const sortedFeeds = computed(() => {
-  const q = feedFilter.value.trim().toLowerCase();
-  let list = [...feeds.value];
+  const q = feedFilterQ.value.trim().toLowerCase();
+  let list = feeds.value;
   if (feedErrorsOnly.value) {
     list = list.filter((f) => !!f.lastError?.trim());
   }
@@ -98,7 +122,7 @@ const sortedFeeds = computed(() => {
         (f.lastError?.toLowerCase().includes(q) ?? false),
     );
   }
-  return list.sort((a, b) =>
+  return list.slice().sort((a, b) =>
     a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
   );
 });
@@ -107,17 +131,68 @@ const listFilterActive = computed(
   () => feedErrorsOnly.value || !!feedFilter.value.trim(),
 );
 
+const listEl = ref<HTMLElement | null>(null);
+const listScrollTop = ref(0);
+const listViewportH = ref(FEED_LIST_MAX_H);
+
+const listBoxH = computed(() => {
+  const n = sortedFeeds.value.length;
+  if (n === 0) return 120;
+  return Math.min(FEED_LIST_MAX_H, n * FEED_ROW_H);
+});
+
+const windowed = computed(() => {
+  const list = sortedFeeds.value;
+  const win = virtualWindow({
+    count: list.length,
+    scrollTop: listScrollTop.value,
+    viewportH: listViewportH.value,
+    itemH: FEED_ROW_H,
+    overscan: 6,
+  });
+  return {
+    ...win,
+    items: list.slice(win.start, win.end),
+  };
+});
+
+function onListScroll(e: Event) {
+  listScrollTop.value = (e.target as HTMLElement).scrollTop;
+}
+
+let listRo: ResizeObserver | null = null;
+watch(listEl, (el) => {
+  listRo?.disconnect();
+  listRo = null;
+  if (!el || typeof ResizeObserver === "undefined") return;
+  const measure = () => {
+    listViewportH.value = el.clientHeight || FEED_LIST_MAX_H;
+  };
+  measure();
+  listRo = new ResizeObserver(measure);
+  listRo.observe(el);
+});
+watch([feedFilterQ, feedErrorsOnly], () => {
+  listScrollTop.value = 0;
+  if (listEl.value) listEl.value.scrollTop = 0;
+});
+onUnmounted(() => {
+  listRo?.disconnect();
+  listRo = null;
+  if (filterTimer) clearTimeout(filterTimer);
+});
+
 function lastUpdatedLabel(feed: Feed): string {
   const iso = feed.lastFetchedAt?.trim();
-  if (!iso) return t("settings.feeds.neverUpdated");
+  if (!iso) return neverUpdatedLabel.value;
   const tms = Date.parse(iso);
-  if (Number.isNaN(tms)) return t("settings.feeds.neverUpdated");
+  if (Number.isNaN(tms)) return neverUpdatedLabel.value;
   return relativeTime(iso);
 }
 
 function folderName(feed: Feed): string {
-  if (!feed.folderId) return t("settings.feeds.unfiled");
-  return folders.value.find((f) => f.id === feed.folderId)?.name ?? t("settings.feeds.unfiled");
+  if (!feed.folderId) return unfiledLabel.value;
+  return folderNameById.value.get(feed.folderId) ?? unfiledLabel.value;
 }
 
 const busy = computed(
@@ -519,97 +594,54 @@ async function confirmClearAll(ev: Event) {
         </div>
       </template>
       <template v-else>
-        <!-- Cap height (~5–6 rows); scroll inside so OPML / retention stay reachable -->
+        <!-- Windowed list: only mount visible rows (large OPML libraries). -->
         <div
-          class="max-h-[min(280px,42vh)] overflow-y-auto overscroll-contain rounded-lg border border-border/70"
+          ref="listEl"
+          class="overflow-y-auto overscroll-contain rounded-lg border border-border/70"
           role="region"
           :aria-label="t('settings.feeds.listGroup')"
+          :style="{ height: `${listBoxH}px` }"
+          @scroll.passive="onListScroll"
         >
-          <ul class="divide-y divide-border/70">
-            <li
-              v-for="feed in sortedFeeds"
-              :key="feed.id"
-              class="flex items-center gap-2.5 px-3 py-2.5"
+          <div
+            v-if="sortedFeeds.length === 0"
+            class="px-3 py-6 text-center text-[12px] text-muted-foreground"
+          >
+            {{
+              feedErrorsOnly
+                ? t("settings.feeds.listNoErrors")
+                : feedFilter.trim()
+                  ? t("settings.feeds.listNoMatch")
+                  : t("settings.feeds.listEmpty")
+            }}
+          </div>
+          <div
+            v-else
+            :style="{ height: `${windowed.totalH}px`, position: 'relative' }"
+          >
+            <div
+              :style="{
+                transform: `translateY(${windowed.padTop}px)`,
+                willChange: 'transform',
+              }"
             >
-              <FeedIcon
-                :src="feed.favicon"
-                :title="feed.title"
-                size="md"
-                class="shrink-0"
-              />
-              <div class="min-w-0 flex-1">
-                <div class="flex min-w-0 items-center gap-1.5">
-                  <p class="truncate text-[13px] font-medium leading-snug">
-                    {{ feed.title }}
-                  </p>
-                  <span
-                    v-if="feed.isPaused"
-                    class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-                  >
-                    {{ t("settings.feeds.paused") }}
-                  </span>
-                  <span
-                    v-if="feed.isNsfw"
-                    class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive"
-                  >
-                    {{ t("settings.feeds.nsfwBadge") }}
-                  </span>
-                </div>
-                <p
-                  class="mt-0.5 truncate text-[11px] text-muted-foreground"
-                  :title="feed.feedUrl"
-                >
-                  {{ folderName(feed) }}
-                  ·
-                  <span class="tabular-nums">{{ lastUpdatedLabel(feed) }}</span>
-                </p>
-                <p
-                  v-if="feed.lastError"
-                  class="mt-0.5 line-clamp-1 text-[11px] text-destructive/90"
-                  :title="feed.lastError"
-                >
-                  {{ feed.lastError }}
-                </p>
+              <div
+                v-for="feed in windowed.items"
+                :key="feed.id"
+                class="border-b border-border/70 last:border-b-0"
+                :style="{ height: `${FEED_ROW_H}px` }"
+              >
+                <SettingsFeedRow
+                  :feed="feed"
+                  :folder-label="folderName(feed)"
+                  :updated-label="lastUpdatedLabel(feed)"
+                  :busy="busy || deleteFeedBusy"
+                  @edit="openEdit(feed)"
+                  @remove="openDeleteFeed(feed)"
+                />
               </div>
-              <div class="flex shrink-0 items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  class="h-8 gap-1 px-2.5 text-[12px]"
-                  :disabled="busy || deleteFeedBusy"
-                  @click="openEdit(feed)"
-                >
-                  <Pencil class="size-3.5 opacity-70" />
-                  {{ t("settings.feeds.edit") }}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  class="h-8 gap-1 px-2.5 text-[12px] text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  :disabled="busy || deleteFeedBusy"
-                  :aria-label="t('settings.feeds.deleteFeed')"
-                  @click="openDeleteFeed(feed)"
-                >
-                  <Trash2 class="size-3.5 opacity-80" />
-                  {{ t("settings.feeds.deleteFeed") }}
-                </Button>
-              </div>
-            </li>
-            <li
-              v-if="sortedFeeds.length === 0"
-              class="px-3 py-6 text-center text-[12px] text-muted-foreground"
-            >
-              {{
-                feedErrorsOnly
-                  ? t("settings.feeds.listNoErrors")
-                  : feedFilter.trim()
-                    ? t("settings.feeds.listNoMatch")
-                    : t("settings.feeds.listEmpty")
-              }}
-            </li>
-          </ul>
+            </div>
+          </div>
         </div>
       </template>
     </SettingsGroup>

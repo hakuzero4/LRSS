@@ -164,6 +164,10 @@ assert(
   feedsPanel.includes("fetchFullContent") && feedsPanel.includes("onFetchFullContent"),
   "full content toggle wired",
 );
+assert(
+  feedsPanel.includes("virtualWindow") && feedsPanel.includes("SettingsFeedRow"),
+  "feeds list is windowed",
+);
 assert(about.includes("smartCounts"), "about uses smartCounts");
 
 // add feed folder + advanced options
