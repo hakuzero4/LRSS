@@ -116,6 +116,7 @@ Enable in **Settings → Advanced → Web access**.
 | **Blocked** | Settings UI, feed/folder CRUD, refresh, OPML, sync management |
 | **Invalid token** | Full-page block only — no empty library shell |
 | **Locale** | Follows desktop UIPrefs language |
+| **Dev builds** | `wails3 task dev` does not embed the SPA. Web access proxies Vite (`FRONTEND_DEVSERVER_URL`) or serves `frontend/dist` (`npm run build`). Release binaries already embed the UI. |
 
 ### Desktop & preferences
 

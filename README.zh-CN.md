@@ -116,6 +116,7 @@
 | **禁止** | 设置界面、订阅/文件夹管理、刷新、OPML、同步管理 |
 | **令牌无效** | 仅全屏提示页，不进入空资料库壳 |
 | **语言** | 跟随桌面 UIPrefs 界面语言 |
+| **开发构建** | `wails3 task dev` 不嵌入前端。Web 访问会反代 Vite（`FRONTEND_DEVSERVER_URL`）或读取 `frontend/dist`（先 `npm run build`）。正式版二进制已内嵌界面。 |
 
 ### 桌面与偏好
 

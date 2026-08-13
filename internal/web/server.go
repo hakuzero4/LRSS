@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -78,7 +77,9 @@ func (s *Server) Apply(ctx context.Context, cfg settings.WebAccessConfig) (Statu
 		return s.status, nil
 	}
 
-	handler := s.buildHandler(cfg.Token)
+	src := resolveSPA(s.assets)
+	log.Printf("web access UI assets: %s", src.desc)
+	handler := s.buildHandler(cfg.Token, src)
 	addr := listenAddr(cfg.Bind, cfg.Port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -150,17 +151,10 @@ func (s *Server) stopLocked(ctx context.Context) error {
 	return err
 }
 
-func (s *Server) buildHandler(token string) http.Handler {
+func (s *Server) buildHandler(token string, src spaSource) http.Handler {
 	mux := http.NewServeMux()
 	s.mountAPI(mux)
-	if s.assets != nil {
-		fileServer := spaFileServer(s.assets)
-		mux.Handle("/", fileServer)
-	} else {
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			writeError(w, http.StatusServiceUnavailable, "assets unavailable")
-		})
-	}
+	mux.Handle("/", spaHandler(src))
 	return withAPIAuth(token, mux)
 }
 
@@ -214,60 +208,4 @@ func firstLANIPv4() string {
 	return ""
 }
 
-// spaFileServer serves static files; missing paths fall back to index.html.
-// index.html is rewritten to inject window.__LRSS_WEB__ so the SPA uses HTTP API.
-func spaFileServer(assets fs.FS) http.Handler {
-	// Support embed rooted at frontend/dist or with a dist/ prefix.
-	root := assets
-	if sub, err := fs.Sub(assets, "frontend/dist"); err == nil {
-		if _, err := fs.Stat(sub, "index.html"); err == nil {
-			root = sub
-		}
-	} else if sub, err := fs.Sub(assets, "dist"); err == nil {
-		if _, err := fs.Stat(sub, "index.html"); err == nil {
-			root = sub
-		}
-	}
 
-	files := http.FileServer(http.FS(root))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Never SPA-fallback API.
-		if strings.HasPrefix(r.URL.Path, "/api") {
-			http.NotFound(w, r)
-			return
-		}
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" || path == "index.html" {
-			serveWebIndex(w, root)
-			return
-		}
-		if f, err := root.Open(path); err == nil {
-			_ = f.Close()
-			files.ServeHTTP(w, r)
-			return
-		}
-		// SPA fallback → index with web flag
-		serveWebIndex(w, root)
-	})
-}
-
-const webBootstrap = `<script>window.__LRSS_WEB__=true;</script>`
-
-func serveWebIndex(w http.ResponseWriter, root fs.FS) {
-	raw, err := fs.ReadFile(root, "index.html")
-	if err != nil {
-		http.Error(w, "index missing", http.StatusNotFound)
-		return
-	}
-	html := string(raw)
-	if !strings.Contains(html, "__LRSS_WEB__") {
-		if strings.Contains(html, "<head>") {
-			html = strings.Replace(html, "<head>", "<head>"+webBootstrap, 1)
-		} else {
-			html = webBootstrap + html
-		}
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	_, _ = w.Write([]byte(html))
-}
