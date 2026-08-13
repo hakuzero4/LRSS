@@ -636,7 +636,7 @@ const settings = reactive<AppSettings>({
   refreshIntervalMinutes: 30,
   markAsReadOnOpen: true,
   markAsReadOnScrollEnd: false,
-  launchAtLogin: false,
+  launchAtLogin: false, // unused; OS is source of truth (Advanced panel)
   openOnStartup: "unread",
   hideReadOnStartup: false,
   theme: "light",
@@ -2599,7 +2599,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
   Object.assign(settings.readerToolbar, DEFAULT_READER_TOOLBAR);
   settings.autoRefresh = true;
   settings.refreshIntervalMinutes = 30;
-  settings.launchAtLogin = false;
+  // Do not reset OS launch-at-login; Advanced reloads GetLaunchAtLogin after reset.
   settings.syncEnabled = false;
   settings.syncProvider = "none";
   await persistUIPrefs(true);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
@@ -21,6 +21,115 @@ const {
 
 const cacheCount = ref<number | null>(null);
 const clearing = ref(false);
+
+// —— Launch at login (OS is source of truth; not UIPrefs) ——
+type LaunchAtLoginStatus = {
+  enabled: boolean;
+  supported: boolean;
+  error: string;
+};
+
+const launchAtLogin = ref(false);
+const launchAtLoginAvailable = ref(false);
+const launchAtLoginSupported = ref(false);
+const launchAtLoginError = ref("");
+const launchAtLoginBusy = ref(false);
+
+const launchAtLoginDisabled = computed(
+  () =>
+    launchAtLoginBusy.value ||
+    !launchAtLoginAvailable.value ||
+    !launchAtLoginSupported.value,
+);
+
+const launchAtLoginDesc = computed(() => {
+  if (!launchAtLoginAvailable.value) {
+    return t("settings.advanced.launchAtLoginUnavailable");
+  }
+  if (!launchAtLoginSupported.value) {
+    return launchAtLoginError.value || t("settings.advanced.launchAtLoginUnsupported");
+  }
+  return t("settings.advanced.launchAtLoginDesc");
+});
+
+function applyLaunchStatus(raw: unknown): LaunchAtLoginStatus {
+  if (!raw || typeof raw !== "object") {
+    return { enabled: false, supported: false, error: "" };
+  }
+  const o = raw as Record<string, unknown>;
+  const supportedRaw = o.supported ?? o.Supported;
+  const status: LaunchAtLoginStatus = {
+    enabled: !!(o.enabled ?? o.Enabled),
+    supported: supportedRaw === undefined ? true : !!supportedRaw,
+    error: String(o.error ?? o.Error ?? "").trim(),
+  };
+  launchAtLogin.value = status.enabled;
+  launchAtLoginSupported.value = status.supported;
+  launchAtLoginError.value = status.error;
+  return status;
+}
+
+async function loadLaunchAtLogin() {
+  if (!backendReady.value) {
+    launchAtLoginAvailable.value = false;
+    launchAtLoginSupported.value = false;
+    launchAtLoginError.value = "";
+    return;
+  }
+  try {
+    const api = await loadAppsvc();
+    const fn = api?.SettingsService?.GetLaunchAtLogin;
+    if (typeof fn !== "function") {
+      launchAtLoginAvailable.value = false;
+      launchAtLoginSupported.value = false;
+      launchAtLoginError.value = "";
+      return;
+    }
+    launchAtLoginAvailable.value = true;
+    applyLaunchStatus(await fn());
+  } catch (e) {
+    console.warn("[lrss] GetLaunchAtLogin", e);
+    launchAtLoginAvailable.value = false;
+    launchAtLoginSupported.value = false;
+    launchAtLoginError.value = "";
+  }
+}
+
+async function onLaunchAtLoginChange(checked: boolean) {
+  if (launchAtLoginBusy.value) return;
+  launchAtLoginBusy.value = true;
+  try {
+    const api = await loadAppsvc();
+    const fn = api?.SettingsService?.SetLaunchAtLogin;
+    if (typeof fn !== "function") {
+      launchAtLoginAvailable.value = false;
+      launchAtLoginSupported.value = false;
+      toast.error(t("settings.advanced.launchAtLoginFailed"), {
+        description: t("settings.advanced.launchAtLoginUnavailable"),
+      });
+      return;
+    }
+    const status = applyLaunchStatus(await fn(checked));
+    if (status.error || !status.supported) {
+      toast.error(t("settings.advanced.launchAtLoginFailed"), {
+        description:
+          status.error || t("settings.advanced.launchAtLoginUnsupported"),
+      });
+      return;
+    }
+    toast.success(
+      status.enabled
+        ? t("settings.advanced.launchAtLoginOn")
+        : t("settings.advanced.launchAtLoginOff"),
+    );
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("settings.advanced.launchAtLoginFailed"), { description: msg });
+    await loadLaunchAtLogin();
+  } finally {
+    launchAtLoginBusy.value = false;
+  }
+}
 
 // —— Web access ——
 type WebCfg = {
@@ -99,6 +208,7 @@ async function onReset() {
     await resetUIPrefsToDefaults();
     toast.success(t("settings.advanced.resetDone"));
     await refreshCacheCount();
+    await loadLaunchAtLogin();
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     toast.error(t("settings.advanced.resetFailed"), { description: msg });
@@ -273,6 +383,11 @@ async function copyText(text: string) {
 onMounted(() => {
   void refreshCacheCount();
   void loadWebAccess();
+  void loadLaunchAtLogin();
+});
+
+watch(backendReady, (ready) => {
+  if (ready) void loadLaunchAtLogin();
 });
 </script>
 
@@ -457,6 +572,18 @@ onMounted(() => {
       :title="t('settings.advanced.group')"
       :description="t('settings.advanced.groupDesc')"
     >
+      <div class="py-2.5">
+        <SettingsRow
+          :title="t('settings.advanced.launchAtLogin')"
+          :description="launchAtLoginDesc"
+        >
+          <Switch
+            :checked="launchAtLogin"
+            :disabled="launchAtLoginDisabled"
+            @update:checked="onLaunchAtLoginChange"
+          />
+        </SettingsRow>
+      </div>
       <div class="py-2.5">
         <SettingsRow
           :title="t('settings.advanced.hardwareAccel')"

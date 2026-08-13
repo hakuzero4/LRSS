@@ -128,8 +128,10 @@ Enable in **Settings → Advanced → Web access**.
 | **Keyboard shortcuts** | j/k next-prev · s star · m read · r refresh · z zen · `,` settings (toggleable) |
 | **Notifications** | New-article system notifications; sound on/off; test notification |
 | **Sync (OPML only)** | WebDAV or S3-compatible (R2 / MinIO); push/pull subscription structure — **not** read/star/body |
-| **Advanced** | Hardware acceleration toggle, clear AI cache, developer diagnostics export, reset UI prefs |
-| **Startup** | Default collection; hide-read-on-startup (launch-at-login when wired by platform) |
+| **System tray** | Always-on tray: open window · refresh feeds · toggle web access · quit |
+| **Close to tray** | Window close hides the app; quit from the tray menu |
+| **Advanced** | Launch at login, hardware acceleration, clear AI cache, developer diagnostics export, reset UI prefs |
+| **Startup** | Default collection; hide-read-on-startup |
 
 ### Privacy & data
 

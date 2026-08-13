@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"log"
 	"time"
 
 	"lrss/internal/appsvc"
 	"lrss/internal/db"
+	"lrss/internal/desktop"
 	"lrss/internal/job"
 	"lrss/internal/llm"
 	"lrss/internal/notify"
@@ -22,6 +24,9 @@ import (
 )
 
 // assets is provided by assets_prod.go (//go:build production) or assets_stub.go.
+
+//go:embed build/appicon.png
+var trayIcon []byte
 
 func init() {
 	application.RegisterEvent[string]("time")
@@ -126,7 +131,7 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	}
 	// Hardware acceleration off → disable GPU compositing (takes effect this launch).
@@ -139,11 +144,8 @@ func main() {
 		log.Printf("hardware acceleration disabled (WebView2 --disable-gpu)")
 	}
 	app := application.New(appOpts)
-	updateAPI.SetQuit(func() {
-		app.Quit()
-	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "LRSS",
 		Width:  1280,
 		Height: 800,
@@ -154,6 +156,45 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(246, 247, 249),
 		URL:              "/",
+	})
+
+	beginQuit := desktop.Setup(app, window, trayIcon, desktop.Hooks{
+		RefreshAll: func() error {
+			_, err := feedAPI.RefreshAll()
+			return err
+		},
+		SetWebAccess: func(enabled bool) error {
+			ctx := context.Background()
+			cfg, err := store.LoadWebAccessConfig(ctx)
+			if err != nil {
+				return err
+			}
+			cfg.Enabled = enabled
+			saved, err := store.SetWebAccessConfig(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			_, err = webServer.Apply(ctx, saved)
+			return err
+		},
+		WebAccessEnabled: func() bool {
+			if webServer.Status().Running {
+				return true
+			}
+			cfg, err := store.LoadWebAccessConfig(context.Background())
+			return err == nil && cfg.Enabled
+		},
+		Locale: func() string {
+			prefs, err := store.LoadUIPrefs(context.Background())
+			if err != nil || prefs.Locale == "" {
+				return "zh-CN"
+			}
+			return prefs.Locale
+		},
+	})
+	updateAPI.SetQuit(func() {
+		beginQuit()
+		app.Quit()
 	})
 
 	go func() {

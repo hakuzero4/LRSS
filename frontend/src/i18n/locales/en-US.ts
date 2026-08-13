@@ -616,7 +616,7 @@ export default {
       syncNote: "Subscription sync (OPML) supports WebDAV and S3-compatible storage under Settings → Sync.",
       advancedBanner: "Advanced options are wired to the runtime.",
       notWiredNote: "",
-      launchAtLogin: "Launch at login needs a system API; unavailable in this version.",
+      launchAtLogin: "Launch at login is not available in this environment.",
       fetchFullContent: "Full-content fetch is not implemented; only feed-provided body is stored.",
       aboutNote: "Licenses page coming soon; docs open the project homepage.",
     },
@@ -715,6 +715,13 @@ export default {
     advanced: {
       group: "Advanced",
       groupDesc: "Performance, cache, and diagnostics. Change carefully.",
+      launchAtLogin: "Launch at login",
+      launchAtLoginDesc: "Start LRSS automatically after you sign in.",
+      launchAtLoginUnavailable: "Launch at login is not available in this environment.",
+      launchAtLoginUnsupported: "Launch at login is not available in this environment.",
+      launchAtLoginOn: "Launch at login enabled",
+      launchAtLoginOff: "Launch at login disabled",
+      launchAtLoginFailed: "Could not set launch at login",
       hardwareAccel: "Hardware acceleration",
       hardwareAccelDesc:
         "Use the GPU for UI rendering (recommended). Turning off disables GPU in WebView on next launch.",

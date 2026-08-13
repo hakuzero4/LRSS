@@ -155,7 +155,11 @@ assert(list.includes("empty.noFeeds") || list.includes("emptyListReason"), "empt
 // honesty
 assert(sync.includes("disabled") && sync.includes("unavailable"), "sync marked unavailable");
 assert(advanced.includes("resetUIPrefsToDefaults") || advanced.includes("exportDiagnostics"), "advanced real actions");
-assert(general.includes("launchAtLogin") && general.includes("disabled"), "launch disabled");
+assert(!general.includes("launchAtLogin"), "general has no launch-at-login stub");
+assert(
+  advanced.includes("GetLaunchAtLogin") && advanced.includes("SetLaunchAtLogin"),
+  "advanced wires launch-at-login",
+);
 assert(
   feedsPanel.includes("fetchFullContent") && feedsPanel.includes("onFetchFullContent"),
   "full content toggle wired",

@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as autostart$0 from "../autostart/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as db$0 from "../db/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -50,6 +53,13 @@ export function GetEmbeddingConfig(): $CancellablePromise<settings$0.EmbeddingCo
  */
 export function GetLLMConfig(): $CancellablePromise<settings$0.LLMConfig> {
     return $Call.ByID(3544433808);
+}
+
+/**
+ * GetLaunchAtLogin reports whether the OS will start LRSS at login.
+ */
+export function GetLaunchAtLogin(): $CancellablePromise<autostart$0.Status> {
+    return $Call.ByID(3479812466);
 }
 
 /**
@@ -160,6 +170,13 @@ export function SetEmbeddingConfig(cfg: settings$0.EmbeddingConfig): $Cancellabl
  */
 export function SetLLMConfig(cfg: settings$0.LLMConfig): $CancellablePromise<void> {
     return $Call.ByID(1617502588, cfg);
+}
+
+/**
+ * SetLaunchAtLogin enables or disables OS launch-at-login, then returns the current status.
+ */
+export function SetLaunchAtLogin(enabled: boolean): $CancellablePromise<autostart$0.Status> {
+    return $Call.ByID(2024734758, enabled);
 }
 
 /**

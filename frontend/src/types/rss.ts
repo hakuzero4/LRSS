@@ -141,7 +141,7 @@ export const READER_TOOLBAR_KEYS = [
 /**
  * UI prefs persisted via SettingsService.GetUIPrefs / SetUIPrefs.
  * autoRefresh / refreshIntervalMinutes stay on LibraryConfig and are merged on load.
- * launchAtLogin is UI-only (system API out of scope for S6).
+ * Launch at login is an OS setting (SettingsService.Get/SetLaunchAtLogin), not UIPrefs.
  */
 export interface UIPrefs {
   markAsReadOnOpen: boolean;
@@ -200,6 +200,7 @@ export interface AppSettings {
   markAsReadOnScrollEnd: boolean;
 
   // 通用 · 启动
+  /** Unused local leftover; OS launch-at-login lives in Settings → Advanced (not UIPrefs). */
   launchAtLogin: boolean;
   openOnStartup: SmartCollectionId;
   hideReadOnStartup: boolean;

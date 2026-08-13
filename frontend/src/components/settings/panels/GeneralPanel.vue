@@ -51,22 +51,18 @@ function patchBool(
   key:
     | "markAsReadOnOpen"
     | "markAsReadOnScrollEnd"
-    | "launchAtLogin"
     | "hideReadOnStartup"
     | "nsfwMode",
   v: boolean,
 ) {
   settings[key] = v;
-  // launchAtLogin is UI-only (no system API / not in UIPrefs)
-  if (key !== "launchAtLogin") {
-    void (async () => {
-      await persistUIPrefs(true);
-      // Office/NSFW mode changes which articles/feeds are visible.
-      if (key === "nsfwMode") {
-        await reloadLibrary();
-      }
-    })();
-  }
+  void (async () => {
+    await persistUIPrefs(true);
+    // Office/NSFW mode changes which articles/feeds are visible.
+    if (key === "nsfwMode") {
+      await reloadLibrary();
+    }
+  })();
 }
 </script>
 
@@ -168,20 +164,6 @@ function patchBool(
       :title="t('settings.general.startup')"
       :description="t('settings.general.startupDesc')"
     >
-      <div class="py-2.5 opacity-60">
-        <SettingsRow
-          :title="t('settings.general.launchAtLogin')"
-          :description="t('settings.unavailable.launchAtLogin')"
-        >
-          <Switch
-            :checked="false"
-            disabled
-            :aria-disabled="true"
-            :aria-label="t('settings.unavailable.comingSoon')"
-          />
-        </SettingsRow>
-      </div>
-
       <div class="py-2.5">
         <SettingsRow
           :title="t('settings.general.openOnStartup')"
