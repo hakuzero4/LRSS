@@ -1,7 +1,7 @@
 # LRSS
 
 <p align="center">
-  <img src="docs/brand/lrss-source-22.png" alt="LRSS 图标" width="96" height="96" />
+  <img src="docs/brand/lrss-icon.png" alt="LRSS 图标" width="96" height="96" />
 </p>
 
 <p align="center">

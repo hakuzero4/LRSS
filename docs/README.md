@@ -14,7 +14,7 @@ Technical docs for contributors and advanced users. Day-to-day usage lives in th
 
 | Path | Description |
 | --- | --- |
-| [brand/lrss-source-22.png](brand/lrss-source-22.png) | App icon source (transparent PNG) |
+| [brand/lrss-icon.png](brand/lrss-icon.png) | App icon source (transparent PNG) |
 | [screenshots/main-reader.png](screenshots/main-reader.png) | Main three-pane UI (used in root README) |
 | [screenshots/folder-cards.png](screenshots/folder-cards.png) | Folder image-card layout (used in root README) |
 
