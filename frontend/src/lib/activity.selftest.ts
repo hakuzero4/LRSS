@@ -22,6 +22,9 @@ assert(store.includes("FeedService?.JobActivity"), "store calls FeedService.JobA
 assert(layout.includes("ActivityBar"), "AppLayout mounts ActivityBar");
 assert(bar.includes("activity.refreshCurrent"), "bar uses refresh copy");
 assert(bar.includes("activity.briefingGenerating"), "bar uses briefing copy");
+assert(!bar.includes('v-if="visible"'), "status bar stays mounted when idle");
+assert(bar.includes("selectedArticle"), "status bar reads the open article");
+assert(bar.includes("currentText"), "status bar shows open-item meta on the right");
 assert(zh.includes("activity:"), "zh activity i18n");
 assert(en.includes("activity:"), "en activity i18n");
 

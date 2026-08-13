@@ -3,14 +3,10 @@ import { LoaderCircle, Newspaper, RefreshCw } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
+import { formatAbsolute, formatAuthor } from "@/lib/format";
 
 const { t } = useI18n();
-const { jobActivity } = useRssStore();
-
-const visible = computed(() => {
-  const a = jobActivity;
-  return !!(a.refreshing || a.briefingState);
-});
+const { jobActivity, selectedArticle, selectedFeed, selectedBriefing } = useRssStore();
 
 const refreshText = computed(() => {
   const a = jobActivity;
@@ -45,37 +41,71 @@ const briefingText = computed(() => {
   }
   return "";
 });
+
+const hasJobs = computed(() => !!(refreshText.value || briefingText.value));
+
+/** Right-side identity of whatever is open in the reader. */
+const currentText = computed(() => {
+  const article = selectedArticle.value;
+  if (article) {
+    const feed = selectedFeed.value?.title?.trim() || t("article.feedFallback");
+    const when = article.publishedAt ? formatAbsolute(article.publishedAt) : "";
+    const author = formatAuthor(article.author);
+    const title = article.title.trim();
+    return [feed, when, author, title].filter(Boolean).join(" · ");
+  }
+  const briefing = selectedBriefing.value;
+  if (!briefing) return "";
+  const when = briefing.createdAt ? formatAbsolute(briefing.createdAt) : "";
+  const count =
+    briefing.articleCount > 0
+      ? briefing.articleCount === 1
+        ? t("briefing.articleCountOne")
+        : t("briefing.articleCount", { n: briefing.articleCount })
+      : "";
+  return [t("nav.briefing"), when, count].filter(Boolean).join(" · ");
+});
 </script>
 
 <template>
   <div
-    v-if="visible"
-    class="flex h-7 shrink-0 items-center gap-2.5 overflow-hidden border-t border-border/70 bg-muted/35 px-3 text-[11.5px] text-muted-foreground"
+    class="flex h-7 shrink-0 items-center justify-between gap-3 overflow-hidden border-t border-border/70 bg-muted/35 px-3 text-[11.5px] text-muted-foreground"
     role="status"
-    :aria-live="'polite'"
+    aria-live="polite"
   >
-    <span
-      v-if="refreshText"
-      class="flex min-w-0 items-center gap-1.5 truncate"
-    >
-      <RefreshCw class="size-3 shrink-0 animate-spin" />
-      <span class="truncate">{{ refreshText }}</span>
-    </span>
-    <span
-      v-if="refreshText && briefingText"
-      class="h-3 w-px shrink-0 bg-border"
-      aria-hidden="true"
-    />
-    <span
-      v-if="briefingText"
-      class="flex min-w-0 items-center gap-1.5 truncate"
-    >
-      <Newspaper class="size-3 shrink-0" />
-      <LoaderCircle
-        v-if="jobActivity.briefingState === 'generating'"
-        class="size-3 shrink-0 animate-spin"
+    <div class="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+      <span
+        v-if="refreshText"
+        class="flex min-w-0 items-center gap-1.5 truncate"
+      >
+        <RefreshCw class="size-3 shrink-0 animate-spin" />
+        <span class="truncate">{{ refreshText }}</span>
+      </span>
+      <span
+        v-if="refreshText && briefingText"
+        class="h-3 w-px shrink-0 bg-border"
+        aria-hidden="true"
       />
-      <span class="truncate">{{ briefingText }}</span>
-    </span>
+      <span
+        v-if="briefingText"
+        class="flex min-w-0 items-center gap-1.5 truncate"
+      >
+        <Newspaper class="size-3 shrink-0" />
+        <LoaderCircle
+          v-if="jobActivity.briefingState === 'generating'"
+          class="size-3 shrink-0 animate-spin"
+        />
+        <span class="truncate">{{ briefingText }}</span>
+      </span>
+    </div>
+
+    <p
+      v-if="currentText"
+      class="min-w-0 max-w-[52%] shrink-0 truncate text-right"
+      :class="hasJobs ? '' : 'ml-auto'"
+      :title="currentText"
+    >
+      {{ currentText }}
+    </p>
   </div>
 </template>

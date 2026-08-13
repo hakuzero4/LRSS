@@ -665,23 +665,8 @@ html.mica.dark [data-slot="alert-dialog-content"] {
   overflow: hidden;
 }
 
-.reader-summary::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3.5px;
-  background: linear-gradient(
-    180deg,
-    var(--primary) 0%,
-    color-mix(in srgb, var(--primary) 55%, transparent) 100%
-  );
-  border-radius: 3.5px 0 0 3.5px;
-}
-
 .reader-summary-inner {
-  padding: 0.9rem 1.05rem 1rem 1.2rem;
+  padding: 0.9rem 1.05rem 1rem;
 }
 
 .reader-summary-label {
@@ -1316,6 +1301,7 @@ html.mica.dark [data-slot="alert-dialog-content"] {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;

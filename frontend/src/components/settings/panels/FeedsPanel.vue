@@ -146,8 +146,22 @@ const windowed = computed(() => {
   };
 });
 
+let pendingListTop = 0;
+let listScrollRaf = 0;
+
 function onListScroll(e: Event) {
-  listScrollTop.value = (e.target as HTMLElement).scrollTop;
+  pendingListTop = (e.target as HTMLElement).scrollTop;
+  if (listScrollRaf) return;
+  listScrollRaf = requestAnimationFrame(() => {
+    listScrollRaf = 0;
+    const top = pendingListTop;
+    // Only invalidate the window when the row bucket changes — per-pixel
+    // writes remount the slice and fight Chromium overflow-anchor.
+    if (Math.floor(top / FEED_ROW_H) === Math.floor(listScrollTop.value / FEED_ROW_H)) {
+      return;
+    }
+    listScrollTop.value = top;
+  });
 }
 
 let listRo: ResizeObserver | null = null;
@@ -169,6 +183,8 @@ watch([feedFilterQ, feedErrorsOnly], () => {
 onUnmounted(() => {
   listRo?.disconnect();
   listRo = null;
+  if (listScrollRaf) cancelAnimationFrame(listScrollRaf);
+  listScrollRaf = 0;
   if (filterTimer) clearTimeout(filterTimer);
 });
 
@@ -246,17 +262,19 @@ function openDeleteFeed(feed: Feed) {
 
 async function confirmDeleteFeed(ev: Event) {
   ev.preventDefault();
-  if (!deleteFeedId.value || deleteFeedBusy.value) return;
+  const id = deleteFeedId.value;
+  if (!id || deleteFeedBusy.value) return;
   deleteFeedBusy.value = true;
+  deleteFeedOpen.value = false;
   try {
-    await deleteFeed(deleteFeedId.value);
-    deleteFeedOpen.value = false;
+    await deleteFeed(id);
     toast.success(t("settings.feeds.deleteFeedDone"));
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     toast.error(t("settings.feeds.deleteFeedFailed"), { description: msg });
   } finally {
     deleteFeedBusy.value = false;
+    deleteFeedId.value = null;
   }
 }
 
@@ -523,7 +541,7 @@ async function confirmClearAll(ev: Event) {
         <!-- Windowed list: only mount visible rows (large OPML libraries). -->
         <div
           ref="listEl"
-          class="overflow-y-auto overscroll-contain rounded-lg border border-border/70"
+          class="scroll-pane rounded-lg border border-border/70 [overflow-anchor:none]"
           role="region"
           :aria-label="t('settings.feeds.listGroup')"
           :style="{ height: `${listBoxH}px` }"
@@ -543,29 +561,26 @@ async function confirmClearAll(ev: Event) {
           </div>
           <div
             v-else
-            :style="{ height: `${windowed.totalH}px`, position: 'relative' }"
+            class="relative"
+            :style="{ height: `${windowed.totalH}px` }"
           >
             <div
+              v-for="(feed, i) in windowed.items"
+              :key="feed.id"
+              class="absolute right-0 left-0 overflow-hidden border-b border-border/70"
               :style="{
-                transform: `translateY(${windowed.padTop}px)`,
-                willChange: 'transform',
+                top: `${(windowed.start + i) * FEED_ROW_H}px`,
+                height: `${FEED_ROW_H}px`,
               }"
             >
-              <div
-                v-for="feed in windowed.items"
-                :key="feed.id"
-                class="border-b border-border/70 last:border-b-0"
-                :style="{ height: `${FEED_ROW_H}px` }"
-              >
-                <SettingsFeedRow
-                  :feed="feed"
-                  :folder-label="folderName(feed)"
-                  :updated-label="lastUpdatedLabel(feed)"
-                  :busy="busy || deleteFeedBusy"
-                  @edit="openEdit(feed)"
-                  @remove="openDeleteFeed(feed)"
-                />
-              </div>
+              <SettingsFeedRow
+                :feed="feed"
+                :folder-label="folderName(feed)"
+                :updated-label="lastUpdatedLabel(feed)"
+                :busy="busy || (deleteFeedBusy && feed.id === deleteFeedId)"
+                @edit="openEdit(feed)"
+                @remove="openDeleteFeed(feed)"
+              />
             </div>
           </div>
         </div>

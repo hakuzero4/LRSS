@@ -2407,18 +2407,44 @@ async function markFeedRead(feedId: string): Promise<void> {
 
 async function deleteFeed(feedId: string): Promise<void> {
   if (isWebMode()) return;
-  const api = await loadAppsvc();
-  const fn = api?.FeedService?.DeleteFeed;
-  if (typeof fn === "function") {
-    await fn(feedId);
-  }
+  const prevFeeds = feeds.value;
+  const prevArticles = articles.value;
+  const prevCollection = collectionId.value;
+  const prevSelected = selectedArticleId.value;
+
+  // Drop the row immediately so the settings list stays usable.
   feeds.value = feeds.value.filter((f) => f.id !== feedId);
   articles.value = articles.value.filter((a) => a.feedId !== feedId);
+  for (const folder of folders.value) {
+    if (folder.feedIds.includes(feedId)) {
+      folder.feedIds = folder.feedIds.filter((id) => id !== feedId);
+    }
+  }
   if (collectionId.value === `feed:${feedId}`) {
     collectionId.value = "unread";
     selectedArticleId.value = null;
   }
-  await reloadLibrary();
+
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.DeleteFeed;
+  try {
+    if (typeof fn === "function") {
+      await fn(feedId);
+    }
+    await Promise.all([reloadSmartCounts(), reloadLibraryFeedsOnly()]);
+    if (prevCollection === `feed:${feedId}` || prevCollection === "unread" || prevCollection === "all") {
+      void reloadArticles();
+    }
+  } catch (e) {
+    feeds.value = prevFeeds;
+    articles.value = prevArticles;
+    collectionId.value = prevCollection;
+    selectedArticleId.value = prevSelected;
+    for (const folder of folders.value) {
+      folder.feedIds = prevFeeds.filter((x) => x.folderId === folder.id).map((x) => x.id);
+    }
+    throw e;
+  }
 }
 
 /**

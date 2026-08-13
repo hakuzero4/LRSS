@@ -2,6 +2,7 @@ package repo_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -126,6 +127,83 @@ func TestSetRead_DecreasesUnread(t *testing.T) {
 	}
 	if got.UnreadCount != 1 {
 		t.Fatalf("UnreadCount=%d want 1", got.UnreadCount)
+	}
+}
+
+func TestDeleteFeed_RemovesArticlesAndFTS(t *testing.T) {
+	r, database := openTestRepos(t, false)
+	ctx := context.Background()
+
+	keep := &model.Feed{Title: "Keep", FeedURL: "https://ex.com/keep"}
+	drop := &model.Feed{Title: "Drop", FeedURL: "https://ex.com/drop"}
+	if err := r.Feeds.Insert(ctx, keep); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Feeds.Insert(ctx, drop); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	body := "indexed body"
+	items := make([]repo.ParsedItem, 0, 12)
+	for i := 0; i < 12; i++ {
+		title := "Drop article"
+		items = append(items, repo.ParsedItem{
+			GUID:        fmt.Sprintf("drop-%d", i),
+			URL:         fmt.Sprintf("https://ex.com/drop/%d", i),
+			Title:       title,
+			ContentText: &body,
+			PublishedAt: &now,
+		})
+	}
+	if _, err := r.Articles.UpsertFromParsed(ctx, drop.ID, items); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Articles.UpsertFromParsed(ctx, keep.ID, []repo.ParsedItem{
+		{GUID: "keep-1", URL: "https://ex.com/keep/1", Title: "Keep article", ContentText: &body, PublishedAt: &now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var ftsBefore int
+	if err := database.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles_fts`).Scan(&ftsBefore); err != nil {
+		t.Fatal(err)
+	}
+	if ftsBefore != 13 {
+		t.Fatalf("fts before = %d want 13", ftsBefore)
+	}
+
+	if err := r.Feeds.Delete(ctx, drop.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := r.Feeds.Get(ctx, drop.ID); err == nil {
+		t.Fatal("deleted feed still present")
+	}
+
+	left, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 1 || left[0].FeedID != keep.ID {
+		t.Fatalf("remaining articles = %+v want only keep feed", left)
+	}
+
+	var ftsAfter int
+	if err := database.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles_fts`).Scan(&ftsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if ftsAfter != 1 {
+		t.Fatalf("fts after = %d want 1", ftsAfter)
+	}
+	var dropFTS int
+	if err := database.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM articles_fts WHERE article_id IN (SELECT id FROM articles WHERE feed_id = ?)`,
+		drop.ID,
+	).Scan(&dropFTS); err != nil {
+		t.Fatal(err)
+	}
+	if dropFTS != 0 {
+		t.Fatalf("deleted feed still has %d fts rows", dropFTS)
 	}
 }
 

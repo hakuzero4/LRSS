@@ -8,7 +8,6 @@ import (
 
 	"lrss/internal/id"
 	"lrss/internal/model"
-	"lrss/internal/search"
 )
 
 // FeedRepo persists feeds.
@@ -445,36 +444,17 @@ func (r *FeedRepo) DeleteAll(ctx context.Context) (int, error) {
 }
 
 // Delete removes a feed. Articles cascade via FK; FTS rows are deleted first
-// (articles_fts is application-synced, not FK-linked).
+// in one statement (articles_fts is application-synced, not FK-linked).
 func (r *FeedRepo) Delete(ctx context.Context, feedID string) error {
-	// Collect IDs fully before any further Exec (MaxOpenConns=1).
-	rows, err := r.DB.QueryContext(ctx, `SELECT id FROM articles WHERE feed_id = ?`, feedID)
-	if err != nil {
-		return fmt.Errorf("delete feed list articles: %w", err)
+	feedID = strings.TrimSpace(feedID)
+	if feedID == "" {
+		return fmt.Errorf("feed id required")
 	}
-	var articleIDs []string
-	for rows.Next() {
-		var aid string
-		if err := rows.Scan(&aid); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		articleIDs = append(articleIDs, aid)
+	if _, err := r.DB.ExecContext(ctx, `
+		DELETE FROM articles_fts
+		WHERE article_id IN (SELECT id FROM articles WHERE feed_id = ?)`, feedID); err != nil {
+		return fmt.Errorf("delete feed fts: %w", err)
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-
-	for _, aid := range articleIDs {
-		if err := search.DeleteFTS(ctx, r.DB, aid); err != nil {
-			return fmt.Errorf("delete fts %s: %w", aid, err)
-		}
-	}
-
 	res, err := r.DB.ExecContext(ctx, `DELETE FROM feeds WHERE id = ?`, feedID)
 	if err != nil {
 		return fmt.Errorf("delete feed: %w", err)
