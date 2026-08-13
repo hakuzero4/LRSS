@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { CheckCheck, RefreshCw } from "@lucide/vue";
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import ArticleListItem from "@/components/article/ArticleListItem.vue";
 import ArticleSearch from "@/components/article/ArticleSearch.vue";
-import { virtualWindow } from "@/lib/virtualWindow";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -13,8 +12,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-const ARTICLE_ROW_H = 124;
 
 const { t } = useI18n();
 
@@ -41,59 +38,16 @@ const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
 const empty = computed(() => filteredArticles.value.length === 0);
 
 const listEl = ref<HTMLElement | null>(null);
-const listScrollTop = ref(0);
-const listViewportH = ref(480);
 
-const windowed = computed(() => {
-  const list = filteredArticles.value;
-  const win = virtualWindow({
-    count: list.length,
-    scrollTop: listScrollTop.value,
-    viewportH: listViewportH.value,
-    itemH: ARTICLE_ROW_H,
-    overscan: 6,
-  });
-  return { ...win, items: list.slice(win.start, win.end) };
-});
-
-function onListScroll(e: Event) {
-  listScrollTop.value = (e.target as HTMLElement).scrollTop;
-}
-
-let listRo: ResizeObserver | null = null;
-watch(listEl, (el) => {
-  listRo?.disconnect();
-  listRo = null;
-  if (!el || typeof ResizeObserver === "undefined") return;
-  const measure = () => {
-    listViewportH.value = el.clientHeight || 480;
-  };
-  measure();
-  listRo = new ResizeObserver(measure);
-  listRo.observe(el);
-});
-
-watch(selectedArticleId, (id) => {
+watch(selectedArticleId, async (id) => {
   if (!id || !listEl.value) return;
-  const idx = filteredArticles.value.findIndex((a) => a.id === id);
-  if (idx < 0) return;
-  const top = idx * ARTICLE_ROW_H;
-  const el = listEl.value;
-  const viewTop = el.scrollTop;
-  const viewBottom = viewTop + el.clientHeight;
-  if (top < viewTop) el.scrollTop = top;
-  else if (top + ARTICLE_ROW_H > viewBottom) el.scrollTop = top + ARTICLE_ROW_H - el.clientHeight;
-  listScrollTop.value = el.scrollTop;
+  await nextTick();
+  const row = listEl.value.querySelector(`[data-article-id="${CSS.escape(id)}"]`);
+  row?.scrollIntoView({ block: "nearest" });
 });
 
 watch(collectionId, () => {
-  listScrollTop.value = 0;
   if (listEl.value) listEl.value.scrollTop = 0;
-});
-
-onUnmounted(() => {
-  listRo?.disconnect();
-  listRo = null;
 });
 
 /** Tooltip / aria for the list header refresh button (scoped by current collection). */
@@ -192,7 +146,7 @@ const emptyHint = computed(() => {
     <!-- Independent search module (not part of title chrome) -->
     <ArticleSearch />
 
-    <div ref="listEl" class="scroll-pane flex-1" @scroll.passive="onListScroll">
+    <div ref="listEl" class="scroll-pane flex-1">
       <div v-if="empty" class="flex h-48 flex-col items-center justify-center px-6 text-center">
         <p class="text-[13px] font-medium text-foreground/80">{{ emptyTitle }}</p>
         <p class="mt-1 text-[12px] leading-relaxed text-muted-foreground">
@@ -209,26 +163,15 @@ const emptyHint = computed(() => {
         </Button>
       </div>
 
-      <div
-        v-else
-        :style="{ height: `${windowed.totalH}px`, position: 'relative' }"
-      >
-        <div :style="{ transform: `translateY(${windowed.padTop}px)` }">
-          <div
-            v-for="article in windowed.items"
-            :key="article.id"
-            class="overflow-hidden"
-            :style="{ height: `${ARTICLE_ROW_H}px` }"
-          >
-            <ArticleListItem
-              :article="article"
-              :feed="feedById.get(article.feedId)"
-              :active="article.id === selectedArticleId"
-              @select="selectArticle(article.id)"
-            />
-          </div>
-        </div>
-      </div>
+      <ArticleListItem
+        v-for="article in filteredArticles"
+        :key="article.id"
+        :data-article-id="article.id"
+        :article="article"
+        :feed="feedById.get(article.feedId)"
+        :active="article.id === selectedArticleId"
+        @select="selectArticle(article.id)"
+      />
     </div>
   </section>
 </template>

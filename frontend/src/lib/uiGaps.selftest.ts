@@ -164,7 +164,6 @@ assert(
   "list search wired",
 );
 assert(list.includes("empty.noFeeds") || list.includes("emptyListReason"), "empty states");
-assert(list.includes("virtualWindow") && list.includes("windowed"), "article list is windowed");
 
 // honesty
 assert(sync.includes("disabled") && sync.includes("unavailable"), "sync marked unavailable");
