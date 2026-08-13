@@ -360,6 +360,14 @@ func (w *BriefingWorker) Delete(ctx context.Context, id string) error {
 	return w.briefings.Delete(ctx, id)
 }
 
+// DeleteUnstarred removes every briefing that is not starred.
+func (w *BriefingWorker) DeleteUnstarred(ctx context.Context) (int, error) {
+	if w == nil || w.briefings == nil {
+		return 0, fmt.Errorf("briefings unavailable")
+	}
+	return w.briefings.DeleteUnstarred(ctx)
+}
+
 // Snapshot reports queued/generating briefing work for the activity bar.
 func (w *BriefingWorker) Snapshot() (state string, pending, articles int) {
 	if w == nil {

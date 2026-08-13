@@ -58,7 +58,7 @@ Some folders are all image feeds. Set **Display → Image cards** on the folder 
 | **Read / star** | Toggle read state and favorites; mark all read on lists/folders |
 | **Mark-on-open / mark-on-scroll** | Configurable read behavior |
 | **Recently read** | Opening an article records it (independent of read/unread). Keep count is **Settings → General** (10–200, default 50); older entries are pruned |
-| **Smart briefing** | **Settings → AI features**. After a refresh adds articles, the LLM writes a themed digest; bullets jump to the source article. Starred briefings are kept |
+| **Smart briefing** | **Settings → AI features**. After a refresh adds articles, the LLM writes a themed digest; bullets jump to the source article. Starred briefings appear in **Starred** and cannot be deleted or pruned |
 | **Unread-only list filter** | Hide read items (starred and recently-read collections exempt) |
 | **Open original** | System browser (desktop) or new tab (web access) |
 | **In-body links** | Honor “open links in browser” preference |

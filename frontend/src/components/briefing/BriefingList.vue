@@ -42,14 +42,24 @@ const {
   selectBriefing,
   setBriefingStarred,
   deleteBriefing,
+  deleteUnstarredBriefings,
   refreshFeeds,
 } = useRssStore();
 
 const deleteOpen = ref(false);
 const deleteTargetId = ref<string | null>(null);
 const deleteBusy = ref(false);
+const clearOpen = ref(false);
+const clearBusy = ref(false);
+
+const unstarredCount = computed(() => briefings.value.filter((b) => !b.isStarred).length);
 
 function openDelete(id: string) {
+  const row = briefings.value.find((b) => b.id === id);
+  if (row?.isStarred) {
+    toast.error(t("briefing.deleteStarredBlocked"));
+    return;
+  }
   deleteTargetId.value = id;
   deleteOpen.value = true;
 }
@@ -67,6 +77,20 @@ async function confirmDelete() {
     toast.error(t("briefing.deleteFailed"), { description: msg });
   } finally {
     deleteBusy.value = false;
+  }
+}
+
+async function confirmClear() {
+  if (clearBusy.value || unstarredCount.value === 0) return;
+  clearBusy.value = true;
+  try {
+    await deleteUnstarredBriefings();
+    clearOpen.value = false;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("briefing.clearFailed"), { description: msg });
+  } finally {
+    clearBusy.value = false;
   }
 }
 
@@ -120,6 +144,21 @@ watch(selectedBriefingId, async (id) => {
       </div>
 
       <TooltipProvider :delay-duration="300">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              class="text-muted-foreground hover:text-destructive"
+              :disabled="unstarredCount === 0"
+              :aria-label="t('briefing.clear')"
+              @click="clearOpen = true"
+            >
+              <Trash2 class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ t("briefing.clear") }}</TooltipContent>
+        </Tooltip>
         <Tooltip v-if="!webMode">
           <TooltipTrigger as-child>
             <Button
@@ -222,10 +261,18 @@ watch(selectedBriefingId, async (id) => {
         </div>
       </button>
       </ContextMenuTrigger>
-      <ContextMenuContent class="w-44">
-        <ContextMenuItem variant="destructive" @select="openDelete(item.id)">
+      <ContextMenuContent class="w-48">
+        <ContextMenuItem
+          v-if="!item.isStarred"
+          variant="destructive"
+          @select="openDelete(item.id)"
+        >
           <Trash2 class="size-3.5" />
           {{ t("briefing.delete") }}
+        </ContextMenuItem>
+        <ContextMenuItem v-else disabled>
+          <Star class="size-3.5 fill-amber-500 text-amber-500" />
+          {{ t("briefing.deleteStarredBlocked") }}
         </ContextMenuItem>
       </ContextMenuContent>
       </ContextMenu>
@@ -250,6 +297,30 @@ watch(selectedBriefingId, async (id) => {
             @click="confirmDelete"
           >
             {{ deleteBusy ? t("common.loading") : t("briefing.deleteConfirm") }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog v-model:open="clearOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t("briefing.clearTitle") }}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {{ t("briefing.clearDesc") }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel size="sm" :disabled="clearBusy">
+            {{ t("common.cancel") }}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            size="sm"
+            :disabled="clearBusy || unstarredCount === 0"
+            @click="confirmClear"
+          >
+            {{ clearBusy ? t("common.loading") : t("briefing.clearConfirm") }}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

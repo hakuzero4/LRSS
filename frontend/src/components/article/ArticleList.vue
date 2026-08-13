@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { CheckCheck, LayoutGrid, LayoutList, RefreshCw } from "@lucide/vue";
+import { CheckCheck, LayoutGrid, LayoutList, Newspaper, RefreshCw, Star } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import { folderIdForDisplayMode } from "@/lib/folderMenu";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
+import { formatAbsolute, relativeTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import ArticleListItem from "@/components/article/ArticleListItem.vue";
 import ArticleSearch from "@/components/article/ArticleSearch.vue";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,8 @@ const {
   collectionId,
   collectionTitle,
   selectedArticleId,
+  selectedBriefingId,
+  starredBriefings,
   searchQuery,
   searchBusy,
   searchSource,
@@ -32,6 +36,7 @@ const {
   webMode,
   collectionDisplayMode,
   selectArticle,
+  selectBriefing,
   markAllRead,
   refreshFeeds,
   openAddFeed,
@@ -39,7 +44,21 @@ const {
 } = useRssStore();
 
 const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
-const empty = computed(() => filteredArticles.value.length === 0);
+
+const visibleStarredBriefings = computed(() => {
+  if (collectionId.value !== "starred") return [];
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return starredBriefings.value;
+  return starredBriefings.value.filter((b) => {
+    const overview = (b.overview || "").toLowerCase();
+    const when = formatAbsolute(b.createdAt).toLowerCase();
+    return overview.includes(q) || when.includes(q);
+  });
+});
+
+const empty = computed(
+  () => filteredArticles.value.length === 0 && visibleStarredBriefings.value.length === 0,
+);
 
 const displayFolderId = computed(() =>
   folderIdForDisplayMode(collectionId.value, feeds.value),
@@ -71,6 +90,13 @@ watch(selectedArticleId, async (id) => {
   row?.scrollIntoView({ block: "nearest" });
 });
 
+watch(selectedBriefingId, async (id) => {
+  if (!id || collectionId.value !== "starred" || !listEl.value) return;
+  await nextTick();
+  const row = listEl.value.querySelector(`[data-briefing-id="${CSS.escape(id)}"]`);
+  row?.scrollIntoView({ block: "nearest" });
+});
+
 watch(collectionId, () => {
   if (listEl.value) listEl.value.scrollTop = 0;
 });
@@ -88,7 +114,12 @@ const articleCountLabel = computed(() => {
     return t("common.loading");
   }
   const n = filteredArticles.value.length;
-  return n === 1 ? t("article.countOne") : t("article.count", { n });
+  const b = visibleStarredBriefings.value.length;
+  const articlePart = n === 1 ? t("article.countOne") : t("article.count", { n });
+  if (collectionId.value !== "starred" || b === 0) return articlePart;
+  const briefingPart = b === 1 ? t("briefing.countOne") : t("briefing.count", { n: b });
+  if (n === 0) return briefingPart;
+  return `${articlePart} · ${briefingPart}`;
 });
 
 const emptyTitle = computed(() => {
@@ -209,8 +240,54 @@ const emptyHint = computed(() => {
         </Button>
       </div>
 
+      <template v-else-if="visibleStarredBriefings.length">
+        <p class="px-3 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">
+          {{ t("briefing.inStarred") }}
+        </p>
+        <button
+          v-for="item in visibleStarredBriefings"
+          :key="'briefing-' + item.id"
+          type="button"
+          :data-briefing-id="item.id"
+          :class="
+            cn(
+              'article-row group w-full border-b border-border/50 px-3 py-3 text-left transition-colors duration-150',
+              'hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+              item.id === selectedBriefingId && 'bg-primary/10 dark:bg-primary/15',
+              !item.isRead && 'is-unread',
+            )
+          "
+          @click="selectBriefing(item.id)"
+        >
+          <div class="flex items-start gap-2.5">
+            <Newspaper class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <p class="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                  {{ t("nav.briefing") }}
+                  <span class="mx-1">·</span>
+                  {{ relativeTime(item.createdAt) }}
+                </p>
+                <Star class="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
+              </div>
+              <h3
+                class="mt-1 line-clamp-2 text-[13.5px] leading-snug tracking-[-0.01em]"
+                :class="
+                  item.isRead ? 'font-medium text-foreground/80' : 'font-semibold text-foreground'
+                "
+              >
+                {{ formatAbsolute(item.createdAt) }}
+              </h3>
+              <p v-if="item.overview" class="article-teaser">
+                {{ item.overview }}
+              </p>
+            </div>
+          </div>
+        </button>
+      </template>
+
       <div
-        v-else-if="collectionDisplayMode === 'cards'"
+        v-if="!empty && collectionDisplayMode === 'cards' && filteredArticles.length"
         class="article-card-grid"
       >
         <ArticleListItem
@@ -224,7 +301,7 @@ const emptyHint = computed(() => {
           @select="selectArticle(article.id)"
         />
       </div>
-      <template v-else>
+      <template v-else-if="filteredArticles.length">
         <ArticleListItem
           v-for="article in filteredArticles"
           :key="article.id"

@@ -58,6 +58,14 @@ func (s *BriefingService) Delete(id string) error {
 	return s.w.Delete(context.Background(), id)
 }
 
+// DeleteUnstarred removes every briefing that is not starred. Starred rows stay.
+func (s *BriefingService) DeleteUnstarred() (int, error) {
+	if s == nil || s.w == nil {
+		return 0, fmt.Errorf("briefings unavailable")
+	}
+	return s.w.DeleteUnstarred(context.Background())
+}
+
 func (s *BriefingService) SetStarred(id string, starred bool) error {
 	if s == nil || s.w == nil {
 		return fmt.Errorf("briefings unavailable")

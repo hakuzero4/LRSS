@@ -4,12 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"lrss/internal/id"
 	"lrss/internal/model"
 )
+
+// ErrStarredProtected is returned when a starred briefing must not be deleted.
+var ErrStarredProtected = errors.New("starred briefing cannot be deleted")
 
 // BriefingRepo persists AI briefings (智能汇报).
 type BriefingRepo struct {
@@ -126,7 +130,8 @@ func (r *BriefingRepo) Get(ctx context.Context, id string) (model.Briefing, erro
 	return b, nil
 }
 
-// List returns briefings newest first. limit<=0 defaults to 50.
+// List returns all starred briefings plus the newest unstarred ones.
+// limit applies only to unstarred rows; <=0 defaults to 50.
 func (r *BriefingRepo) List(ctx context.Context, limit int) ([]model.Briefing, error) {
 	if limit <= 0 {
 		limit = 50
@@ -134,8 +139,14 @@ func (r *BriefingRepo) List(ctx context.Context, limit int) ([]model.Briefing, e
 	rows, err := r.DB.QueryContext(ctx, `
 		SELECT `+briefingCols+`
 		FROM ai_briefings
-		ORDER BY created_at DESC, id DESC
-		LIMIT ?`, limit)
+		WHERE is_starred = 1
+		   OR id IN (
+			SELECT id FROM ai_briefings
+			WHERE is_starred = 0
+			ORDER BY created_at DESC, id DESC
+			LIMIT ?
+		   )
+		ORDER BY created_at DESC, id DESC`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list briefings: %w", err)
 	}
@@ -181,21 +192,38 @@ func (r *BriefingRepo) SetStarred(ctx context.Context, id string, starred bool) 
 	return nil
 }
 
-// Delete removes one briefing by id.
+// Delete removes one unstarred briefing by id. Starred rows are refused.
 func (r *BriefingRepo) Delete(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("briefing id required")
 	}
-	res, err := r.DB.ExecContext(ctx, `DELETE FROM ai_briefings WHERE id = ?`, id)
+	res, err := r.DB.ExecContext(ctx, `DELETE FROM ai_briefings WHERE id = ? AND is_starred = 0`, id)
 	if err != nil {
 		return fmt.Errorf("delete briefing: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
+		b, getErr := r.Get(ctx, id)
+		if getErr != nil {
+			return fmt.Errorf("briefing not found: %s", id)
+		}
+		if b.IsStarred {
+			return ErrStarredProtected
+		}
 		return fmt.Errorf("briefing not found: %s", id)
 	}
 	return nil
+}
+
+// DeleteUnstarred removes every briefing that is not starred.
+func (r *BriefingRepo) DeleteUnstarred(ctx context.Context) (int, error) {
+	res, err := r.DB.ExecContext(ctx, `DELETE FROM ai_briefings WHERE is_starred = 0`)
+	if err != nil {
+		return 0, fmt.Errorf("delete unstarred briefings: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // UnreadCount returns how many briefings have is_read = 0.

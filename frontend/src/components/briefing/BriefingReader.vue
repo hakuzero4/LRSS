@@ -89,7 +89,7 @@ function citesOf(bullet: BriefingBullet): BriefingCite[] {
 
 function openCite(cite: BriefingCite) {
   if (!cite.articleId) return;
-  void selectArticle(cite.articleId);
+  void selectArticle(cite.articleId, { keepBriefing: true });
 }
 </script>
 

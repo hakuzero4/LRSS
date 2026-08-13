@@ -2,12 +2,14 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"lrss/internal/model"
+	"lrss/internal/repo"
 	"lrss/internal/search"
 	"lrss/internal/service"
 	"lrss/internal/settings"
@@ -64,6 +66,7 @@ func (s *Server) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/briefings/{id}/read", s.handleSetBriefingRead)
 	mux.HandleFunc("POST /api/briefings/{id}/star", s.handleSetBriefingStar)
 	mux.HandleFunc("POST /api/briefings/{id}/retry", s.handleRetryBriefing)
+	mux.HandleFunc("POST /api/briefings/clear-unstarred", s.handleClearUnstarredBriefings)
 	mux.HandleFunc("DELETE /api/briefings/{id}", s.handleDeleteBriefing)
 	mux.HandleFunc("POST /api/briefings/{id}/delete", s.handleDeleteBriefing)
 
@@ -362,10 +365,27 @@ func (s *Server) handleDeleteBriefing(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	if err := s.deps.Briefing.Delete(r.Context(), id); err != nil {
+		if errors.Is(err, repo.ErrStarredProtected) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleClearUnstarredBriefings(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Briefing == nil {
+		writeError(w, http.StatusServiceUnavailable, "briefings unavailable")
+		return
+	}
+	n, err := s.deps.Briefing.DeleteUnstarred(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n})
 }
 
 func (s *Server) handleRetryBriefing(w http.ResponseWriter, r *http.Request) {

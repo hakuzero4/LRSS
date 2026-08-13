@@ -23,6 +23,7 @@ const {
   selectedArticle,
   selectedFeed,
   selectedArticleId,
+  selectedBriefingId,
   collectionId,
   collectionDisplayMode,
   zenMode,
@@ -32,9 +33,13 @@ const {
   selectArticle,
 } = useRssStore();
 
-const isBriefingCollection = computed(() => collectionId.value === "briefing");
+const briefingActive = computed(
+  () =>
+    !!selectedBriefingId.value &&
+    (collectionId.value === "briefing" || collectionId.value === "starred"),
+);
 const briefingShowsArticle = computed(
-  () => isBriefingCollection.value && !!selectedArticleId.value,
+  () => briefingActive.value && !!selectedArticleId.value,
 );
 
 function backToBriefing() {
@@ -184,7 +189,7 @@ watch(selectedArticleId, (id) => {
           <ArticleReader v-model:markdown-open="markdownOpen" />
         </div>
       </div>
-      <BriefingReader v-else-if="collectionId === 'briefing'" />
+      <BriefingReader v-else-if="briefingActive" />
       <ArticleReader v-else v-model:markdown-open="markdownOpen" />
     </ResizablePanel>
 

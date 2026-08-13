@@ -777,12 +777,29 @@ const smartCounts = reactive({
   all: 0,
 } satisfies Record<Exclude<SmartCollectionId, "briefing">, number>);
 
+/** Article-only starred total; composeStarredBadge adds starred briefings. */
+const articleStarredCount = ref(0);
+
+function starredBriefingCount(): number {
+  if (!settings.smartBriefing) return 0;
+  return briefings.value.filter((b) => b.isStarred).length;
+}
+
+const starredBriefings = computed(() =>
+  settings.smartBriefing ? briefings.value.filter((b) => b.isStarred) : [],
+);
+
+function composeStarredBadge() {
+  smartCounts.starred = Math.max(0, articleStarredCount.value) + starredBriefingCount();
+}
+
 /** Offline / mock fallback: derive from currently loaded articles only. */
 function applySmartCountsFromArticles() {
   const list = articles.value;
   smartCounts.unread = list.filter((a) => !a.read).length;
   smartCounts.today = list.filter((a) => isToday(a.publishedAt)).length;
-  smartCounts.starred = list.filter((a) => a.starred).length;
+  articleStarredCount.value = list.filter((a) => a.starred).length;
+  composeStarredBadge();
   // Do not invent open-history offline; recent is backend-only.
   smartCounts.recent = 0;
   smartCounts.all = list.length;
@@ -803,7 +820,8 @@ function applySmartCountsPayload(raw: unknown) {
   // Prefer JSON tags; also accept PascalCase / getter-style.
   smartCounts.unread = parseCountField(o.unread ?? o.Unread);
   smartCounts.today = parseCountField(o.today ?? o.Today);
-  smartCounts.starred = parseCountField(o.starred ?? o.Starred);
+  articleStarredCount.value = parseCountField(o.starred ?? o.Starred);
+  composeStarredBadge();
   smartCounts.recent = parseCountField(o.recent ?? o.Recent);
   smartCounts.all = parseCountField(o.all ?? o.All);
 }
@@ -946,12 +964,18 @@ const sidebarFeeds = computed(() =>
 );
 
 const emptyListReason = computed(() => {
-  if (articlesLoading.value && filteredArticles.value.length === 0) {
+  if (
+    articlesLoading.value &&
+    filteredArticles.value.length === 0 &&
+    !(collectionId.value === "starred" && starredBriefings.value.length > 0)
+  ) {
     return "loading" as const;
   }
   return resolveEmptyListReason({
     feedCount: feeds.value.length,
-    articleCountInView: filteredArticles.value.length,
+    articleCountInView:
+      filteredArticles.value.length +
+      (collectionId.value === "starred" ? starredBriefings.value.length : 0),
     hasSearchQuery: searchQuery.value.trim().length > 0,
     // Only user-driven filters that can empty the list — not default-on hideDuplicateTitles.
     hasActiveFilters:
@@ -1731,6 +1755,12 @@ function selectCollection(id: CollectionId, opts?: { keepArticle?: boolean }) {
     clearSummaryStream();
     clearTranslateView();
     lastAutoSummarizeId = null;
+    if (id === "starred") {
+      const keep = briefings.value.find((b) => b.id === selectedBriefingId.value);
+      if (!keep?.isStarred) selectedBriefingId.value = null;
+    } else if (id !== "briefing") {
+      selectedBriefingId.value = null;
+    }
   }
   searchQuery.value = "";
   searchArticles.value = null;
@@ -1746,11 +1776,15 @@ function selectCollection(id: CollectionId, opts?: { keepArticle?: boolean }) {
       void reloadBriefings();
     } else {
       void reloadArticles();
+      if (id === "starred" && settings.smartBriefing) {
+        void reloadBriefings();
+      }
     }
   } else {
     if (id === "briefing") {
       briefings.value = [];
       briefingUnreadCount.value = 0;
+      composeStarredBadge();
     } else {
       applySmartCountsFromArticles();
     }
@@ -1782,8 +1816,11 @@ async function setRecentReadLimit(n: number): Promise<void> {
   }
 }
 
-async function selectArticle(id: string | null) {
+async function selectArticle(id: string | null, opts?: { keepBriefing?: boolean }) {
   selectedArticleId.value = id;
+  if (id && !opts?.keepBriefing) {
+    selectedBriefingId.value = null;
+  }
   if (!id) {
     lastAutoSummarizeId = null;
     clearSummaryStream();
@@ -1900,7 +1937,8 @@ async function toggleStar(id: string) {
   const next = !article.starred;
   article.starred = next;
   mergeArticleIntoPools(article, articles.value, searchArticles.value);
-  smartCounts.starred = Math.max(0, smartCounts.starred + (next ? 1 : -1));
+  articleStarredCount.value = Math.max(0, articleStarredCount.value + (next ? 1 : -1));
+  composeStarredBadge();
   if (backendReady.value) {
     const api = await loadAppsvc();
     try {
@@ -1908,7 +1946,8 @@ async function toggleStar(id: string) {
     } catch (e) {
       article.starred = !next;
       mergeArticleIntoPools(article, articles.value, searchArticles.value);
-      smartCounts.starred = Math.max(0, smartCounts.starred + (next ? -1 : 1));
+      articleStarredCount.value = Math.max(0, articleStarredCount.value + (next ? -1 : 1));
+      composeStarredBadge();
       console.warn("[lrss] SetStarred failed", e);
     }
   }
@@ -2670,6 +2709,7 @@ async function reloadBriefings() {
     ) {
       selectedBriefingId.value = null;
     }
+    composeStarredBadge();
     return;
   }
   briefingsLoading.value = true;
@@ -2697,6 +2737,7 @@ async function reloadBriefings() {
     ) {
       selectedBriefingId.value = null;
     }
+    composeStarredBadge();
   } catch (e) {
     console.warn("[lrss] reloadBriefings failed", e);
   } finally {
@@ -2780,10 +2821,15 @@ async function retryBriefing(id: string): Promise<void> {
 }
 
 async function deleteBriefing(id: string): Promise<void> {
+  const row = briefings.value.find((b) => b.id === id);
+  if (row?.isStarred) {
+    throw new Error(t("briefing.deleteStarredBlocked"));
+  }
   const prev = briefings.value;
   const wasSelected = selectedBriefingId.value === id;
   briefings.value = briefings.value.filter((b) => b.id !== id);
   applyBriefingUnreadFromList();
+  composeStarredBadge();
   if (wasSelected) {
     selectedBriefingId.value = briefings.value[0]?.id ?? null;
   }
@@ -2795,8 +2841,42 @@ async function deleteBriefing(id: string): Promise<void> {
   } catch (e) {
     briefings.value = prev;
     applyBriefingUnreadFromList();
+    composeStarredBadge();
     if (wasSelected) selectedBriefingId.value = id;
     console.warn("[lrss] Briefing Delete failed", e);
+    throw e;
+  }
+}
+
+async function deleteUnstarredBriefings(): Promise<void> {
+  const prev = briefings.value;
+  const selected = selectedBriefingId.value;
+  const selectedWasStarred = !!prev.find((b) => b.id === selected)?.isStarred;
+  briefings.value = prev.filter((b) => b.isStarred);
+  applyBriefingUnreadFromList();
+  composeStarredBadge();
+  if (selected && !selectedWasStarred) {
+    selectedBriefingId.value = briefings.value[0]?.id ?? null;
+  }
+  const api = await loadAppsvc();
+  const fn = api?.BriefingService?.DeleteUnstarred;
+  try {
+    if (typeof fn === "function") {
+      await fn();
+    } else {
+      const del = api?.BriefingService?.Delete;
+      if (typeof del === "function") {
+        for (const b of prev.filter((row) => !row.isStarred)) {
+          await del(b.id);
+        }
+      }
+    }
+  } catch (e) {
+    briefings.value = prev;
+    applyBriefingUnreadFromList();
+    composeStarredBadge();
+    if (selected) selectedBriefingId.value = selected;
+    console.warn("[lrss] Briefing DeleteUnstarred failed", e);
     throw e;
   }
 }
@@ -2805,6 +2885,7 @@ async function setBriefingStarred(id: string, starred: boolean) {
   const row = briefings.value.find((b) => b.id === id);
   const prev = row?.isStarred;
   if (row) row.isStarred = starred;
+  composeStarredBadge();
   const api = await loadAppsvc();
   const fn = api?.BriefingService?.SetStarred;
   if (typeof fn !== "function") return;
@@ -2812,6 +2893,7 @@ async function setBriefingStarred(id: string, starred: boolean) {
     await fn(id, starred);
   } catch (e) {
     if (row && prev !== undefined) row.isStarred = prev;
+    composeStarredBadge();
     console.warn("[lrss] Briefing SetStarred failed", e);
     throw e;
   }
@@ -3099,6 +3181,8 @@ watch(
       void reloadBriefings();
       return;
     }
+    selectedBriefingId.value = null;
+    composeStarredBadge();
     if (collectionId.value === "briefing") {
       selectCollection("unread");
     }
@@ -3148,6 +3232,7 @@ export function useRssStore() {
     settings,
     smartCounts,
     briefings,
+    starredBriefings,
     selectedBriefingId,
     selectedBriefing,
     briefingUnreadCount,
@@ -3157,6 +3242,7 @@ export function useRssStore() {
     selectBriefing,
     retryBriefing,
     deleteBriefing,
+    deleteUnstarredBriefings,
     setBriefingStarred,
     collectionTitle,
     collectionDisplayMode,

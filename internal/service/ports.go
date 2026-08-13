@@ -59,6 +59,7 @@ type BriefingStore interface {
 	SetRead(ctx context.Context, id string, read bool) error
 	SetStarred(ctx context.Context, id string, starred bool) error
 	Delete(ctx context.Context, id string) error
+	DeleteUnstarred(ctx context.Context) (int, error)
 	UnreadCount(ctx context.Context) (int, error)
 	PruneOld(ctx context.Context, keepUnstarred int) (int, error)
 }

@@ -136,6 +136,10 @@ export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
         postJSON(`/api/briefings/${encodeURIComponent(id)}/retry`, {}),
       Delete: (id: string) =>
         postJSON(`/api/briefings/${encodeURIComponent(id)}/delete`, {}),
+      DeleteUnstarred: async () => {
+        const r = await postJSON<{ deleted?: number }>("/api/briefings/clear-unstarred", {});
+        return typeof r?.deleted === "number" ? r.deleted : 0;
+      },
     },
     SearchService: {
       Search: (query: string, mode: string, limit: number) => {

@@ -18,6 +18,13 @@ export function Delete(id: string): $CancellablePromise<void> {
     return $Call.ByID(454669727, id);
 }
 
+/**
+ * DeleteUnstarred removes every briefing that is not starred. Starred rows stay.
+ */
+export function DeleteUnstarred(): $CancellablePromise<number> {
+    return $Call.ByID(142663463);
+}
+
 export function Get(id: string): $CancellablePromise<model$0.Briefing> {
     return $Call.ByID(3277408784, id);
 }

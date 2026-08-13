@@ -2,11 +2,13 @@ package repo_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
 
 	"lrss/internal/model"
+	"lrss/internal/repo"
 )
 
 func sampleBriefingPayload() model.BriefingPayload {
@@ -172,6 +174,111 @@ func TestBriefing_Delete(t *testing.T) {
 	}
 	if err := r.Briefings.Delete(ctx, b.ID); err == nil {
 		t.Fatal("expected second delete to fail")
+	}
+}
+
+func TestBriefing_DeleteProtectsStarred(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+	b := &model.Briefing{Status: "ready", Locale: "zh-CN", Overview: "keep"}
+	if err := r.Briefings.Insert(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Briefings.SetStarred(ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Briefings.Delete(ctx, b.ID); err == nil {
+		t.Fatal("expected starred delete to fail")
+	} else if !errors.Is(err, repo.ErrStarredProtected) {
+		t.Fatalf("Delete starred err = %v want ErrStarredProtected", err)
+	}
+	if _, err := r.Briefings.Get(ctx, b.ID); err != nil {
+		t.Fatalf("starred briefing was deleted: %v", err)
+	}
+}
+
+func TestBriefing_DeleteUnstarredKeepsStarred(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+	star := &model.Briefing{Status: "ready", Locale: "zh-CN", Overview: "star"}
+	plain := &model.Briefing{Status: "ready", Locale: "en-US", Overview: "plain"}
+	if err := r.Briefings.Insert(ctx, star); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Briefings.Insert(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Briefings.SetStarred(ctx, star.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	n, err := r.Briefings.DeleteUnstarred(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("DeleteUnstarred = %d want 1", n)
+	}
+	if _, err := r.Briefings.Get(ctx, star.ID); err != nil {
+		t.Fatalf("starred missing: %v", err)
+	}
+	if _, err := r.Briefings.Get(ctx, plain.ID); err == nil {
+		t.Fatal("unstarred still present")
+	}
+}
+
+func TestBriefing_ListIncludesOldStarredBeyondUnstarredLimit(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	oldStar := &model.Briefing{
+		CreatedAt: base.Add(-24 * time.Hour).Format(time.RFC3339),
+		Status:    "ready",
+		Locale:    "zh-CN",
+		Overview:  "old-star",
+	}
+	if err := r.Briefings.Insert(ctx, oldStar); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Briefings.SetStarred(ctx, oldStar.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	var newest string
+	for i := 0; i < 3; i++ {
+		b := &model.Briefing{
+			CreatedAt: base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
+			Status:    "ready",
+			Locale:    "en-US",
+			Overview:  "plain",
+		}
+		if err := r.Briefings.Insert(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+		newest = b.ID
+	}
+	list, err := r.Briefings.List(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("List len = %d want 3 (2 unstarred + 1 starred)", len(list))
+	}
+	var sawStar, sawNewest bool
+	for _, b := range list {
+		if b.ID == oldStar.ID {
+			sawStar = true
+			if !b.IsStarred {
+				t.Fatal("old starred row lost is_starred")
+			}
+		}
+		if b.ID == newest {
+			sawNewest = true
+		}
+	}
+	if !sawStar {
+		t.Fatal("old starred briefing missing from List")
+	}
+	if !sawNewest {
+		t.Fatal("newest unstarred missing from List")
 	}
 }
 
