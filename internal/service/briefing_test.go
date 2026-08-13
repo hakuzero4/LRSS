@@ -124,7 +124,7 @@ func TestBriefingWorker_SkipWhenFewerThanMin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if did {
-		t.Fatal("one article must not generate a briefing")
+		t.Fatal("fewer than 5 articles must not generate a briefing")
 	}
 	list, err := repos.Briefings.List(ctx, 10)
 	if err != nil {

@@ -13,6 +13,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as model$0 from "../model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as service$0 from "../service/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -72,6 +75,13 @@ export function ImportOPML(xml: string, fetch: boolean): $CancellablePromise<$mo
 }
 
 /**
+ * JobActivity is a live snapshot of feed refresh + briefing work.
+ */
+export function JobActivity(): $CancellablePromise<service$0.JobActivity> {
+    return $Call.ByID(592667890);
+}
+
+/**
  * ListFeeds returns all feeds with unread counts.
  */
 export function ListFeeds(): $CancellablePromise<model$0.Feed[] | null> {
@@ -98,13 +108,6 @@ export function MoveFeed(feedId: string, folderId: string): $CancellablePromise<
  */
 export function RefreshAll(): $CancellablePromise<$models.RefreshAllResult> {
     return $Call.ByID(398512294);
-}
-
-/**
- * JobActivity is a live snapshot of feed refresh + briefing work.
- */
-export function JobActivity(): $CancellablePromise<Record<string, unknown>> {
-    return $Call.ByID(592667890);
 }
 
 /**

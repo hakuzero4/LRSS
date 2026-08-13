@@ -18,7 +18,7 @@ const (
 	KeyBriefingPending     = "app.briefing_pending"
 	briefingDebounce       = 60 * time.Second
 	briefingMaxArticles     = 40
-	briefingMinArticles     = 3
+	briefingMinArticles     = 5
 	briefingKeepUnstarred   = 30
 	briefingGenerateTimeout = 4 * time.Minute
 )

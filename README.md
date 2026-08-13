@@ -15,18 +15,6 @@
 
 ---
 
-## Screenshot
-
-Three-pane library · article list · reader (summary deck, selection translate, folders & smart lists)
-
-![LRSS main UI — three-pane library, article list, and reader with AI summary and selection translate](docs/screenshots/main-reader.png)
-
-Folder **image-card** layout — covers in a grid, switch from the list header or the folder context menu
-
-![Folder image-card layout — article covers in a grid next to the reader](docs/screenshots/folder-cards.png)
-
----
-
 ## Features
 
 ### Library & navigation
