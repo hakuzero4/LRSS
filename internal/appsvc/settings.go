@@ -250,6 +250,11 @@ func (s *SettingsService) SetUIPrefs(cfg settings.UIPrefs) error {
 			}
 		}()
 	}
+	if s.library != nil && old.RecentReadLimit != cfg.RecentReadLimit {
+		if err := s.library.PruneOpened(ctx, cfg.RecentReadLimit); err != nil {
+			log.Printf("prune recent-read after SetUIPrefs: %v", err)
+		}
+	}
 	return nil
 }
 

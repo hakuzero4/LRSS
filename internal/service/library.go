@@ -1301,6 +1301,27 @@ func (lib *Library) SetStarred(ctx context.Context, articleID string, starred bo
 	return lib.Articles.SetStarred(ctx, articleID, starred)
 }
 
+// RecordOpened notes that the reader opened an article and prunes the recent list.
+// keep is the max recent-read rows (0 or negative → 50; repo also clamps).
+func (lib *Library) RecordOpened(ctx context.Context, articleID string, keep int) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("article id is required")
+	}
+	if keep <= 0 {
+		keep = 50
+	}
+	return lib.Articles.RecordOpened(ctx, articleID, keep)
+}
+
+// PruneOpened drops recently-read rows beyond keep (Settings → General slider).
+func (lib *Library) PruneOpened(ctx context.Context, keep int) error {
+	if keep <= 0 {
+		keep = 50
+	}
+	return lib.Articles.PruneOpened(ctx, keep)
+}
+
 // MarkAllRead marks all articles in a collection as read.
 // excludeNsfw skips NSFW-feed articles (office mode).
 func (lib *Library) MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error {

@@ -6,6 +6,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   ChevronRight,
+  Clock,
   Eye,
   Folder,
   FolderPlus,
@@ -671,6 +672,12 @@ const smartItems = computed(() => [
     label: t("nav.all"),
     icon: BookOpenText,
     count: smartCounts.all,
+  },
+  {
+    id: "recent" as const,
+    label: t("nav.recent"),
+    icon: Clock,
+    count: smartCounts.recent,
   },
 ]);
 </script>

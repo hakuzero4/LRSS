@@ -645,6 +645,7 @@ const settings = reactive<AppSettings>({
   launchAtLogin: false, // unused; OS is source of truth (Advanced panel)
   openOnStartup: "unread",
   hideReadOnStartup: false,
+  recentReadLimit: 50,
   theme: "light",
   accent: "purple",
   compactSidebar: false,
@@ -694,6 +695,7 @@ const smartCounts = reactive({
   unread: 0,
   today: 0,
   starred: 0,
+  recent: 0,
   all: 0,
 } satisfies Record<SmartCollectionId, number>);
 
@@ -703,6 +705,8 @@ function applySmartCountsFromArticles() {
   smartCounts.unread = list.filter((a) => !a.read).length;
   smartCounts.today = list.filter((a) => isToday(a.publishedAt)).length;
   smartCounts.starred = list.filter((a) => a.starred).length;
+  // Do not invent open-history offline; recent is backend-only.
+  smartCounts.recent = 0;
   smartCounts.all = list.length;
 }
 
@@ -722,6 +726,7 @@ function applySmartCountsPayload(raw: unknown) {
   smartCounts.unread = parseCountField(o.unread ?? o.Unread);
   smartCounts.today = parseCountField(o.today ?? o.Today);
   smartCounts.starred = parseCountField(o.starred ?? o.Starred);
+  smartCounts.recent = parseCountField(o.recent ?? o.Recent);
   smartCounts.all = parseCountField(o.all ?? o.All);
 }
 
@@ -769,6 +774,7 @@ const collectionTitle = computed(() => {
   if (id === "unread") return t("nav.unread");
   if (id === "today") return t("nav.today");
   if (id === "starred") return t("nav.starred");
+  if (id === "recent") return t("nav.recent");
   if (id === "all") return t("nav.all");
   if (id.startsWith("feed:")) {
     return feeds.value.find((f) => f.id === id.slice(5))?.title ?? t("nav.feedFallback");
@@ -795,6 +801,7 @@ const filteredArticles = computed(() => {
       if (id === "unread") list = list.filter((a) => !a.read);
       else if (id === "today") list = list.filter((a) => isToday(a.publishedAt));
       else if (id === "starred") list = list.filter((a) => a.starred);
+      else if (id === "recent") list = []; // no local open-history
       else if (id.startsWith("feed:")) list = list.filter((a) => a.feedId === id.slice(5));
       else if (id.startsWith("folder:")) {
         const folder = folders.value.find((f) => f.id === id.slice(7));
@@ -808,7 +815,7 @@ const filteredArticles = computed(() => {
     }
   }
 
-  // Settings → Reading: show unread only (starred collection exempt).
+  // Settings → Reading: show unread only (starred / recent collections exempt).
   list = applyShowUnreadOnly(list, settings.showUnreadOnly, collectionId.value);
 
   const q = searchQuery.value.trim().toLowerCase();
@@ -823,13 +830,20 @@ const filteredArticles = computed(() => {
   }
 
   // Newest first so hide-duplicate keeps the latest article per title.
-  list.sort((a, b) => publishedAtMs(b.publishedAt) - publishedAtMs(a.publishedAt));
+  // Recently-read is ordered by last opened (backend); do not re-sort.
+  if (collectionId.value !== "recent") {
+    list.sort((a, b) => publishedAtMs(b.publishedAt) - publishedAtMs(a.publishedAt));
+  }
   // Office mode: hide NSFW only on smart lists. Explicit feed:/folder: keeps content
   // visible (e.g. just-added sensitive feed after subscribe).
   {
     const col = collectionId.value;
     const smart =
-      col === "unread" || col === "today" || col === "starred" || col === "all";
+      col === "unread" ||
+      col === "today" ||
+      col === "starred" ||
+      col === "recent" ||
+      col === "all";
     if (smart) {
       list = filterArticlesByNsfwMode(list, feeds.value, settings.nsfwMode, folders.value);
     }
@@ -863,7 +877,9 @@ const emptyListReason = computed(() => {
     // Only user-driven filters that can empty the list — not default-on hideDuplicateTitles.
     hasActiveFilters:
       !!settings.blockKeywords.trim() ||
-      (settings.showUnreadOnly && collectionId.value !== "starred"),
+      (settings.showUnreadOnly &&
+        collectionId.value !== "starred" &&
+        collectionId.value !== "recent"),
   });
 });
 
@@ -971,7 +987,7 @@ async function persistLibraryConfig(): Promise<void> {
   }
 }
 
-const SMART_COLLECTIONS: SmartCollectionId[] = ["unread", "today", "starred", "all"];
+const SMART_COLLECTIONS: SmartCollectionId[] = ["unread", "today", "starred", "all", "recent"];
 const THEMES = new Set(["system", "light", "dark"]);
 
 const FONT_SIZES = new Set(["sm", "md", "lg"]);
@@ -987,6 +1003,7 @@ function buildUIPrefs(): UIPrefs {
     markAsReadOnScrollEnd: settings.markAsReadOnScrollEnd,
     openOnStartup: settings.openOnStartup,
     hideReadOnStartup: settings.hideReadOnStartup,
+    recentReadLimit: settings.recentReadLimit,
     theme: settings.theme,
     accent: settings.accent,
     compactSidebar: settings.compactSidebar,
@@ -1035,6 +1052,26 @@ function pickBool(obj: Record<string, unknown>, ...keys: string[]): boolean | un
   return undefined;
 }
 
+/** First finite int among keys, clamped to [min, max]. */
+function pickInt(
+  obj: Record<string, unknown>,
+  min: number,
+  max: number,
+  ...keys: string[]
+): number | undefined {
+  for (const k of keys) {
+    if (!(k in obj)) continue;
+    const v = obj[k];
+    let n: number | undefined;
+    if (typeof v === "number" && Number.isFinite(v)) n = v;
+    else if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) {
+      n = Number(v);
+    }
+    if (n !== undefined) return Math.min(max, Math.max(min, Math.round(n)));
+  }
+  return undefined;
+}
+
 function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null | undefined) {
   if (!prefs || typeof prefs !== "object") return;
   const p = prefs as Record<string, unknown>;
@@ -1058,6 +1095,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const hideRead = pickBool(p, "hideReadOnStartup", "HideReadOnStartup");
   if (hideRead !== undefined) settings.hideReadOnStartup = hideRead;
+
+  const recentLimit = pickInt(p, 10, 200, "recentReadLimit", "RecentReadLimit");
+  if (recentLimit !== undefined) settings.recentReadLimit = recentLimit;
 
   const theme = p.theme ?? p.Theme;
   if (typeof theme === "string" && THEMES.has(theme)) {
@@ -1600,6 +1640,31 @@ function selectCollection(id: CollectionId) {
   }
 }
 
+async function recordArticleOpened(id: string) {
+  try {
+    const api = await loadAppsvc();
+    const fn = api?.ArticleService?.RecordOpened;
+    if (typeof fn !== "function") return;
+    await fn(id);
+    if (selectedArticleId.value === id) {
+      void reloadSmartCounts();
+    }
+  } catch (e) {
+    console.warn("[lrss] RecordOpened failed", e);
+  }
+}
+
+/** Settings → General keep-count; persists then refreshes recent badges/list. */
+async function setRecentReadLimit(n: number): Promise<void> {
+  const next = Math.min(200, Math.max(10, Math.round(Number(n) || 50)));
+  settings.recentReadLimit = next;
+  await persistUIPrefs(true);
+  await reloadSmartCounts();
+  if (collectionId.value === "recent") {
+    await reloadArticles();
+  }
+}
+
 async function selectArticle(id: string | null) {
   selectedArticleId.value = id;
   if (!id) {
@@ -1607,6 +1672,10 @@ async function selectArticle(id: string | null) {
     clearSummaryStream();
     clearTranslateView();
     return;
+  }
+  // Fire-and-forget: recording must not block or fail opening.
+  if (backendReady.value) {
+    void recordArticleOpened(id);
   }
   // Clear in-progress stream UI when switching articles (backend may still finish).
   if (summaryStream.articleId && summaryStream.articleId !== id) {
@@ -2600,6 +2669,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     markAsReadOnScrollEnd: false,
     openOnStartup: "unread",
     hideReadOnStartup: false,
+    recentReadLimit: 50,
     theme: "light",
     accent: "purple",
     compactSidebar: false,
@@ -2788,6 +2858,7 @@ export function useRssStore() {
     reloadLibrary,
     persistLibraryConfig,
     persistUIPrefs,
+    setRecentReadLimit,
     loadUIPrefs,
     resetUIPrefsToDefaults,
     exportDiagnostics,

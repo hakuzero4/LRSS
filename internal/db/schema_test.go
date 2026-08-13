@@ -65,6 +65,15 @@ func TestMigrate_Empty(t *testing.T) {
 	if version < 1 {
 		t.Fatalf("expected migration version >= 1, got %d", version)
 	}
+	var openedCol int
+	if err := database.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('articles') WHERE name = 'last_opened_at'`,
+	).Scan(&openedCol); err != nil {
+		t.Fatalf("last_opened_at column: %v", err)
+	}
+	if openedCol != 1 {
+		t.Fatalf("expected articles.last_opened_at after migration 012, count=%d", openedCol)
+	}
 
 	// Smoke: insert folder → feed → article respects FKs.
 	_, err = database.SQL.ExecContext(ctx, `

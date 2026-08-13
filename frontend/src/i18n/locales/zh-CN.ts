@@ -4,6 +4,7 @@ export default {
     unread: "未读",
     today: "今日",
     starred: "收藏",
+    recent: "最近阅读",
     all: "全部文章",
     library: "订阅库",
     smartLists: "智能列表",
@@ -292,6 +293,9 @@ export default {
       openOnStartupPlaceholder: "选择列表",
       hideReadOnStartup: "启动时隐藏已读",
       hideReadOnStartupDesc: "启动后默认只显示未读文章。",
+      recentReadLimit: "保留最近阅读数量",
+      recentReadLimitDesc: "打开过的文章会出现在侧栏「最近阅读」中；超出数量的较早记录会被清理。",
+      recentReadLimitHint: "范围 10–200，默认 50。",
     },
 
     appearance: {

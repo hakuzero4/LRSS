@@ -35,7 +35,7 @@ export function Get(id: string): $CancellablePromise<model$0.Article> {
 }
 
 /**
- * List returns articles for a collection (unread|today|starred|all|feed:ID|folder:ID).
+ * List returns articles for a collection (unread|today|starred|all|recent|feed:ID|folder:ID).
  * Office-mode NSFW filtering applies only to smart lists. Explicit feed:/folder:
  * collections always return their articles so a just-subscribed sensitive feed is
  * still readable after add (sidebar may still hide it).
@@ -49,6 +49,14 @@ export function List(collection: string, limit: number, offset: number): $Cancel
  */
 export function MarkAllRead(collection: string): $CancellablePromise<void> {
     return $Call.ByID(3784220600, collection);
+}
+
+/**
+ * RecordOpened records that the reader opened an article (recent-read list).
+ * keep comes from UIPrefs.RecentReadLimit (default 50 if store is missing or load fails).
+ */
+export function RecordOpened(id: string): $CancellablePromise<void> {
+    return $Call.ByID(398197724, id);
 }
 
 /**

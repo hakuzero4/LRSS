@@ -16,7 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import type { SmartCollectionId } from "@/types/rss";
 
 const { t } = useI18n();
-const { settings, persistLibraryConfig, persistUIPrefs, reloadLibrary } = useRssStore();
+const { settings, persistLibraryConfig, persistUIPrefs, reloadLibrary, setRecentReadLimit } =
+  useRssStore();
 
 const intervalLabel = computed(() => {
   const m = settings.refreshIntervalMinutes;
@@ -39,6 +40,13 @@ const openOnStartupModel = computed({
   set: (v: SmartCollectionId) => {
     settings.openOnStartup = v;
     persistUIPrefs();
+  },
+});
+
+const recentLimitModel = computed({
+  get: () => [settings.recentReadLimit],
+  set: (v: number[]) => {
+    void setRecentReadLimit(v[0] ?? 50);
   },
 });
 
@@ -170,7 +178,7 @@ function patchBool(
           :description="t('settings.general.openOnStartupDesc')"
         >
           <Select v-model="openOnStartupModel">
-            <SelectTrigger class="h-8 w-[140px] text-[13px]">
+            <SelectTrigger class="h-8 w-[168px] text-[13px]">
               <SelectValue :placeholder="t('settings.general.openOnStartupPlaceholder')" />
             </SelectTrigger>
             <SelectContent>
@@ -178,6 +186,7 @@ function patchBool(
               <SelectItem value="today">{{ t("nav.today") }}</SelectItem>
               <SelectItem value="starred">{{ t("nav.starred") }}</SelectItem>
               <SelectItem value="all">{{ t("nav.all") }}</SelectItem>
+              <SelectItem value="recent">{{ t("nav.recent") }}</SelectItem>
             </SelectContent>
           </Select>
         </SettingsRow>
@@ -193,6 +202,34 @@ function patchBool(
             @update:checked="(v: boolean) => patchBool('hideReadOnStartup', v)"
           />
         </SettingsRow>
+      </div>
+    </SettingsGroup>
+
+    <SettingsGroup
+      :title="t('settings.general.recentReadLimit')"
+      :description="t('settings.general.recentReadLimitDesc')"
+    >
+      <div class="space-y-3 py-3">
+        <div class="flex items-end justify-between gap-3">
+          <p class="text-[12px] text-muted-foreground">
+            {{ t("settings.general.recentReadLimitHint") }}
+          </p>
+          <span class="tabular-nums text-[12.5px] font-medium text-foreground/80">
+            {{ settings.recentReadLimit }}
+          </span>
+        </div>
+        <Slider
+          v-model="recentLimitModel"
+          :min="10"
+          :max="200"
+          :step="10"
+          class="w-full"
+          :aria-label="t('settings.general.recentReadLimit')"
+        />
+        <div class="flex justify-between text-[11px] text-muted-foreground">
+          <span>10</span>
+          <span>200</span>
+        </div>
       </div>
     </SettingsGroup>
   </div>

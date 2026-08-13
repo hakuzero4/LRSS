@@ -962,3 +962,124 @@ func TestLibrary_FetchFullContent(t *testing.T) {
 		t.Fatalf("content = %#v", updated.ContentHTML)
 	}
 }
+
+// recordOpenedStore spies on ArticleStore.RecordOpened.
+type recordOpenedStore struct {
+	service.ArticleStore
+	lastID   string
+	lastKeep int
+	calls    int
+}
+
+func (s *recordOpenedStore) RecordOpened(ctx context.Context, articleID string, keep int) error {
+	s.lastID = articleID
+	s.lastKeep = keep
+	s.calls++
+	return nil
+}
+
+func TestLibrary_RecordOpened(t *testing.T) {
+	stub := &recordOpenedStore{}
+	lib := service.NewLibrary(nil, stub, nil, nil)
+
+	if err := lib.RecordOpened(context.Background(), "art-1", 80); err != nil {
+		t.Fatal(err)
+	}
+	if stub.lastID != "art-1" || stub.lastKeep != 80 || stub.calls != 1 {
+		t.Fatalf("got id=%q keep=%d calls=%d", stub.lastID, stub.lastKeep, stub.calls)
+	}
+	if err := lib.RecordOpened(context.Background(), "art-2", 0); err != nil {
+		t.Fatal(err)
+	}
+	if stub.lastKeep != 50 {
+		t.Fatalf("keep 0 → 50, got %d", stub.lastKeep)
+	}
+	if err := lib.RecordOpened(context.Background(), "  ", 10); err == nil {
+		t.Fatal("expected empty id error")
+	}
+}
+
+func TestLibrary_RecordOpened_RecentCollection(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://example.com/recent.xml"}
+	if err := repos.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := repos.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{
+		{GUID: "a", URL: "https://example.com/a", Title: "First", PublishedAt: &now},
+		{GUID: "b", URL: "https://example.com/b", Title: "Second", PublishedAt: &now},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arts, err := lib.ListArticles(ctx, "all", 10, 0, false)
+	if err != nil || len(arts) != 2 {
+		t.Fatalf("seed list: %v n=%d", err, len(arts))
+	}
+
+	if err := lib.RecordOpened(ctx, arts[0].ID, 50); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.RecordOpened(ctx, arts[1].ID, 50); err != nil {
+		t.Fatal(err)
+	}
+
+	recent, err := lib.ListArticles(ctx, "recent", 10, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 2 {
+		t.Fatalf("recent = %d want 2", len(recent))
+	}
+	got := map[string]bool{recent[0].ID: true, recent[1].ID: true}
+	if !got[arts[0].ID] || !got[arts[1].ID] {
+		t.Fatalf("recent ids = %q %q want %q %q", recent[0].ID, recent[1].ID, arts[0].ID, arts[1].ID)
+	}
+}
+
+func TestLibrary_PruneOpened(t *testing.T) {
+	database := openTestDB(t)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	ctx := context.Background()
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://example.com/prune.xml"}
+	if err := repos.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	items := make([]repo.ParsedItem, 12)
+	for i := range items {
+		title := "P" + strconv.Itoa(i)
+		items[i] = repo.ParsedItem{
+			GUID: title, URL: "https://example.com/" + title, Title: title, PublishedAt: &now,
+		}
+	}
+	if _, err := repos.Articles.UpsertFromParsed(ctx, feed.ID, items); err != nil {
+		t.Fatal(err)
+	}
+	arts, err := lib.ListArticles(ctx, "all", 20, 0, false)
+	if err != nil || len(arts) != 12 {
+		t.Fatalf("seed list: %v n=%d", err, len(arts))
+	}
+	for _, a := range arts {
+		if err := lib.RecordOpened(ctx, a.ID, 50); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := lib.PruneOpened(ctx, 10); err != nil {
+		t.Fatal(err)
+	}
+	recent, err := lib.ListArticles(ctx, "recent", 20, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 10 {
+		t.Fatalf("after prune recent=%d want 10", len(recent))
+	}
+}

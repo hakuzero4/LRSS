@@ -137,7 +137,7 @@ export interface UIPrefs {
     "markAsReadOnScrollEnd": boolean;
 
     /**
-     * unread|today|starred|all
+     * unread|today|starred|all|recent
      */
     "openOnStartup": string;
     "hideReadOnStartup": boolean;
@@ -186,6 +186,11 @@ export interface UIPrefs {
      * 7–365, default 90
      */
     "keepArticlesDays": number;
+
+    /**
+     * RecentReadLimit is how many recently-opened articles to keep (10–200, default 50).
+     */
+    "recentReadLimit": number;
     "hideDuplicateTitles": boolean;
     "blockKeywords": string;
     "enableKeyboardShortcuts": boolean;

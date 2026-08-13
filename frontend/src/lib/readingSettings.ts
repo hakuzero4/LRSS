@@ -54,7 +54,7 @@ export function readerFontFamilyCSS(
 
 /**
  * Hide read articles when showUnreadOnly is on.
- * Starred collection is exempt (product rule).
+ * Starred and recently-read collections are exempt (product rule).
  */
 export function applyShowUnreadOnly<T extends { read?: boolean }>(
   articles: readonly T[],
@@ -62,7 +62,7 @@ export function applyShowUnreadOnly<T extends { read?: boolean }>(
   collectionId: string,
 ): T[] {
   if (!showUnreadOnly) return articles.slice();
-  if (collectionId === "starred") return articles.slice();
+  if (collectionId === "starred" || collectionId === "recent") return articles.slice();
   return articles.filter((a) => !a.read);
 }
 

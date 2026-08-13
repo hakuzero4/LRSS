@@ -122,6 +122,7 @@ assert(
 assert(store.includes("AddFeed") && store.includes("addFeedTargetFolderId"), "add feed with folder target");
 assert(store.includes("feedIdsInFolder"), "refreshFolderFeeds uses feedIdsInFolder");
 
+assert(sidebar.includes('"recent"'), "sidebar has recent smart list");
 assert(sidebar.includes("ContextMenu"), "sidebar ContextMenu");
 assert(sidebar.includes("renameFolder"), "sidebar renameFolder");
 assert(sidebar.includes("deleteFolder"), "sidebar deleteFolder");

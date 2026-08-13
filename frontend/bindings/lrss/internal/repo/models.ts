@@ -9,4 +9,5 @@ export interface SmartCounts {
     "today": number;
     "starred": number;
     "all": number;
+    "recent": number;
 }

@@ -267,7 +267,7 @@ func (s *ArticleService) excludeNsfw() bool {
 	return !prefs.NsfwMode
 }
 
-// List returns articles for a collection (unread|today|starred|all|feed:ID|folder:ID).
+// List returns articles for a collection (unread|today|starred|all|recent|feed:ID|folder:ID).
 // Office-mode NSFW filtering applies only to smart lists. Explicit feed:/folder:
 // collections always return their articles so a just-subscribed sensitive feed is
 // still readable after add (sidebar may still hide it).
@@ -278,7 +278,7 @@ func (s *ArticleService) List(collection string, limit, offset int) ([]model.Art
 
 func isSmartCollection(collection string) bool {
 	switch strings.TrimSpace(collection) {
-	case "", "unread", "today", "starred", "all":
+	case "", "unread", "today", "starred", "all", "recent":
 		return true
 	default:
 		return false
@@ -303,6 +303,18 @@ func (s *ArticleService) FetchFullContent(id string) (model.Article, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 	defer cancel()
 	return s.lib.FetchFullContent(ctx, id)
+}
+
+// RecordOpened records that the reader opened an article (recent-read list).
+// keep comes from UIPrefs.RecentReadLimit (default 50 if store is missing or load fails).
+func (s *ArticleService) RecordOpened(id string) error {
+	keep := 50
+	if s != nil && s.store != nil {
+		if prefs, err := s.store.LoadUIPrefs(context.Background()); err == nil {
+			keep = prefs.RecentReadLimit
+		}
+	}
+	return s.lib.RecordOpened(context.Background(), id, keep)
 }
 
 // SetRead marks read state.

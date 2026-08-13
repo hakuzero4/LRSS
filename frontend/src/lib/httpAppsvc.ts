@@ -112,6 +112,8 @@ export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
         postJSON(`/api/articles/${encodeURIComponent(id)}/read`, { read }),
       SetStarred: (id: string, starred: boolean) =>
         postJSON(`/api/articles/${encodeURIComponent(id)}/star`, { starred }),
+      RecordOpened: (id: string) =>
+        postJSON(`/api/articles/${encodeURIComponent(id)}/opened`, {}),
       MarkAllRead: (collection: string) =>
         postJSON("/api/articles/mark-all-read", { collection }),
       FetchFullContent: (id: string) =>

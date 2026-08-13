@@ -46,7 +46,7 @@ func DefaultReaderToolbarButtons() ReaderToolbarButtons {
 type UIPrefs struct {
 	MarkAsReadOnOpen      bool   `json:"markAsReadOnOpen"`
 	MarkAsReadOnScrollEnd bool   `json:"markAsReadOnScrollEnd"`
-	OpenOnStartup         string `json:"openOnStartup"` // unread|today|starred|all
+	OpenOnStartup         string `json:"openOnStartup"` // unread|today|starred|all|recent
 	HideReadOnStartup     bool   `json:"hideReadOnStartup"`
 	Theme                 string `json:"theme"`  // system|light|dark
 	Accent                string `json:"accent"` // blue|purple|teal|orange
@@ -56,13 +56,15 @@ type UIPrefs struct {
 	FontSize     string `json:"fontSize"` // sm|md|lg
 	// ReaderFontFamily is a CSS font family name for article body/title.
 	// Empty or "system" uses the app default sans stack.
-	ReaderFontFamily        string `json:"readerFontFamily"`
-	ShowUnreadOnly          bool   `json:"showUnreadOnly"`
-	OpenLinksInBrowser      bool   `json:"openLinksInBrowser"`
-	ReaderWidth             string `json:"readerWidth"`     // narrow|medium|wide|fill
-	DefaultFolderId         string `json:"defaultFolderId"` // empty = none
-	FetchFullContent        bool   `json:"fetchFullContent"`
-	KeepArticlesDays        int    `json:"keepArticlesDays"` // 7–365, default 90
+	ReaderFontFamily   string `json:"readerFontFamily"`
+	ShowUnreadOnly     bool   `json:"showUnreadOnly"`
+	OpenLinksInBrowser bool   `json:"openLinksInBrowser"`
+	ReaderWidth        string `json:"readerWidth"`     // narrow|medium|wide|fill
+	DefaultFolderId    string `json:"defaultFolderId"` // empty = none
+	FetchFullContent   bool   `json:"fetchFullContent"`
+	KeepArticlesDays   int    `json:"keepArticlesDays"` // 7–365, default 90
+	// RecentReadLimit is how many recently-opened articles to keep (10–200, default 50).
+	RecentReadLimit         int    `json:"recentReadLimit"`
 	HideDuplicateTitles     bool   `json:"hideDuplicateTitles"`
 	BlockKeywords           string `json:"blockKeywords"`
 	EnableKeyboardShortcuts bool   `json:"enableKeyboardShortcuts"`
@@ -109,6 +111,7 @@ func DefaultUIPrefs() UIPrefs {
 		DefaultFolderId:          "",
 		FetchFullContent:         false,
 		KeepArticlesDays:         90,
+		RecentReadLimit:          50,
 		HideDuplicateTitles:      true,
 		BlockKeywords:            "",
 		EnableKeyboardShortcuts:  true,
@@ -128,14 +131,23 @@ func DefaultUIPrefs() UIPrefs {
 	}
 }
 
-// Normalize clamps KeepArticlesDays to [7, 365] and fills empty string enums
-// with frontend defaults when blank.
+// Normalize clamps KeepArticlesDays to [7, 365], RecentReadLimit to [10, 200]
+// (0 / unset → 50), and fills empty string enums with frontend defaults when blank.
 func (c UIPrefs) Normalize() UIPrefs {
 	if c.KeepArticlesDays < 7 {
 		c.KeepArticlesDays = 7
 	}
 	if c.KeepArticlesDays > 365 {
 		c.KeepArticlesDays = 365
+	}
+	if c.RecentReadLimit == 0 {
+		c.RecentReadLimit = 50
+	}
+	if c.RecentReadLimit < 10 {
+		c.RecentReadLimit = 10
+	}
+	if c.RecentReadLimit > 200 {
+		c.RecentReadLimit = 200
 	}
 	if c.OpenOnStartup == "" {
 		c.OpenOnStartup = "unread"

@@ -1,4 +1,4 @@
-export type SmartCollectionId = "unread" | "today" | "starred" | "all";
+export type SmartCollectionId = "unread" | "today" | "starred" | "all" | "recent";
 
 export type CollectionId = SmartCollectionId | `feed:${string}` | `folder:${string}`;
 
@@ -150,8 +150,10 @@ export const READER_TOOLBAR_KEYS = [
 export interface UIPrefs {
   markAsReadOnOpen: boolean;
   markAsReadOnScrollEnd: boolean;
-  openOnStartup: string; // unread|today|starred|all
+  openOnStartup: string; // unread|today|starred|recent|all
   hideReadOnStartup: boolean;
+  /** Recently-read rows to keep. 10–200, default 50. */
+  recentReadLimit: number;
   theme: string; // system|light|dark
   accent: string;
   compactSidebar: boolean;
@@ -210,6 +212,8 @@ export interface AppSettings {
   launchAtLogin: boolean;
   openOnStartup: SmartCollectionId;
   hideReadOnStartup: boolean;
+  /** Recently-read rows to keep. 10–200, default 50. */
+  recentReadLimit: number;
 
   // 外观
   theme: "system" | "light" | "dark";

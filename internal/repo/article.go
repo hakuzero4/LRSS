@@ -77,6 +77,7 @@ type SmartCounts struct {
 	Today   int `json:"today"`
 	Starred int `json:"starred"`
 	All     int `json:"all"`
+	Recent  int `json:"recent"`
 }
 
 // nsfwFeedExcludeSQL is AND-ed when ExcludeNsfw / CountSmart hideNsfw.
@@ -105,9 +106,10 @@ func (r *ArticleRepo) CountSmart(ctx context.Context, excludeNsfw bool) (SmartCo
 			  WHERE COALESCE(published_at, fetched_at) >= ?
 			    AND COALESCE(published_at, fetched_at) < ?`+nsfw+`),
 			(SELECT COUNT(*) FROM articles WHERE is_starred = 1`+nsfw+`),
-			(SELECT COUNT(*) FROM articles WHERE 1=1`+nsfw+`)`,
+			(SELECT COUNT(*) FROM articles WHERE 1=1`+nsfw+`),
+			(SELECT COUNT(*) FROM articles WHERE last_opened_at IS NOT NULL`+nsfw+`)`,
 		start.Format(time.RFC3339), end.Format(time.RFC3339),
-	).Scan(&c.Unread, &c.Today, &c.Starred, &c.All)
+	).Scan(&c.Unread, &c.Today, &c.Starred, &c.All, &c.Recent)
 	if err != nil {
 		return SmartCounts{}, fmt.Errorf("count smart: %w", err)
 	}
@@ -115,7 +117,7 @@ func (r *ArticleRepo) CountSmart(ctx context.Context, excludeNsfw bool) (SmartCo
 }
 
 // List returns articles for a collection filter with optional opts.
-// collection: unread | today | starred | all | feed:<id> | folder:<id>
+// collection: unread | today | starred | all | recent | feed:<id> | folder:<id>
 func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts) ([]model.Article, error) {
 	if opts.Limit <= 0 {
 		opts.Limit = 50
@@ -150,7 +152,11 @@ func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts
 	if len(where) > 0 {
 		sqlStr += ` WHERE ` + strings.Join(where, ` AND `)
 	}
-	sqlStr += ` ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC LIMIT ? OFFSET ?`
+	if strings.TrimSpace(collection) == "recent" {
+		sqlStr += ` ORDER BY last_opened_at DESC, id DESC LIMIT ? OFFSET ?`
+	} else {
+		sqlStr += ` ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC LIMIT ? OFFSET ?`
+	}
 	args = append(args, opts.Limit, opts.Offset)
 
 	rows, err := r.DB.QueryContext(ctx, sqlStr, args...)
@@ -396,6 +402,86 @@ func (r *ArticleRepo) UpdateContent(ctx context.Context, articleID, contentHTML,
 	return nil
 }
 
+func clampRecentKeep(keep int) int {
+	if keep <= 0 {
+		keep = 50
+	}
+	if keep < 10 {
+		keep = 10
+	}
+	if keep > 200 {
+		keep = 200
+	}
+	return keep
+}
+
+// RecordOpened stamps last_opened_at and prunes older recently-read rows to keep entries.
+func (r *ArticleRepo) RecordOpened(ctx context.Context, articleID string, keep int) error {
+	articleID = strings.TrimSpace(articleID)
+	if articleID == "" {
+		return fmt.Errorf("record opened: article id required")
+	}
+	res, err := r.DB.ExecContext(ctx,
+		`UPDATE articles SET last_opened_at = ? WHERE id = ?`,
+		nowUTC(), articleID,
+	)
+	if err != nil {
+		return fmt.Errorf("record opened: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("article not found: %s", articleID)
+	}
+	return r.PruneOpened(ctx, keep)
+}
+
+// PruneOpened clears last_opened_at on rows beyond the keep window.
+// MaxOpenConns=1: consume the keep-id query before the UPDATE.
+func (r *ArticleRepo) PruneOpened(ctx context.Context, keep int) error {
+	keep = clampRecentKeep(keep)
+	rows, err := r.DB.QueryContext(ctx, `
+		SELECT id FROM articles
+		WHERE last_opened_at IS NOT NULL
+		ORDER BY last_opened_at DESC, id DESC
+		LIMIT ?`, keep)
+	if err != nil {
+		return fmt.Errorf("prune opened: %w", err)
+	}
+	keepIDs := make([]string, 0, keep)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("prune opened: %w", err)
+		}
+		keepIDs = append(keepIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("prune opened: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("prune opened: %w", err)
+	}
+	if len(keepIDs) == 0 {
+		return nil
+	}
+	placeholders := strings.Repeat("?,", len(keepIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(keepIDs))
+	for i, id := range keepIDs {
+		args[i] = id
+	}
+	_, err = r.DB.ExecContext(ctx, `
+		UPDATE articles SET last_opened_at = NULL
+		WHERE last_opened_at IS NOT NULL
+		  AND id NOT IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return fmt.Errorf("record opened prune: %w", err)
+	}
+	return nil
+}
+
 // SetRead updates is_read.
 func (r *ArticleRepo) SetRead(ctx context.Context, articleID string, read bool) error {
 	res, err := r.DB.ExecContext(ctx, `UPDATE articles SET is_read = ? WHERE id = ?`, boolToInt(read), articleID)
@@ -578,6 +664,8 @@ func collectionWhere(collection string) (where []string, args []any, err error) 
 		end := start.Add(24 * time.Hour)
 		where = append(where, `COALESCE(published_at, fetched_at) >= ? AND COALESCE(published_at, fetched_at) < ?`)
 		args = append(args, start.Format(time.RFC3339), end.Format(time.RFC3339))
+	case c == "recent":
+		where = append(where, `last_opened_at IS NOT NULL`)
 	case strings.HasPrefix(c, "feed:"):
 		feedID := strings.TrimPrefix(c, "feed:")
 		if feedID == "" {

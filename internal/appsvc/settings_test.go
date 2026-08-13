@@ -151,3 +151,62 @@ func TestSettingsService_OnUIPrefs(t *testing.T) {
 		t.Fatalf("hook n=%d mica=%v", n, seen.MicaBackdrop)
 	}
 }
+
+func TestSettingsService_PruneRecentOnSetUIPrefs(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "t.db")
+	database, err := db.Open(ctx, db.Options{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	store := settings.NewStore(database.SQL)
+	searchSvc := search.New(database.SQL, store)
+	embedWorker := job.NewEmbedWorker(database.SQL, store)
+	settingsAPI := appsvc.NewSettings(store, searchSvc, embedWorker)
+	repos := repo.New(database.SQL)
+	lib := service.NewLibraryFromRepos(repos, &rss.Client{})
+	settingsAPI.SetLibrary(lib)
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://ex.com/recent-limit"}
+	if err := repos.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	items := make([]repo.ParsedItem, 12)
+	for i := range items {
+		title := "R" + time.Now().UTC().Format("150405") + string(rune('a'+i))
+		items[i] = repo.ParsedItem{
+			GUID: title, URL: "https://ex.com/" + title, Title: title, PublishedAt: &now,
+		}
+	}
+	if _, err := repos.Articles.UpsertFromParsed(ctx, feed.ID, items); err != nil {
+		t.Fatal(err)
+	}
+	all, err := repos.Articles.List(ctx, "all", repo.ListOpts{Limit: 20})
+	if err != nil || len(all) != 12 {
+		t.Fatalf("seed: %v n=%d", err, len(all))
+	}
+	for _, a := range all {
+		if err := lib.RecordOpened(ctx, a.ID, 50); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	prefs, err := settingsAPI.GetUIPrefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefs.RecentReadLimit = 10
+	if err := settingsAPI.SetUIPrefs(prefs); err != nil {
+		t.Fatal(err)
+	}
+	recent, err := repos.Articles.List(ctx, "recent", repo.ListOpts{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 10 {
+		t.Fatalf("after slider prune recent=%d want 10", len(recent))
+	}
+}

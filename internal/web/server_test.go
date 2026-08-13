@@ -185,6 +185,18 @@ func TestServer_SetReadAndStar(t *testing.T) {
 		t.Fatalf("set read status = %d", resp2.StatusCode)
 	}
 
+	respOpened, err := http.Post(base+"/api/articles/no-such/opened", "application/json", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer respOpened.Body.Close()
+	if respOpened.StatusCode == http.StatusNotFound || respOpened.StatusCode == http.StatusMethodNotAllowed {
+		t.Fatalf("unexpected status for record opened: %d", respOpened.StatusCode)
+	}
+	if respOpened.StatusCode != http.StatusInternalServerError && respOpened.StatusCode != http.StatusOK {
+		t.Fatalf("record opened status = %d", respOpened.StatusCode)
+	}
+
 	// SPA index
 	resp3, err := http.Get(base + "/")
 	if err != nil {

@@ -562,3 +562,170 @@ func TestUpdateContent_ClearsTranslationAndMarksFetched(t *testing.T) {
 		t.Fatalf("content = %#v", got.ContentText)
 	}
 }
+
+func TestRecordOpened_ThreeArticlesNewestFirst(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://ex.com/recent3"}
+	if err := r.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := r.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{
+		{GUID: "r1", URL: "https://ex.com/r1", Title: "First", PublishedAt: &now},
+		{GUID: "r2", URL: "https://ex.com/r2", Title: "Second", PublishedAt: &now},
+		{GUID: "r3", URL: "https://ex.com/r3", Title: "Third", PublishedAt: &now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 10})
+	if err != nil || len(all) != 3 {
+		t.Fatalf("list all: %v n=%d", err, len(all))
+	}
+	byTitle := map[string]string{}
+	for _, a := range all {
+		byTitle[a.Title] = a.ID
+	}
+	for _, title := range []string{"First", "Second", "Third"} {
+		if err := r.Articles.RecordOpened(ctx, byTitle[title], 2); err != nil {
+			t.Fatalf("RecordOpened %s: %v", title, err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		collection string
+		wantTitles []string
+		wantErr    bool
+	}{
+		{
+			name:       "recent newest first",
+			collection: "recent",
+			wantTitles: []string{"Third", "Second", "First"},
+		},
+		{
+			name:       "unknown collection",
+			collection: "not-a-collection",
+			wantErr:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := r.Articles.List(ctx, tt.collection, repo.ListOpts{Limit: 20})
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error for unknown collection")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(got) != len(tt.wantTitles) {
+				t.Fatalf("len=%d want %d", len(got), len(tt.wantTitles))
+			}
+			for i, title := range tt.wantTitles {
+				if got[i].Title != title {
+					t.Fatalf("got[%d]=%q want %q", i, got[i].Title, title)
+				}
+			}
+		})
+	}
+
+	counts, err := r.Articles.CountSmart(ctx, false)
+	if err != nil {
+		t.Fatalf("CountSmart: %v", err)
+	}
+	if counts.Recent != 3 {
+		t.Fatalf("CountSmart.Recent=%d want 3", counts.Recent)
+	}
+}
+
+func TestRecordOpened_RecentCollection(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://ex.com/recent"}
+	if err := r.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	titles := []string{
+		"First", "Second", "Third",
+		"E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12",
+	}
+	items := make([]repo.ParsedItem, len(titles))
+	for i, title := range titles {
+		guid := "r" + title
+		items[i] = repo.ParsedItem{
+			GUID: guid, URL: "https://ex.com/" + guid, Title: title, PublishedAt: &now,
+		}
+	}
+	if _, err := r.Articles.UpsertFromParsed(ctx, feed.ID, items); err != nil {
+		t.Fatal(err)
+	}
+	all, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 50})
+	if err != nil || len(all) != len(titles) {
+		t.Fatalf("list all: %v n=%d", err, len(all))
+	}
+	byTitle := map[string]string{}
+	for _, a := range all {
+		byTitle[a.Title] = a.ID
+	}
+	for _, title := range titles {
+		if err := r.Articles.RecordOpened(ctx, byTitle[title], 2); err != nil {
+			t.Fatalf("RecordOpened %s: %v", title, err)
+		}
+	}
+
+	wantRecent := []string{"E12", "E11", "E10", "E9", "E8", "E7", "E6", "E5", "E4", "Third"}
+
+	tests := []struct {
+		name       string
+		collection string
+		wantTitles []string
+		wantErr    bool
+	}{
+		{
+			name:       "recent newest first after prune",
+			collection: "recent",
+			wantTitles: wantRecent,
+		},
+		{
+			name:       "unknown collection",
+			collection: "not-a-collection",
+			wantErr:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := r.Articles.List(ctx, tt.collection, repo.ListOpts{Limit: 20})
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error for unknown collection")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(got) != len(tt.wantTitles) {
+				t.Fatalf("len=%d want %d", len(got), len(tt.wantTitles))
+			}
+			for i, title := range tt.wantTitles {
+				if got[i].Title != title {
+					t.Fatalf("got[%d]=%q want %q", i, got[i].Title, title)
+				}
+			}
+		})
+	}
+
+	counts, err := r.Articles.CountSmart(ctx, false)
+	if err != nil {
+		t.Fatalf("CountSmart: %v", err)
+	}
+	if counts.Recent != 10 {
+		t.Fatalf("CountSmart.Recent=%d want 10", counts.Recent)
+	}
+}

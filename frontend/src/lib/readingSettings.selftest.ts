@@ -83,6 +83,10 @@ assert(
   "starred exempt",
 );
 assert(
+  applyShowUnreadOnly(sample, true, "recent").length === 3,
+  "recent exempt from unread-only",
+);
+assert(
   applyShowUnreadOnly(sample, true, "unread").map((a) => a.id).join(",") === "1,3",
   "on in unread collection",
 );
@@ -229,6 +233,16 @@ assert(store.includes("readerWidth: settings.readerWidth"), "persist readerWidth
 assert(store.includes("showUnreadOnly: settings.showUnreadOnly"), "persist showUnreadOnly");
 assert(store.includes("openLinksInBrowser: settings.openLinksInBrowser"), "persist openLinks");
 assert(store.includes("markAsReadOnScrollEnd: settings.markAsReadOnScrollEnd"), "persist scroll end");
+assert(store.includes("recentReadLimit: settings.recentReadLimit"), "persist recentReadLimit");
+assert(store.includes("RecordOpened"), "store records opened articles");
+assert(store.includes("setRecentReadLimit"), "store setRecentReadLimit");
+
+const generalPanel = readFileSync(
+  join(root, "components/settings/panels/GeneralPanel.vue"),
+  "utf8",
+);
+assert(generalPanel.includes("recentReadLimit"), "general slider recentReadLimit");
+assert(generalPanel.includes('value="recent"'), "open-on-startup includes recent");
 
 const readingPanel = readFileSync(
   join(root, "components/settings/panels/ReadingPanel.vue"),

@@ -34,7 +34,7 @@ Folder **image-card** layout — covers in a grid, switch from the list header o
 | Capability | Details |
 | --- | --- |
 | **Three-pane layout** | Sidebar (smart lists / folders / feeds) · article list · reader |
-| **Smart lists** | Unread · Today · Starred · All — with live counts |
+| **Smart lists** | Unread · Today · Starred · All · **Recently read** — with live counts |
 | **Folders** | Nested-style organization; create / rename / delete; mark all read; refresh folder; move feeds; [list or image-card display](#folder-display) per folder |
 | **Feeds** | Favicons, unread badges, context menus, per-feed editor |
 | **Office / NSFW mode** | Mark feeds or folders sensitive; hide them from sidebar & smart lists when office mode is on |
@@ -69,7 +69,8 @@ Some folders are all image feeds. Set **Display → Image cards** on the folder 
 | --- | --- |
 | **Read / star** | Toggle read state and favorites; mark all read on lists/folders |
 | **Mark-on-open / mark-on-scroll** | Configurable read behavior |
-| **Unread-only list filter** | Hide read items (starred collection exempt) |
+| **Recently read** | Opening an article records it (independent of read/unread). Keep count is **Settings → General** (10–200, default 50); older entries are pruned |
+| **Unread-only list filter** | Hide read items (starred and recently-read collections exempt) |
 | **Open original** | System browser (desktop) or new tab (web access) |
 | **In-body links** | Honor “open links in browser” preference |
 | **HTML safety** | Article HTML sanitized with bluemonday before store/display |

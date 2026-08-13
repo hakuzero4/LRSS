@@ -43,6 +43,8 @@ type ArticleStore interface {
 	ClearTranslation(ctx context.Context, articleID string) error
 	SetRead(ctx context.Context, articleID string, read bool) error
 	SetStarred(ctx context.Context, articleID string, starred bool) error
+	RecordOpened(ctx context.Context, articleID string, keep int) error
+	PruneOpened(ctx context.Context, keep int) error
 	MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error
 	PurgeOlderThan(ctx context.Context, days int) (int, error)
 	CountSmart(ctx context.Context, excludeNsfw bool) (repo.SmartCounts, error)

@@ -35,7 +35,7 @@ func (d APIDeps) excludeNsfw(ctx context.Context) bool {
 
 func isSmartCollection(collection string) bool {
 	switch strings.TrimSpace(collection) {
-	case "", "unread", "today", "starred", "all":
+	case "", "unread", "today", "starred", "all", "recent":
 		return true
 	default:
 		return false
@@ -54,6 +54,7 @@ func (s *Server) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/search", s.handleSearch)
 	mux.HandleFunc("POST /api/articles/{id}/read", s.handleSetRead)
 	mux.HandleFunc("POST /api/articles/{id}/star", s.handleSetStarred)
+	mux.HandleFunc("POST /api/articles/{id}/opened", s.handleRecordOpened)
 	mux.HandleFunc("POST /api/articles/mark-all-read", s.handleMarkAllRead)
 
 	// Reader toolbar tools (mirror desktop appsvc when enabled in UIPrefs.readerToolbar)
@@ -219,6 +220,29 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleRecordOpened(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Library == nil {
+		writeError(w, http.StatusServiceUnavailable, "library unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeError(w, http.StatusBadRequest, "missing id")
+		return
+	}
+	keep := 50
+	if s.deps.Store != nil {
+		if prefs, err := s.deps.Store.LoadUIPrefs(r.Context()); err == nil {
+			keep = prefs.RecentReadLimit
+		}
+	}
+	if err := s.deps.Library.RecordOpened(r.Context(), id, keep); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleSetRead(w http.ResponseWriter, r *http.Request) {

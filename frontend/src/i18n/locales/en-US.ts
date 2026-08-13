@@ -4,6 +4,7 @@ export default {
     unread: "Unread",
     today: "Today",
     starred: "Starred",
+    recent: "Recently read",
     all: "All articles",
     library: "Library",
     smartLists: "Smart lists",
@@ -295,6 +296,10 @@ export default {
       openOnStartupPlaceholder: "Choose a list",
       hideReadOnStartup: "Hide read on startup",
       hideReadOnStartupDesc: "Show only unread articles after launch.",
+      recentReadLimit: "Recently read limit",
+      recentReadLimitDesc:
+        "Opened articles appear in Recently read. Older records beyond this count are pruned.",
+      recentReadLimitHint: "10–200, default 50.",
     },
 
     appearance: {

@@ -32,6 +32,9 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 	if cfg.KeepArticlesDays != 90 {
 		t.Fatalf("KeepArticlesDays = %d want 90", cfg.KeepArticlesDays)
 	}
+	if cfg.RecentReadLimit != 50 {
+		t.Fatalf("RecentReadLimit = %d want 50", cfg.RecentReadLimit)
+	}
 	if !cfg.EnableKeyboardShortcuts || !cfg.MarkAsReadOnOpen {
 		t.Fatal("expected keyboard shortcuts and markAsReadOnOpen true")
 	}
@@ -55,6 +58,7 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 		DefaultFolderId:         "folder-1",
 		FetchFullContent:        true,
 		KeepArticlesDays:        30,
+		RecentReadLimit:         80,
 		HideDuplicateTitles:     false,
 		BlockKeywords:           "spam,ads",
 		EnableKeyboardShortcuts: false,
@@ -73,6 +77,45 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("round-trip = %+v want %+v", got, want)
+	}
+}
+
+func TestUIPrefs_NormalizeRecentReadLimit(t *testing.T) {
+	c := settings.UIPrefs{RecentReadLimit: 0}.Normalize()
+	if c.RecentReadLimit != 50 {
+		t.Fatalf("unset 0 = %d want 50", c.RecentReadLimit)
+	}
+	c = settings.UIPrefs{RecentReadLimit: 3}.Normalize()
+	if c.RecentReadLimit != 10 {
+		t.Fatalf("low clamp = %d want 10", c.RecentReadLimit)
+	}
+	c = settings.UIPrefs{RecentReadLimit: 400}.Normalize()
+	if c.RecentReadLimit != 200 {
+		t.Fatalf("high clamp = %d want 200", c.RecentReadLimit)
+	}
+	c = settings.UIPrefs{RecentReadLimit: 80}.Normalize()
+	if c.RecentReadLimit != 80 {
+		t.Fatalf("in-range = %d want 80", c.RecentReadLimit)
+	}
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "t.db")
+	database, err := db.Open(ctx, db.Options{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := settings.NewStore(database.SQL)
+
+	if err := store.SetUIPrefs(ctx, settings.UIPrefs{RecentReadLimit: 1, Theme: "system"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := store.LoadUIPrefs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RecentReadLimit != 10 {
+		t.Fatalf("persisted clamp = %d want 10", cfg.RecentReadLimit)
 	}
 }
 
@@ -156,6 +199,9 @@ func TestUIPrefs_PartialJSONKeepsDefaults(t *testing.T) {
 	}
 	if cfg.KeepArticlesDays != 120 {
 		t.Fatalf("days = %d", cfg.KeepArticlesDays)
+	}
+	if cfg.RecentReadLimit != 50 {
+		t.Fatalf("RecentReadLimit = %d want default 50", cfg.RecentReadLimit)
 	}
 	// Fields absent from JSON should remain defaults (not zero).
 	if !cfg.MarkAsReadOnOpen {
