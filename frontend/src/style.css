@@ -257,6 +257,48 @@ html.mica .settings-nav {
 }
 
 /*
+  Modals sit over the reader. A 4px backdrop-blur only smears glyphs into a
+  halo; translucent --background on the settings pane then prints that text
+  through the form. Dim the scrim without blur, and restore solid tokens
+  inside the dialog so article copy cannot show through.
+*/
+html.mica [data-slot="dialog-overlay"],
+html.mica [data-slot="alert-dialog-overlay"],
+html.mica [data-slot="sheet-overlay"] {
+  background: rgb(24 26 32 / 52%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.mica.dark [data-slot="dialog-overlay"],
+html.mica.dark [data-slot="alert-dialog-overlay"],
+html.mica.dark [data-slot="sheet-overlay"] {
+  background: rgb(0 0 0 / 62%);
+}
+
+html.mica [data-slot="dialog-content"],
+html.mica [data-slot="alert-dialog-content"] {
+  --background: #f6f7f9;
+  --sidebar: #f0f1f5;
+  --muted: #eef0f4;
+  --secondary: #eef0f4;
+  --card: #ffffff;
+  --popover: #ffffff;
+  background: #ffffff;
+}
+
+html.mica.dark [data-slot="dialog-content"],
+html.mica.dark [data-slot="alert-dialog-content"] {
+  --background: #12141a;
+  --sidebar: #161922;
+  --muted: #242833;
+  --secondary: #242833;
+  --card: #1a1d26;
+  --popover: #1a1d26;
+  background: #1a1d26;
+}
+
+/*
  * Standalone article search (below list title chrome, own module).
  * Light well — no heavy border pill competing with the header.
  */

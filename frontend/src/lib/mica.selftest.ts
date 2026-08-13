@@ -68,6 +68,9 @@ assert(
   /html\.mica\s+\.pane-chrome\s*\{[^}]*background:\s*transparent/.test(css),
   "mica pane headers are transparent",
 );
+assert(css.includes('[data-slot="dialog-overlay"]'), "mica dims dialog overlay");
+assert(css.includes("backdrop-filter: none"), "mica overlay does not smear text");
+assert(css.includes('[data-slot="dialog-content"]'), "mica dialogs use solid tokens");
 assert(html.includes('classList.add("mica")') || html.includes("classList.add('mica')"), "index.html applies mica early");
 assert(html.includes("__LRSS_WEB__"), "index.html skips mica when web bootstrap is present");
 assert(mainTs.includes("applyDesktopMica"), "main.ts reapplies mica");
