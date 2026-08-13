@@ -46,6 +46,7 @@ func isSmartCollection(collection string) bool {
 
 func (s *Server) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/meta", s.handleMeta)
+	mux.HandleFunc("GET /api/activity", s.handleJobActivity)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("GET /api/feeds", s.handleFeeds)
 	mux.HandleFunc("GET /api/articles", s.handleListArticles)
@@ -79,6 +80,38 @@ func (s *Server) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/ai/ensure-full", s.handleAIEnsureFull)
 	mux.HandleFunc("POST /api/ai/clear-translation", s.handleAIClearTranslation)
 	mux.HandleFunc("POST /api/ai/apply-folder", s.handleAIApplyFolder)
+}
+
+func (s *Server) handleJobActivity(w http.ResponseWriter, r *http.Request) {
+	var a service.JobActivity
+	if s.deps.Library != nil {
+		id, title, pending, queuedIDs := s.deps.Library.RefreshSnapshot()
+		a.FeedID = id
+		a.FeedTitle = title
+		a.Pending = pending
+		a.Refreshing = id != "" || pending > 0
+		if len(queuedIDs) > 0 {
+			titles := make([]string, 0, len(queuedIDs))
+			for _, qid := range queuedIDs {
+				f, err := s.deps.Library.Feeds.Get(r.Context(), qid)
+				if err != nil {
+					continue
+				}
+				t := strings.TrimSpace(f.Title)
+				if t == "" {
+					t = f.FeedURL
+				}
+				if t != "" {
+					titles = append(titles, t)
+				}
+			}
+			a.QueuedTitles = titles
+		}
+	}
+	if s.deps.Briefing != nil {
+		a.BriefingState, a.BriefingPending, a.BriefingArticles = s.deps.Briefing.Snapshot()
+	}
+	writeJSON(w, http.StatusOK, a)
 }
 
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {

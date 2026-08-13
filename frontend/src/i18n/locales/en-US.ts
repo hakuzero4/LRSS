@@ -240,6 +240,19 @@ export default {
     model: "Model",
   },
 
+  activity: {
+    listSep: ", ",
+    refreshing: "Updating feeds",
+    refreshCurrent: "Updating {name}",
+    refreshCurrentPending: "Updating {name} · {n} left",
+    refreshCurrentQueued: "Updating {name} · next {queued} · {n} left",
+    refreshPending: "Feeds queued · {n} left",
+    briefingGenerating: "Generating briefing",
+    briefingGeneratingN: "Generating briefing ({n} articles)",
+    briefingQueued: "Briefing queued",
+    briefingQueuedN: "Briefing queued ({n} articles waiting)",
+  },
+
   feed: {
     add: {
       title: "Add feed",

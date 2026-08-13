@@ -8,6 +8,7 @@ import (
 
 	"lrss/internal/db"
 	"lrss/internal/llm"
+	"lrss/internal/model"
 	"lrss/internal/repo"
 	"lrss/internal/rss"
 	"lrss/internal/service"
@@ -77,6 +78,60 @@ func TestBriefingWorker_Debounce(t *testing.T) {
 	}
 	if did {
 		t.Fatal("fresh enqueue should debounce")
+	}
+}
+
+func TestBriefingWorker_SkipWhenFewerThanMin(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.Open(ctx, db.Options{Path: filepath.Join(t.TempDir(), "min.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := settings.NewStore(database.SQL)
+	repos := repo.New(database.SQL)
+	prefs := settings.DefaultUIPrefs()
+	prefs.SmartBriefing = true
+	if err := store.SaveUIPrefs(ctx, prefs); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveLLMConfig(ctx, settings.LLMConfig{
+		Provider: settings.LLMProviderOpenAICompatible,
+		BaseURL:  "http://127.0.0.1:9",
+		Model:    "x",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	feed := &model.Feed{Title: "F", FeedURL: "https://ex.test/min.xml"}
+	if err := repos.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := repos.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{
+		{GUID: "only", URL: "https://ex.test/only", Title: "One", PublishedAt: &now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	arts, err := repos.Articles.List(ctx, "all", repo.ListOpts{Limit: 5})
+	if err != nil || len(arts) != 1 {
+		t.Fatalf("seed: %v n=%d", err, len(arts))
+	}
+	w := service.NewBriefingWorker(store, repos.Briefings, repos.Articles, repos.Feeds, repos.Folders, &llm.Service{Store: store})
+	w.Enqueue(ctx, []string{arts[0].ID})
+	w.NotifyForceQueueEmpty()
+	did, err := w.TryGenerate(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if did {
+		t.Fatal("one article must not generate a briefing")
+	}
+	list, err := repos.Briefings.List(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("unexpected briefings: %d", len(list))
 	}
 }
 

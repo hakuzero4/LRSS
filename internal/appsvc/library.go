@@ -13,8 +13,9 @@ import (
 
 // FeedService is the Wails-facing feed API.
 type FeedService struct {
-	lib    *service.Library
-	notify RefreshNotifier
+	lib      *service.Library
+	notify   RefreshNotifier
+	briefing *service.BriefingWorker
 }
 
 // RefreshNotifier is called after a successful refresh with new article count.
@@ -33,6 +34,51 @@ func NewFeedService(lib *service.Library) *FeedService {
 //wails:ignore
 func (s *FeedService) SetNotifier(n RefreshNotifier) {
 	s.notify = n
+}
+
+// SetBriefingWorker lets JobActivity include smart-briefing progress.
+//
+//wails:ignore
+func (s *FeedService) SetBriefingWorker(w *service.BriefingWorker) {
+	if s == nil {
+		return
+	}
+	s.briefing = w
+}
+
+// JobActivity is a live snapshot of feed refresh + briefing work.
+func (s *FeedService) JobActivity() service.JobActivity {
+	var a service.JobActivity
+	if s == nil || s.lib == nil {
+		return a
+	}
+	id, title, pending, queuedIDs := s.lib.RefreshSnapshot()
+	a.FeedID = id
+	a.FeedTitle = title
+	a.Pending = pending
+	a.Refreshing = id != "" || pending > 0
+	if len(queuedIDs) > 0 {
+		titles := make([]string, 0, len(queuedIDs))
+		ctx := context.Background()
+		for _, qid := range queuedIDs {
+			f, err := s.lib.Feeds.Get(ctx, qid)
+			if err != nil {
+				continue
+			}
+			t := strings.TrimSpace(f.Title)
+			if t == "" {
+				t = f.FeedURL
+			}
+			if t != "" {
+				titles = append(titles, t)
+			}
+		}
+		a.QueuedTitles = titles
+	}
+	if s.briefing != nil {
+		a.BriefingState, a.BriefingPending, a.BriefingArticles = s.briefing.Snapshot()
+	}
+	return a
 }
 
 func (s *FeedService) afterRefresh(added int) {

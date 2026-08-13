@@ -96,6 +96,7 @@ export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
     FeedService: {
       ListFolders: () => getJSON("/api/folders"),
       ListFeeds: () => getJSON("/api/feeds"),
+      JobActivity: () => getJSON("/api/activity"),
     },
     ArticleService: {
       List: (collection: string, limit: number, offset: number) => {

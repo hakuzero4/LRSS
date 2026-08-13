@@ -64,6 +64,10 @@ type Library struct {
 	// successful upsert (refresh / add feed). Optional. Must not call LLM
 	// while holding refresh locks — enqueue only.
 	OnArticlesInserted func(ctx context.Context, ids []string)
+
+	actMu          sync.Mutex
+	actFeedID      string
+	actFeedTitle   string
 }
 
 // AutoFulltextMaxPerTick caps original-page fetches per background drain.
@@ -302,6 +306,8 @@ func (lib *Library) RefreshFeed(ctx context.Context, feedID string) (int, error)
 	if feed.IsPaused {
 		return 0, nil
 	}
+	lib.beginRefreshFeed(feed.ID, feed.Title)
+	defer lib.endRefreshFeed()
 	return lib.refreshOne(ctx, feed)
 }
 
@@ -712,9 +718,11 @@ func (lib *Library) drainRefreshBatchLocked(ctx context.Context, defaultMinutes,
 			// Drop missing/paused from the queue; do not burn the whole budget on junk.
 			continue
 		}
+		lib.beginRefreshFeed(feed.ID, feed.Title)
 		lib.refreshMu.Lock()
 		n, rerr := lib.refreshOne(ctx, feed)
 		lib.refreshMu.Unlock()
+		lib.endRefreshFeed()
 		refreshed[id] = struct{}{}
 		budget--
 		if rerr != nil {
@@ -742,9 +750,11 @@ func (lib *Library) drainRefreshBatchLocked(ctx context.Context, defaultMinutes,
 		if _, already := refreshed[f.ID]; already {
 			continue
 		}
+		lib.beginRefreshFeed(f.ID, f.Title)
 		lib.refreshMu.Lock()
 		n, rerr := lib.refreshOne(ctx, f)
 		lib.refreshMu.Unlock()
+		lib.endRefreshFeed()
 		if rerr != nil {
 			res.FeedsErr++
 			continue

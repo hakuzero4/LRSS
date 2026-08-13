@@ -17,8 +17,9 @@ import (
 const (
 	KeyBriefingPending     = "app.briefing_pending"
 	briefingDebounce       = 60 * time.Second
-	briefingMaxArticles    = 40
-	briefingKeepUnstarred  = 30
+	briefingMaxArticles     = 40
+	briefingMinArticles     = 3
+	briefingKeepUnstarred   = 30
 	briefingGenerateTimeout = 4 * time.Minute
 )
 
@@ -36,9 +37,10 @@ type BriefingWorker struct {
 	folders   FolderStore
 	llm       *llm.Service
 
-	mu         sync.Mutex
-	forceEmpty bool
-	generating bool
+	mu          sync.Mutex
+	forceEmpty  bool
+	generating  bool
+	generatingN int
 }
 
 func NewBriefingWorker(
@@ -129,6 +131,7 @@ func (w *BriefingWorker) TryGenerate(ctx context.Context) (bool, error) {
 		}
 	}
 	w.generating = true
+	w.generatingN = len(p.IDs)
 	w.forceEmpty = false
 	snapshot := append([]string(nil), p.IDs...)
 	w.mu.Unlock()
@@ -136,6 +139,7 @@ func (w *BriefingWorker) TryGenerate(ctx context.Context) (bool, error) {
 	defer func() {
 		w.mu.Lock()
 		w.generating = false
+		w.generatingN = 0
 		w.mu.Unlock()
 	}()
 
@@ -187,6 +191,13 @@ func (w *BriefingWorker) generate(ctx context.Context, existingID string, ids []
 	}
 	if len(rows) == 0 {
 		w.removeConsumed(ctx, ids)
+		return false, nil
+	}
+	if len(rows) < briefingMinArticles {
+		// Too thin for a desk note — keep IDs until a later refresh adds more.
+		w.mu.Lock()
+		w.forceEmpty = false
+		w.mu.Unlock()
 		return false, nil
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].pub > rows[j].pub })
@@ -347,6 +358,32 @@ func (w *BriefingWorker) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("briefing id is required")
 	}
 	return w.briefings.Delete(ctx, id)
+}
+
+// Snapshot reports queued/generating briefing work for the activity bar.
+func (w *BriefingWorker) Snapshot() (state string, pending, articles int) {
+	if w == nil {
+		return "", 0, 0
+	}
+	w.mu.Lock()
+	gen := w.generating
+	n := w.generatingN
+	w.mu.Unlock()
+	var p briefingPending
+	if w.store != nil {
+		p, _ = w.loadPending(context.Background())
+	}
+	pending = len(p.IDs)
+	if gen {
+		if n <= 0 {
+			n = pending
+		}
+		return "generating", pending, n
+	}
+	if pending > 0 {
+		return "queued", pending, 0
+	}
+	return "", 0, 0
 }
 
 func (w *BriefingWorker) UnreadCount(ctx context.Context) (int, error) {

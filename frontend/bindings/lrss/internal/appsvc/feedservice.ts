@@ -101,6 +101,13 @@ export function RefreshAll(): $CancellablePromise<$models.RefreshAllResult> {
 }
 
 /**
+ * JobActivity is a live snapshot of feed refresh + briefing work.
+ */
+export function JobActivity(): $CancellablePromise<Record<string, unknown>> {
+    return $Call.ByID(592667890);
+}
+
+/**
  * RefreshFeed re-fetches one feed.
  * Bounded so a hung remote feed cannot leave the UI spinner spinning forever.
  */

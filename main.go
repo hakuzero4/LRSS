@@ -82,6 +82,7 @@ func main() {
 	settingsAPI.SetLibrary(library)
 	feedAPI := appsvc.NewFeedService(library)
 	feedAPI.SetNotifier(notifier)
+	feedAPI.SetBriefingWorker(briefingWorker)
 	articleAPI := appsvc.NewArticleService(library, store)
 	aiAPI := appsvc.NewAI(store, library, database.SQL)
 	briefingAPI := appsvc.NewBriefingService(briefingWorker)

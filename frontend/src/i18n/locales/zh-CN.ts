@@ -236,6 +236,19 @@ export default {
     model: "模型",
   },
 
+  activity: {
+    listSep: "、",
+    refreshing: "正在更新订阅",
+    refreshCurrent: "正在更新 {name}",
+    refreshCurrentPending: "正在更新 {name} · 还剩 {n} 个",
+    refreshCurrentQueued: "正在更新 {name} · 排队 {queued} · 还剩 {n} 个",
+    refreshPending: "订阅排队更新中 · 还剩 {n} 个",
+    briefingGenerating: "正在生成智能汇报",
+    briefingGeneratingN: "正在生成智能汇报（{n} 篇）",
+    briefingQueued: "智能汇报排队中",
+    briefingQueuedN: "智能汇报排队中（{n} 篇待汇总）",
+  },
+
   feed: {
     add: {
       title: "添加订阅",

@@ -79,6 +79,76 @@ const feedEditId = ref<string | null>(null);
 /** Zen mode: hide feed sidebar + article list (session-only). */
 const zenMode = ref(false);
 const refreshing = ref(false);
+
+export type JobActivity = {
+  refreshing: boolean;
+  feedId: string;
+  feedTitle: string;
+  pending: number;
+  queuedTitles: string[];
+  briefingState: "" | "queued" | "generating";
+  briefingPending: number;
+  briefingArticles: number;
+};
+
+const idleJobActivity = (): JobActivity => ({
+  refreshing: false,
+  feedId: "",
+  feedTitle: "",
+  pending: 0,
+  queuedTitles: [],
+  briefingState: "",
+  briefingPending: 0,
+  briefingArticles: 0,
+});
+
+const jobActivity = reactive<JobActivity>(idleJobActivity());
+let activityPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function applyJobActivity(raw: unknown) {
+  if (!raw || typeof raw !== "object") {
+    Object.assign(jobActivity, idleJobActivity());
+    return;
+  }
+  const o = raw as Record<string, unknown>;
+  const titlesRaw = o.queuedTitles ?? o.QueuedTitles;
+  const state = String(o.briefingState ?? o.BriefingState ?? "").trim();
+  jobActivity.refreshing = !!(o.refreshing ?? o.Refreshing);
+  jobActivity.feedId = String(o.feedId ?? o.FeedID ?? o.FeedId ?? "");
+  jobActivity.feedTitle = String(o.feedTitle ?? o.FeedTitle ?? "").trim();
+  jobActivity.pending = parseCountField(o.pending ?? o.Pending);
+  jobActivity.queuedTitles = Array.isArray(titlesRaw)
+    ? titlesRaw.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+  jobActivity.briefingState = state === "generating" || state === "queued" ? state : "";
+  jobActivity.briefingPending = parseCountField(o.briefingPending ?? o.BriefingPending);
+  jobActivity.briefingArticles = parseCountField(o.briefingArticles ?? o.BriefingArticles);
+  if (jobActivity.feedTitle || jobActivity.pending > 0) {
+    jobActivity.refreshing = true;
+  }
+}
+
+async function refreshJobActivity() {
+  try {
+    const api = await loadAppsvc();
+    const fn = api?.FeedService?.JobActivity;
+    if (typeof fn !== "function") {
+      Object.assign(jobActivity, idleJobActivity());
+      return;
+    }
+    applyJobActivity(await fn());
+  } catch {
+    /* keep last snapshot */
+  }
+}
+
+function startJobActivityPoll() {
+  if (activityPollTimer) return;
+  void refreshJobActivity();
+  activityPollTimer = setInterval(() => {
+    void refreshJobActivity();
+  }, 1500);
+}
 /** True while ArticleService.List for the current collection is in flight. */
 const articlesLoading = ref(false);
 /** Bumps on each reloadArticles / collection switch so stale List responses are dropped. */
@@ -1649,6 +1719,7 @@ async function bootstrap() {
     if (settings.smartBriefing) {
       void reloadBriefings();
     }
+    startJobActivityPoll();
   }
 }
 
@@ -3071,6 +3142,7 @@ export function useRssStore() {
     translateView,
     clearTranslateView,
     refreshing,
+    jobActivity,
     backendReady,
     bootstrapError,
     settings,
