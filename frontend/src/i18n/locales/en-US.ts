@@ -291,7 +291,7 @@ export default {
 
     appearance: {
       themeGroup: "Theme",
-      themeGroupDesc: "Colors and sidebar density.",
+      themeGroupDesc: "Colors, window material, and sidebar density.",
       appearance: "Appearance",
       themeSystem: "System",
       themeLight: "Light",
@@ -304,6 +304,10 @@ export default {
       accentOrange: "Orange",
       accentCustom: "Custom color",
       accentHex: "Hex color",
+      mica: "Mica window material",
+      micaDesc: "Use Windows 11 Mica so the wallpaper tint shows through the app.",
+      micaUnavailable: "Available on the Windows 11 desktop app only (not in web access).",
+      micaNeedsGpu: "Turn on hardware acceleration in Settings → Advanced, then restart to use Mica.",
       compactSidebar: "Compact sidebar",
       compactSidebarDesc: "Reduce sidebar row height to show more feeds.",
       language: "Language",
@@ -724,7 +728,7 @@ export default {
       launchAtLoginFailed: "Could not set launch at login",
       hardwareAccel: "Hardware acceleration",
       hardwareAccelDesc:
-        "Use the GPU for UI rendering (recommended). Turning off disables GPU in WebView on next launch.",
+        "Use the GPU for UI rendering (recommended). Turning off disables GPU in WebView on next launch, and turns off the Windows 11 Mica backdrop.",
       clearCacheOnQuit: "Clear AI cache on quit",
       clearCacheOnQuitDesc:
         "When closing the app, wipe AI result cache (summaries/translations). Feeds and articles are kept.",

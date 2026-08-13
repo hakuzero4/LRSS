@@ -149,6 +149,37 @@
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
 }
 
+/*
+  Windows 11 Mica — html.mica is set only in the desktop WebView.
+  Tokens stay translucent so the DWM wallpaper sample shows through the
+  whole chrome. Flyouts keep a denser wash so menus stay readable.
+*/
+html.mica {
+  --background: color-mix(in srgb, #f6f7f9 46%, transparent);
+  --sidebar: color-mix(in srgb, #f0f1f5 52%, transparent);
+  --muted: color-mix(in srgb, #eef0f4 50%, transparent);
+  --secondary: color-mix(in srgb, #eef0f4 50%, transparent);
+  --sidebar-accent: color-mix(in srgb, #ffffff 82%, transparent);
+  --card: color-mix(in srgb, #ffffff 86%, transparent);
+  --popover: color-mix(in srgb, #ffffff 94%, transparent);
+}
+
+html.mica.dark {
+  --background: color-mix(in srgb, #12141a 50%, transparent);
+  --sidebar: color-mix(in srgb, #161922 56%, transparent);
+  --muted: color-mix(in srgb, #242833 52%, transparent);
+  --secondary: color-mix(in srgb, #242833 52%, transparent);
+  --sidebar-accent: color-mix(in srgb, #222632 78%, transparent);
+  --card: color-mix(in srgb, #1a1d26 84%, transparent);
+  --popover: color-mix(in srgb, #1a1d26 92%, transparent);
+}
+
+html.mica,
+html.mica body,
+html.mica #app {
+  background-color: transparent !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -190,6 +221,10 @@
   background: var(--background);
 }
 
+html.mica .app-shell {
+  background: transparent;
+}
+
 .app-sidebar {
   background: var(--sidebar);
   border-right: 1px solid var(--sidebar-border);
@@ -200,6 +235,25 @@
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
   border-bottom: 1px solid var(--border);
+}
+
+html.mica .pane-chrome {
+  /* List / reader / AI / markdown headers must not sit on a white slab. */
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.mica .article-search {
+  background: transparent;
+}
+
+html.mica .article-search-field:focus-within {
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+}
+
+html.mica .settings-nav {
+  background: var(--sidebar);
 }
 
 /*
@@ -1241,6 +1295,36 @@ button:active:not(:disabled) {
 
   .reader-summary {
     background: var(--muted);
+  }
+
+  html.mica {
+    --background: #f6f7f9;
+    --sidebar: #f0f1f5;
+    --muted: #eef0f4;
+    --secondary: #eef0f4;
+    --sidebar-accent: #ffffff;
+    --card: #ffffff;
+    --popover: #ffffff;
+  }
+
+  html.mica.dark {
+    --background: #12141a;
+    --sidebar: #161922;
+    --muted: #242833;
+    --secondary: #242833;
+    --sidebar-accent: #222632;
+    --card: #1a1d26;
+    --popover: #1a1d26;
+  }
+
+  html.mica,
+  html.mica body,
+  html.mica #app {
+    background-color: var(--background) !important;
+  }
+
+  html.mica .app-shell {
+    background: var(--background);
   }
 }
 

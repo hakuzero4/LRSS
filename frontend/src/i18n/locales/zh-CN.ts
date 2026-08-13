@@ -288,7 +288,7 @@ export default {
 
     appearance: {
       themeGroup: "主题",
-      themeGroupDesc: "界面配色与侧栏密度。",
+      themeGroupDesc: "界面配色、窗口材质与侧栏密度。",
       appearance: "外观",
       themeSystem: "跟随系统",
       themeLight: "浅色",
@@ -301,6 +301,10 @@ export default {
       accentOrange: "橙",
       accentCustom: "自定义颜色",
       accentHex: "十六进制颜色",
+      mica: "Mica 窗口材质",
+      micaDesc: "整窗使用 Windows 11 Mica，让壁纸纹理透过界面。",
+      micaUnavailable: "仅 Windows 11 桌面端可用（浏览器 Web 访问不支持）。",
+      micaNeedsGpu: "需要先开启硬件加速（设置 → 高级），下次启动后可开 Mica。",
       compactSidebar: "紧凑侧栏",
       compactSidebarDesc: "缩小侧栏行高，显示更多订阅源。",
       language: "界面语言",
@@ -706,7 +710,7 @@ export default {
       launchAtLoginFailed: "设置开机自启失败",
       hardwareAccel: "硬件加速",
       hardwareAccelDesc:
-        "使用 GPU 渲染界面（推荐开启）。关闭后下次启动会对 WebView 禁用 GPU。",
+        "使用 GPU 渲染界面（推荐开启）。关闭后下次启动会对 WebView 禁用 GPU，Windows 11 的 Mica 窗口背景也会关闭。",
       clearCacheOnQuit: "退出时清理 AI 缓存",
       clearCacheOnQuitDesc:
         "关闭应用时清空摘要/翻译等 AI 结果缓存（不影响订阅与文章）。",

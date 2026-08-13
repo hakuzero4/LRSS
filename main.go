@@ -145,7 +145,7 @@ func main() {
 	}
 	app := application.New(appOpts)
 
-	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	winOpts := application.WebviewWindowOptions{
 		Title:  "LRSS",
 		Width:  1280,
 		Height: 800,
@@ -156,6 +156,14 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(246, 247, 249),
 		URL:              "/",
+	}
+	// Win11 22H2+: DWM Mica behind a translucent WebView. Needs GPU compositing.
+	if desktop.ApplyMica(&winOpts, uiPrefs.HardwareAcceleration, uiPrefs.MicaBackdrop, uiPrefs.Theme) {
+		log.Printf("windows mica backdrop enabled")
+	}
+	window := app.Window.NewWithOptions(winOpts)
+	settingsAPI.SetOnUIPrefs(func(prefs settings.UIPrefs) {
+		desktop.ApplyWindowMicaFrom(window, prefs.MicaBackdrop && prefs.HardwareAcceleration)
 	})
 
 	beginQuit := desktop.Setup(app, window, trayIcon, desktop.Hooks{

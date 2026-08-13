@@ -44,14 +44,16 @@ func DefaultReaderToolbarButtons() ReaderToolbarButtons {
 // UIPrefs holds frontend UI / reading / retention preferences.
 // JSON keys match the frontend AppSettings fields (camelCase).
 type UIPrefs struct {
-	MarkAsReadOnOpen        bool   `json:"markAsReadOnOpen"`
-	MarkAsReadOnScrollEnd   bool   `json:"markAsReadOnScrollEnd"`
-	OpenOnStartup           string `json:"openOnStartup"` // unread|today|starred|all
-	HideReadOnStartup       bool   `json:"hideReadOnStartup"`
-	Theme                   string `json:"theme"`  // system|light|dark
-	Accent                  string `json:"accent"` // blue|purple|teal|orange
-	CompactSidebar          bool   `json:"compactSidebar"`
-	FontSize                string `json:"fontSize"` // sm|md|lg
+	MarkAsReadOnOpen      bool   `json:"markAsReadOnOpen"`
+	MarkAsReadOnScrollEnd bool   `json:"markAsReadOnScrollEnd"`
+	OpenOnStartup         string `json:"openOnStartup"` // unread|today|starred|all
+	HideReadOnStartup     bool   `json:"hideReadOnStartup"`
+	Theme                 string `json:"theme"`  // system|light|dark
+	Accent                string `json:"accent"` // blue|purple|teal|orange
+	CompactSidebar        bool   `json:"compactSidebar"`
+	// MicaBackdrop: Windows 11 Mica window material. Ignored on other OSes.
+	MicaBackdrop bool   `json:"micaBackdrop"`
+	FontSize     string `json:"fontSize"` // sm|md|lg
 	// ReaderFontFamily is a CSS font family name for article body/title.
 	// Empty or "system" uses the app default sans stack.
 	ReaderFontFamily        string `json:"readerFontFamily"`
@@ -91,29 +93,30 @@ type UIPrefs struct {
 // DefaultUIPrefs matches frontend default settings in useRssStore.
 func DefaultUIPrefs() UIPrefs {
 	return UIPrefs{
-		MarkAsReadOnOpen:        true,
-		MarkAsReadOnScrollEnd:   false,
-		OpenOnStartup:           "unread",
-		HideReadOnStartup:       false,
-		Theme:                   "light",
-		Accent:                  "purple",
-		CompactSidebar:          false,
-		FontSize:                "md",
-		ReaderFontFamily:        "", // system / app default
-		ShowUnreadOnly:          false,
-		OpenLinksInBrowser:      true,
-		ReaderWidth:             "medium",
-		DefaultFolderId:         "",
-		FetchFullContent:        false,
-		KeepArticlesDays:        90,
-		HideDuplicateTitles:     true,
-		BlockKeywords:           "",
-		EnableKeyboardShortcuts: true,
-		NotifyOnNewArticles:     false,
-		NotifySound:             false,
-		HardwareAcceleration:    true,
-		ClearCacheOnQuit:        false,
-		DeveloperMode:           false,
+		MarkAsReadOnOpen:         true,
+		MarkAsReadOnScrollEnd:    false,
+		OpenOnStartup:            "unread",
+		HideReadOnStartup:        false,
+		Theme:                    "light",
+		Accent:                   "purple",
+		CompactSidebar:           false,
+		MicaBackdrop:             true, // Win11 desktop; no-op elsewhere / web access
+		FontSize:                 "md",
+		ReaderFontFamily:         "", // system / app default
+		ShowUnreadOnly:           false,
+		OpenLinksInBrowser:       true,
+		ReaderWidth:              "medium",
+		DefaultFolderId:          "",
+		FetchFullContent:         false,
+		KeepArticlesDays:         90,
+		HideDuplicateTitles:      true,
+		BlockKeywords:            "",
+		EnableKeyboardShortcuts:  true,
+		NotifyOnNewArticles:      false,
+		NotifySound:              false,
+		HardwareAcceleration:     true,
+		ClearCacheOnQuit:         false,
+		DeveloperMode:            false,
 		NsfwMode:                 true, // show all until user enables office hide
 		AutoSummarize:            false,
 		SelectTranslate:          true,  // 划词翻译 on by default when LLM is configured

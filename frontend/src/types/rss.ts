@@ -151,6 +151,8 @@ export interface UIPrefs {
   theme: string; // system|light|dark
   accent: string;
   compactSidebar: boolean;
+  /** Windows 11 Mica window material. No-op on other platforms / web access. */
+  micaBackdrop: boolean;
   fontSize: string; // sm|md|lg
   /** CSS font family for article body; empty = app default. */
   readerFontFamily: string;
@@ -210,6 +212,8 @@ export interface AppSettings {
   /** Preset id (purple|blue|teal|orange) or custom #rrggbb */
   accent: string;
   compactSidebar: boolean;
+  /** Windows 11 Mica window material. */
+  micaBackdrop: boolean;
 
   // 阅读
   fontSize: "sm" | "md" | "lg";

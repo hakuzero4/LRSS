@@ -642,6 +642,7 @@ const settings = reactive<AppSettings>({
   theme: "light",
   accent: "purple",
   compactSidebar: false,
+  micaBackdrop: true,
   fontSize: "md",
   readerFontFamily: "",
   showUnreadOnly: false,
@@ -978,6 +979,7 @@ function buildUIPrefs(): UIPrefs {
     theme: settings.theme,
     accent: settings.accent,
     compactSidebar: settings.compactSidebar,
+    micaBackdrop: settings.micaBackdrop,
     fontSize: settings.fontSize,
     readerFontFamily: settings.readerFontFamily ?? "",
     showUnreadOnly: settings.showUnreadOnly,
@@ -1072,6 +1074,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const compact = pickBool(p, "compactSidebar", "CompactSidebar");
   if (compact !== undefined) settings.compactSidebar = compact;
+
+  const mica = pickBool(p, "micaBackdrop", "MicaBackdrop");
+  if (mica !== undefined) settings.micaBackdrop = mica;
 
   const fontSize = p.fontSize ?? p.FontSize;
   if (typeof fontSize === "string" && FONT_SIZES.has(fontSize)) {
@@ -2576,6 +2581,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     theme: "light",
     accent: "purple",
     compactSidebar: false,
+    micaBackdrop: true,
     fontSize: "md",
     readerFontFamily: "",
     showUnreadOnly: false,

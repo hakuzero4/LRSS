@@ -27,6 +27,7 @@ type SettingsService struct {
 	library   *service.Library // optional; required for PurgeOldArticles
 	notify    *notify.Sender   // optional; test + permission helpers
 	webServer *web.Server      // optional; browser access HTTP server
+	onUIPrefs func(settings.UIPrefs)
 }
 
 // NewSettings constructs the service from shared deps.
@@ -52,6 +53,13 @@ func (s *SettingsService) SetLibrary(lib *service.Library) {
 //wails:ignore
 func (s *SettingsService) SetNotifier(n *notify.Sender) {
 	s.notify = n
+}
+
+// SetOnUIPrefs is called after a successful SetUIPrefs (desktop Mica toggle, etc).
+//
+//wails:ignore
+func (s *SettingsService) SetOnUIPrefs(fn func(settings.UIPrefs)) {
+	s.onUIPrefs = fn
 }
 
 // EnsureNotificationPermission requests OS notification permission when needed.
@@ -224,6 +232,9 @@ func (s *SettingsService) SetUIPrefs(cfg settings.UIPrefs) error {
 	cfg = cfg.Normalize()
 	if err := s.store.SetUIPrefs(ctx, cfg); err != nil {
 		return err
+	}
+	if s.onUIPrefs != nil {
+		s.onUIPrefs(cfg)
 	}
 	if s.library != nil && old.KeepArticlesDays != cfg.KeepArticlesDays {
 		days := cfg.KeepArticlesDays

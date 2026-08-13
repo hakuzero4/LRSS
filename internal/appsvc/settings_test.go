@@ -118,3 +118,36 @@ func TestSettingsService_UIPrefsAndPurge(t *testing.T) {
 		t.Fatalf("left = %d want 2", len(left))
 	}
 }
+
+func TestSettingsService_OnUIPrefs(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "t.db")
+	database, err := db.Open(ctx, db.Options{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	store := settings.NewStore(database.SQL)
+	searchSvc := search.New(database.SQL, store)
+	embedWorker := job.NewEmbedWorker(database.SQL, store)
+	settingsAPI := appsvc.NewSettings(store, searchSvc, embedWorker)
+
+	var seen settings.UIPrefs
+	var n int
+	settingsAPI.SetOnUIPrefs(func(p settings.UIPrefs) {
+		n++
+		seen = p
+	})
+	prefs, err := settingsAPI.GetUIPrefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefs.MicaBackdrop = false
+	if err := settingsAPI.SetUIPrefs(prefs); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || seen.MicaBackdrop {
+		t.Fatalf("hook n=%d mica=%v", n, seen.MicaBackdrop)
+	}
+}

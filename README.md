@@ -123,6 +123,7 @@ Enable in **Settings → Advanced → Web access**.
 | Area | Details |
 | --- | --- |
 | **Themes** | System / light / dark; accent presets + custom hex |
+| **Windows 11 Mica** | Optional full-window Mica (Settings → Appearance). 22H2+; needs hardware acceleration. Web access stays opaque. |
 | **Compact sidebar** | Denser feed list |
 | **i18n** | Simplified Chinese · English |
 | **Keyboard shortcuts** | j/k next-prev · s star · m read · r refresh · z zen · `,` settings (toggleable) |

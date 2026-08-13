@@ -2,8 +2,11 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { router } from "./router";
 import i18n, { detectInitialLocale } from "./i18n";
+import { applyDesktopMica } from "@/lib/mica";
 import "vue-sonner/style.css";
 import "./style.css";
+
+applyDesktopMica();
 
 const app = createApp(App);
 app.use(router);

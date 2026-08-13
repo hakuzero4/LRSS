@@ -20,9 +20,20 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AppSettings, ReaderToolbarButtons } from "@/types/rss";
 import { READER_TOOLBAR_KEYS } from "@/types/rss";
 
-const { settings, persistUIPrefs } = useRssStore();
+const { settings, persistUIPrefs, webMode } = useRssStore();
 const { locale, setLocale, t } = useLocale();
 const { isDark } = useTheme();
+
+const micaSupported = computed(() => {
+  if (webMode.value) return false;
+  return /Windows/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
+});
+
+const micaHint = computed(() => {
+  if (!micaSupported.value) return t("settings.appearance.micaUnavailable");
+  if (!settings.hardwareAcceleration) return t("settings.appearance.micaNeedsGpu");
+  return t("settings.appearance.micaDesc");
+});
 
 const languageModel = computed({
   get: () => locale.value,
@@ -48,6 +59,11 @@ const accentModel = computed({
 function onCompactSidebar(v: boolean) {
   settings.compactSidebar = v;
   persistUIPrefs();
+}
+
+function onMicaBackdrop(v: boolean) {
+  settings.micaBackdrop = v;
+  persistUIPrefs(true);
 }
 
 const toolbarRows = computed(() =>
@@ -98,6 +114,18 @@ function showAllToolbar() {
         <ColorPicker v-model="accentModel" :is-dark="isDark" />
       </div>
 
+      <div class="py-2.5">
+        <SettingsRow
+          :title="t('settings.appearance.mica')"
+          :description="micaHint"
+        >
+          <Switch
+            :checked="settings.micaBackdrop && micaSupported && settings.hardwareAcceleration"
+            :disabled="!micaSupported || !settings.hardwareAcceleration"
+            @update:checked="onMicaBackdrop"
+          />
+        </SettingsRow>
+      </div>
       <div class="py-2.5">
         <SettingsRow
           :title="t('settings.appearance.compactSidebar')"

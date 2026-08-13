@@ -154,6 +154,11 @@ export interface UIPrefs {
     "compactSidebar": boolean;
 
     /**
+     * MicaBackdrop: Windows 11 Mica window material. Ignored on other OSes.
+     */
+    "micaBackdrop": boolean;
+
+    /**
      * sm|md|lg
      */
     "fontSize": string;

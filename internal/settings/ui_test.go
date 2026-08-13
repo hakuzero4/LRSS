@@ -35,6 +35,9 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 	if !cfg.EnableKeyboardShortcuts || !cfg.MarkAsReadOnOpen {
 		t.Fatal("expected keyboard shortcuts and markAsReadOnOpen true")
 	}
+	if !cfg.MicaBackdrop {
+		t.Fatal("expected micaBackdrop true by default")
+	}
 
 	// Round-trip
 	want := settings.UIPrefs{
