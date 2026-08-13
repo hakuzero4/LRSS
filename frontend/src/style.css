@@ -778,6 +778,12 @@
 }
 
 /* List row teaser — quieter than title, not body */
+/* Skip layout/paint for off-screen list rows (200-item pages). */
+.article-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 104px;
+}
+
 .article-teaser {
   margin-top: 0.3rem;
   font-size: 12.5px;

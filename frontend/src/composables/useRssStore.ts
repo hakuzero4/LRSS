@@ -751,6 +751,12 @@ async function syncAfterReadChange() {
   }
 }
 
+function publishedAtMs(iso: string | undefined): number {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? 0 : t;
+}
+
 const collectionTitle = computed(() => {
   const id = collectionId.value;
   if (id === "unread") return t("nav.unread");
@@ -806,9 +812,7 @@ const filteredArticles = computed(() => {
   }
 
   // Newest first so hide-duplicate keeps the latest article per title.
-  list.sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
-  );
+  list.sort((a, b) => publishedAtMs(b.publishedAt) - publishedAtMs(a.publishedAt));
   // Office mode: hide NSFW only on smart lists. Explicit feed:/folder: keeps content
   // visible (e.g. just-added sensitive feed after subscribe).
   {

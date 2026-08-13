@@ -1,8 +1,22 @@
+const relativeTimeFormatters = new Map<string, Intl.RelativeTimeFormat>();
+
+function relativeTimeFormatter(locale?: string): Intl.RelativeTimeFormat {
+  const key = locale || "default";
+  let fmt = relativeTimeFormatters.get(key);
+  if (!fmt) {
+    fmt = new Intl.RelativeTimeFormat(locale || undefined, { numeric: "auto" });
+    relativeTimeFormatters.set(key, fmt);
+  }
+  return fmt;
+}
+
 export function relativeTime(iso: string, now = Date.now()): string {
   const then = new Date(iso).getTime();
   const diffSec = Math.round((then - now) / 1000);
   const abs = Math.abs(diffSec);
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const locale =
+    typeof document !== "undefined" ? document.documentElement.lang || undefined : undefined;
+  const rtf = relativeTimeFormatter(locale);
 
   if (abs < 60) return rtf.format(diffSec, "second");
   const diffMin = Math.round(diffSec / 60);
