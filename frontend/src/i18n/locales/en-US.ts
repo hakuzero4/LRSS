@@ -259,6 +259,10 @@ export default {
     briefingGeneratingN: "Generating briefing ({n} articles)",
     briefingQueued: "Briefing queued",
     briefingQueuedN: "Briefing queued ({n} articles waiting)",
+    nextDue: "{name} updates in {n} min",
+    nextDueOne: "{name} updates in 1 min",
+    nextDueSoon: "{name} updates next",
+    autoRefreshOff: "Auto-refresh off",
   },
 
   feed: {

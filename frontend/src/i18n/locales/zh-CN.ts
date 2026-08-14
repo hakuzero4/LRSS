@@ -255,6 +255,10 @@ export default {
     briefingGeneratingN: "正在生成智能汇报（{n} 篇）",
     briefingQueued: "智能汇报排队中",
     briefingQueuedN: "智能汇报排队中（{n} 篇待汇总）",
+    nextDue: "{n} 分钟后更新 {name}",
+    nextDueOne: "1 分钟后更新 {name}",
+    nextDueSoon: "即将更新 {name}",
+    autoRefreshOff: "自动刷新已关闭",
   },
 
   feed: {

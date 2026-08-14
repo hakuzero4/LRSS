@@ -1,12 +1,33 @@
 <script setup lang="ts">
-import { LoaderCircle, Newspaper, RefreshCw } from "@lucide/vue";
-import { computed } from "vue";
+import { Clock, LoaderCircle, Newspaper, RefreshCw } from "@lucide/vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
 import { formatAbsolute, formatAuthor } from "@/lib/format";
+import { filterFeedsForSidebar } from "@/lib/nsfw";
+import { pickNextRefresh } from "@/lib/nextRefresh";
 
 const { t } = useI18n();
-const { jobActivity, selectedArticle, selectedFeed, selectedBriefing } = useRssStore();
+const {
+  jobActivity,
+  selectedArticle,
+  selectedFeed,
+  selectedBriefing,
+  feeds,
+  folders,
+  settings,
+} = useRssStore();
+
+const nowMs = ref(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  nowTimer = setInterval(() => {
+    nowMs.value = Date.now();
+  }, 15_000);
+});
+onUnmounted(() => {
+  if (nowTimer) clearInterval(nowTimer);
+});
 
 const refreshText = computed(() => {
   const a = jobActivity;
@@ -42,7 +63,23 @@ const briefingText = computed(() => {
   return "";
 });
 
-const hasJobs = computed(() => !!(refreshText.value || briefingText.value));
+const nextDue = computed(() => {
+  if (!settings.autoRefresh) return null;
+  const visible = filterFeedsForSidebar(feeds.value, settings.nsfwMode, folders.value);
+  return pickNextRefresh(visible, settings.refreshIntervalMinutes, nowMs.value);
+});
+
+const nextDueText = computed(() => {
+  if (refreshText.value) return "";
+  if (!settings.autoRefresh) return t("activity.autoRefreshOff");
+  const n = nextDue.value;
+  if (!n) return "";
+  if (n.minutes <= 0) return t("activity.nextDueSoon", { name: n.title });
+  if (n.minutes === 1) return t("activity.nextDueOne", { name: n.title });
+  return t("activity.nextDue", { name: n.title, n: n.minutes });
+});
+
+const hasJobs = computed(() => !!(refreshText.value || briefingText.value || nextDueText.value));
 
 /** Right-side identity of whatever is open in the reader. */
 const currentText = computed(() => {
@@ -80,6 +117,14 @@ const currentText = computed(() => {
       >
         <RefreshCw class="size-3 shrink-0 animate-spin" />
         <span class="truncate">{{ refreshText }}</span>
+      </span>
+      <span
+        v-else-if="nextDueText"
+        class="flex min-w-0 items-center gap-1.5 truncate"
+        :title="nextDueText"
+      >
+        <Clock class="size-3 shrink-0" />
+        <span class="truncate">{{ nextDueText }}</span>
       </span>
       <span
         v-if="refreshText && briefingText"
