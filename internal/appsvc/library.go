@@ -78,6 +78,7 @@ func (s *FeedService) JobActivity() service.JobActivity {
 	if s.briefing != nil {
 		a.BriefingState, a.BriefingPending, a.BriefingArticles = s.briefing.Snapshot()
 	}
+	a.ArticlesAdded = s.lib.InsertedTotal()
 	return a
 }
 

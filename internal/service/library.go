@@ -68,6 +68,7 @@ type Library struct {
 	actMu          sync.Mutex
 	actFeedID      string
 	actFeedTitle   string
+	actInserted    int
 }
 
 // AutoFulltextMaxPerTick caps original-page fetches per background drain.
@@ -111,10 +112,27 @@ func NewLibraryFromRepos(r *repo.Repos, rssClient RSSFetcher) *Library {
 }
 
 func (lib *Library) emitInserted(ctx context.Context, ids []string) {
-	if lib == nil || lib.OnArticlesInserted == nil || len(ids) == 0 {
+	if lib == nil || len(ids) == 0 {
 		return
 	}
-	lib.OnArticlesInserted(ctx, ids)
+	lib.actMu.Lock()
+	lib.actInserted += len(ids)
+	lib.actMu.Unlock()
+	if lib.OnArticlesInserted != nil {
+		lib.OnArticlesInserted(ctx, ids)
+	}
+}
+
+// InsertedTotal is the process-lifetime count of newly stored articles.
+// The UI polls this via JobActivity to refresh unread badges after background ticks.
+func (lib *Library) InsertedTotal() int {
+	if lib == nil {
+		return 0
+	}
+	lib.actMu.Lock()
+	n := lib.actInserted
+	lib.actMu.Unlock()
+	return n
 }
 
 func (lib *Library) sanitizeHTML(raw string) string {

@@ -89,6 +89,7 @@ export type JobActivity = {
   briefingState: "" | "queued" | "generating";
   briefingPending: number;
   briefingArticles: number;
+  articlesAdded: number;
 };
 
 const idleJobActivity = (): JobActivity => ({
@@ -100,10 +101,15 @@ const idleJobActivity = (): JobActivity => ({
   briefingState: "",
   briefingPending: 0,
   briefingArticles: 0,
+  articlesAdded: 0,
 });
 
 const jobActivity = reactive<JobActivity>(idleJobActivity());
 let activityPollTimer: ReturnType<typeof setInterval> | null = null;
+let lastSeenInserted = 0;
+let refreshCycleActive = false;
+let insertedAtRefreshStart = 0;
+let syncAfterInsertTimer: ReturnType<typeof setTimeout> | null = null;
 
 function applyJobActivity(raw: unknown) {
   if (!raw || typeof raw !== "object") {
@@ -123,9 +129,59 @@ function applyJobActivity(raw: unknown) {
   jobActivity.briefingState = state === "generating" || state === "queued" ? state : "";
   jobActivity.briefingPending = parseCountField(o.briefingPending ?? o.BriefingPending);
   jobActivity.briefingArticles = parseCountField(o.briefingArticles ?? o.BriefingArticles);
+  jobActivity.articlesAdded = parseCountField(o.articlesAdded ?? o.ArticlesAdded);
   if (jobActivity.feedTitle || jobActivity.pending > 0) {
     jobActivity.refreshing = true;
   }
+}
+
+function collectionShowsNewArticles(id: CollectionId): boolean {
+  return (
+    id === "unread" ||
+    id === "today" ||
+    id === "all" ||
+    id.startsWith("feed:") ||
+    id.startsWith("folder:")
+  );
+}
+
+/** Prepend newly fetched rows without dropping the open article or current page. */
+async function mergeLatestArticles() {
+  if (!backendReady.value || !collectionShowsNewArticles(collectionId.value)) return;
+  const api = await loadAppsvc();
+  if (!api?.ArticleService?.List) return;
+  const forCollection = collectionId.value;
+  try {
+    const raw = await api.ArticleService.List(forCollection, ARTICLE_PAGE, 0);
+    if (collectionId.value !== forCollection) return;
+    const rows = mapArticleRows(raw);
+    const seen = new Set(articles.value.map((a) => a.id));
+    const fresh = rows.filter((a) => !seen.has(a.id));
+    if (fresh.length === 0) return;
+    articles.value = [...fresh, ...articles.value];
+  } catch (e) {
+    console.warn("[lrss] mergeLatestArticles failed", e);
+  }
+}
+
+async function syncLibraryAfterNewArticles(opts?: { mergeList?: boolean; toastAdded?: number }) {
+  if (!backendReady.value) return;
+  await Promise.all([reloadSmartCounts(), reloadLibraryFeedsOnly()]);
+  if (opts?.mergeList) {
+    await mergeLatestArticles();
+  }
+  const n = opts?.toastAdded ?? 0;
+  if (n > 0) {
+    toast.success(t("article.refreshFoundNew", { n }));
+  }
+}
+
+function scheduleSyncAfterNewArticles(opts: { mergeList?: boolean; toastAdded?: number; delay?: number }) {
+  if (syncAfterInsertTimer) clearTimeout(syncAfterInsertTimer);
+  syncAfterInsertTimer = setTimeout(() => {
+    syncAfterInsertTimer = null;
+    void syncLibraryAfterNewArticles(opts);
+  }, opts.delay ?? 280);
 }
 
 async function refreshJobActivity() {
@@ -137,6 +193,23 @@ async function refreshJobActivity() {
       return;
     }
     applyJobActivity(await fn());
+    const added = jobActivity.articlesAdded;
+    const nowRefreshing = jobActivity.refreshing;
+    const prevInserted = lastSeenInserted;
+    const grew = added > prevInserted;
+    if ((nowRefreshing || jobActivity.pending > 0) && !refreshCycleActive) {
+      refreshCycleActive = true;
+      insertedAtRefreshStart = prevInserted;
+    }
+    lastSeenInserted = Math.max(lastSeenInserted, added);
+    if (grew) {
+      scheduleSyncAfterNewArticles({ mergeList: true, delay: 200 });
+    }
+    if (refreshCycleActive && !nowRefreshing && jobActivity.pending === 0) {
+      refreshCycleActive = false;
+      const delta = Math.max(0, added - insertedAtRefreshStart);
+      scheduleSyncAfterNewArticles({ mergeList: true, toastAdded: delta, delay: 350 });
+    }
   } catch {
     /* keep last snapshot */
   }

@@ -1,6 +1,24 @@
 package service
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+func TestLibrary_InsertedTotal_IndependentOfHook(t *testing.T) {
+	lib := NewLibrary(nil, nil, nil, nil)
+	if lib.InsertedTotal() != 0 {
+		t.Fatalf("idle inserted = %d", lib.InsertedTotal())
+	}
+	lib.emitInserted(context.Background(), []string{"a", "b"})
+	if n := lib.InsertedTotal(); n != 2 {
+		t.Fatalf("inserted = %d want 2", n)
+	}
+	lib.emitInserted(context.Background(), []string{"c"})
+	if n := lib.InsertedTotal(); n != 3 {
+		t.Fatalf("inserted = %d want 3", n)
+	}
+}
 
 func TestLibrary_RefreshSnapshot(t *testing.T) {
 	lib := NewLibrary(nil, nil, nil, nil)

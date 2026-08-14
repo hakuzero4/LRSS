@@ -168,6 +168,7 @@ export default {
     refreshFailed: "Refresh failed",
     refreshAllQueued: "Refreshed {done}; {pending} more will continue in the background",
     refreshAllDone: "Refresh done ({ok} ok, {err} failed)",
+    refreshFoundNew: "Found {n} new articles",
     markAllRead: "Mark all as read",
     displayToggleToCards: "Switch to image cards",
     displayToggleToList: "Switch to list",

@@ -12,6 +12,8 @@ type JobActivity struct {
 	BriefingState    string   `json:"briefingState,omitempty"` // queued | generating
 	BriefingPending  int      `json:"briefingPending,omitempty"`
 	BriefingArticles int      `json:"briefingArticles,omitempty"`
+	// ArticlesAdded is a process-lifetime insert counter (not a per-tick delta).
+	ArticlesAdded int `json:"articlesAdded"`
 }
 
 func (lib *Library) beginRefreshFeed(id, title string) {

@@ -88,7 +88,7 @@ func main() {
 	briefingAPI := appsvc.NewBriefingService(briefingWorker)
 	syncAPI := appsvc.NewSync(store, library)
 	// Keep in sync with frontend/src/lib/appMeta.ts APP_VERSION and git tags.
-	updateAPI := appsvc.NewUpdate("0.1.8")
+	updateAPI := appsvc.NewUpdate("0.1.9")
 
 	// Optional browser access (same SPA; reader toolbar tools + star/read; no settings UI).
 	webServer := web.New(web.APIDeps{

@@ -114,6 +114,9 @@ func (s *Server) handleJobActivity(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Briefing != nil {
 		a.BriefingState, a.BriefingPending, a.BriefingArticles = s.deps.Briefing.Snapshot()
 	}
+	if s.deps.Library != nil {
+		a.ArticlesAdded = s.deps.Library.InsertedTotal()
+	}
 	writeJSON(w, http.StatusOK, a)
 }
 

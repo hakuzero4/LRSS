@@ -17,4 +17,9 @@ export interface JobActivity {
     "briefingState"?: string;
     "briefingPending"?: number;
     "briefingArticles"?: number;
+
+    /**
+     * ArticlesAdded is a process-lifetime insert counter (not a per-tick delta).
+     */
+    "articlesAdded": number;
 }

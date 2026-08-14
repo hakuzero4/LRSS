@@ -167,6 +167,7 @@ export default {
     refreshFailed: "刷新失败",
     refreshAllQueued: "已刷新 {done} 个，剩余 {pending} 个将在后台分批继续",
     refreshAllDone: "刷新完成（成功 {ok}，失败 {err}）",
+    refreshFoundNew: "发现 {n} 篇新文章",
     markAllRead: "全部标为已读",
     displayToggleToCards: "切换为图片卡片",
     displayToggleToList: "切换为列表",
