@@ -6,7 +6,7 @@
 export const APP_NAME = "LRSS";
 
 /** Semver without leading "v" (display + compare). */
-export const APP_VERSION = "0.1.5";
+export const APP_VERSION = "0.1.6";
 
 /** GitHub owner/repo used for releases and docs. */
 export const GITHUB_OWNER = "hakuzero4";

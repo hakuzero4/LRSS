@@ -1119,7 +1119,7 @@ func (lib *Library) ensureYouTubeCaptions(ctx context.Context, a *model.Article)
 // excludeNsfw hides articles from is_nsfw feeds (office mode).
 func (lib *Library) ListArticles(ctx context.Context, collection string, limit, offset int, excludeNsfw bool) ([]model.Article, error) {
 	list, err := lib.Articles.List(ctx, collection, repo.ListOpts{
-		Limit: limit, Offset: offset, ExcludeNsfw: excludeNsfw,
+		Limit: limit, Offset: offset, ExcludeNsfw: excludeNsfw, Lite: true,
 	})
 	if err != nil {
 		return nil, err

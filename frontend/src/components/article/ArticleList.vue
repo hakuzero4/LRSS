@@ -32,6 +32,10 @@ const {
   searchSource,
   emptyListReason,
   articlesLoading,
+  articlesLoadingMore,
+  articlesHasMore,
+  loadMoreArticles,
+  smartCounts,
   refreshing,
   webMode,
   collectionDisplayMode,
@@ -109,18 +113,38 @@ const refreshLabel = computed(() => {
   return t("article.refreshFeeds");
 });
 
+const collectionTotal = computed(() => {
+  const id = collectionId.value;
+  if (id === "unread") return smartCounts.unread;
+  if (id === "today") return smartCounts.today;
+  if (id === "starred") return smartCounts.starred;
+  if (id === "recent") return smartCounts.recent;
+  if (id === "all") return smartCounts.all;
+  return filteredArticles.value.length;
+});
+
 const articleCountLabel = computed(() => {
   if (articlesLoading.value && empty.value) {
     return t("common.loading");
   }
-  const n = filteredArticles.value.length;
+  const n = Math.max(collectionTotal.value, filteredArticles.value.length);
   const b = visibleStarredBriefings.value.length;
   const articlePart = n === 1 ? t("article.countOne") : t("article.count", { n });
   if (collectionId.value !== "starred" || b === 0) return articlePart;
   const briefingPart = b === 1 ? t("briefing.countOne") : t("briefing.count", { n: b });
-  if (n === 0) return briefingPart;
+  if (filteredArticles.value.length === 0) return briefingPart;
   return `${articlePart} · ${briefingPart}`;
 });
+
+function onListScroll(e: Event) {
+  const el = e.target as HTMLElement | null;
+  if (!el || !articlesHasMore.value || articlesLoadingMore.value || articlesLoading.value) {
+    return;
+  }
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) {
+    void loadMoreArticles();
+  }
+}
 
 const emptyTitle = computed(() => {
   const r = emptyListReason.value;
@@ -223,6 +247,7 @@ const emptyHint = computed(() => {
       ref="listEl"
       class="scroll-pane flex-1"
       :class="collectionDisplayMode === 'cards' && !empty ? 'article-card-scroll' : ''"
+      @scroll.passive="onListScroll"
     >
       <div v-if="empty" class="flex h-48 flex-col items-center justify-center px-6 text-center">
         <p class="text-[13px] font-medium text-foreground/80">{{ emptyTitle }}</p>
@@ -312,6 +337,12 @@ const emptyHint = computed(() => {
           @select="selectArticle(article.id)"
         />
       </template>
+      <p
+        v-if="!empty && articlesLoadingMore"
+        class="px-3 py-2 text-center text-[11px] text-muted-foreground"
+      >
+        {{ t("common.loading") }}
+      </p>
     </div>
   </section>
 </template>

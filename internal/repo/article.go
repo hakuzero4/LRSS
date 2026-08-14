@@ -47,6 +47,9 @@ type ListOpts struct {
 	UnreadOnly bool
 	// ExcludeNsfw hides articles from feeds with is_nsfw=1 (office mode).
 	ExcludeNsfw bool
+	// Lite omits content_html / content_text / translation_raw so list pages
+	// stay small. Get still returns the full body.
+	Lite bool
 }
 
 // ParsedItem is a feed item ready for upsert (from the RSS parse layer).
@@ -143,9 +146,13 @@ func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts
 		args = append(args, like, like, like)
 	}
 
+	bodyCols := `content_html, content_text, translation_raw, translation_lang`
+	if opts.Lite {
+		bodyCols = `NULL, NULL, NULL, translation_lang`
+	}
 	sqlStr := `
 		SELECT id, feed_id, guid, url, title, author, summary,
-		       content_html, content_text, translation_raw, translation_lang,
+		       ` + bodyCols + `,
 		       image_url, published_at,
 		       fetched_at, is_read, is_starred, full_content_fetched
 		FROM articles`

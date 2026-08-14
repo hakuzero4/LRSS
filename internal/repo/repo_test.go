@@ -79,6 +79,22 @@ func TestInsertFeedArticles_ListUnread(t *testing.T) {
 		t.Fatalf("unread count = %d want 2", len(unread))
 	}
 
+	lite, err := r.Articles.List(ctx, "unread", repo.ListOpts{Limit: 20, Lite: true})
+	if err != nil {
+		t.Fatalf("List lite: %v", err)
+	}
+	if len(lite) != 2 {
+		t.Fatalf("lite len = %d want 2", len(lite))
+	}
+	for _, a := range lite {
+		if a.ContentHTML != nil && *a.ContentHTML != "" {
+			t.Fatalf("lite list should omit body, got html for %s", a.ID)
+		}
+		if a.ContentText != nil && *a.ContentText != "" {
+			t.Fatalf("lite list should omit text, got body for %s", a.ID)
+		}
+	}
+
 	feeds, err := r.Feeds.List(ctx)
 	if err != nil {
 		t.Fatalf("List feeds: %v", err)

@@ -1031,10 +1031,29 @@ async function reloadLibrary() {
   }
 }
 
+const ARTICLE_PAGE = 200;
+const articlesHasMore = ref(false);
+const articlesLoadingMore = ref(false);
+
+function unwrapArticleList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== "object") return [];
+  const o = raw as Record<string, unknown>;
+  const rows = o.items ?? o.Items ?? o.list ?? o.List ?? o.articles ?? o.Articles;
+  return Array.isArray(rows) ? rows : [];
+}
+
+function mapArticleRows(raw: unknown): Article[] {
+  return unwrapArticleList(raw)
+    .map((row) => mapArticle(row) as Article)
+    .filter((a) => !!a?.id);
+}
+
 async function reloadArticles() {
   // Briefing is not an article collection — skip ArticleService list for this id.
   if (collectionId.value === "briefing") {
     articlesLoading.value = false;
+    articlesHasMore.value = false;
     return;
   }
   const api = await loadAppsvc();
@@ -1042,13 +1061,16 @@ async function reloadArticles() {
   const seq = ++articlesLoadSeq;
   const forCollection = collectionId.value;
   articlesLoading.value = true;
+  articlesLoadingMore.value = false;
   try {
-    const list = await api.ArticleService.List(forCollection, 200, 0);
+    const raw = await api.ArticleService.List(forCollection, ARTICLE_PAGE, 0);
     // Drop stale responses after a faster collection switch / concurrent reload.
     if (seq !== articlesLoadSeq || collectionId.value !== forCollection) {
       return;
     }
-    articles.value = (list ?? []).map(mapArticle) as Article[];
+    const rows = mapArticleRows(raw);
+    articles.value = rows;
+    articlesHasMore.value = unwrapArticleList(raw).length >= ARTICLE_PAGE;
     // Do not recompute smartCounts here — list is paginated; counts stay stable
     // across collection switches until an explicit reloadSmartCounts().
   } catch (e) {
@@ -1057,6 +1079,41 @@ async function reloadArticles() {
   } finally {
     if (seq === articlesLoadSeq) {
       articlesLoading.value = false;
+    }
+  }
+}
+
+async function loadMoreArticles() {
+  if (
+    articlesLoading.value ||
+    articlesLoadingMore.value ||
+    !articlesHasMore.value ||
+    collectionId.value === "briefing"
+  ) {
+    return;
+  }
+  const api = await loadAppsvc();
+  if (!api?.ArticleService?.List) return;
+  const seq = articlesLoadSeq;
+  const forCollection = collectionId.value;
+  const offset = articles.value.length;
+  articlesLoadingMore.value = true;
+  try {
+    const raw = await api.ArticleService.List(forCollection, ARTICLE_PAGE, offset);
+    if (seq !== articlesLoadSeq || collectionId.value !== forCollection) {
+      return;
+    }
+    const incoming = unwrapArticleList(raw);
+    const rows = mapArticleRows(raw);
+    const seen = new Set(articles.value.map((a) => a.id));
+    articles.value = [...articles.value, ...rows.filter((a) => !seen.has(a.id))];
+    articlesHasMore.value = incoming.length >= ARTICLE_PAGE;
+  } catch (e) {
+    if (seq !== articlesLoadSeq) return;
+    console.warn("[lrss] loadMoreArticles failed", e);
+  } finally {
+    if (seq === articlesLoadSeq) {
+      articlesLoadingMore.value = false;
     }
   }
 }
@@ -3236,6 +3293,9 @@ export function useRssStore() {
     sidebarFeeds,
     articles,
     articlesLoading,
+    articlesLoadingMore,
+    articlesHasMore,
+    loadMoreArticles,
     libraryLoading,
     collectionId,
     selectedArticleId,

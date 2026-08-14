@@ -36,6 +36,16 @@ assert(
   mapped.summary.length > 320,
   `summary must retain full AI deck (got len=${mapped.summary.length})`,
 );
+const pascal = mapArticle({
+  ID: "a2",
+  FeedID: "f2",
+  Title: "Pascal",
+  Summary: "s",
+  URL: "https://example.com/p",
+  PublishedAt: new Date().toISOString(),
+});
+assert(pascal.id === "a2" && pascal.feedId === "f2", "mapArticle accepts PascalCase id/feedId");
+
 assert(
   mapped.summary.includes("Point 12"),
   "last bullet preserved after mapArticle",

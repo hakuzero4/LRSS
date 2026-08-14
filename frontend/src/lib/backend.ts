@@ -116,8 +116,8 @@ export function mapArticle(a: any) {
     }
   }
   return {
-    id: a.id,
-    feedId: a.feedId,
+    id: String(a.id ?? a.ID ?? a.Id ?? ""),
+    feedId: String(a.feedId ?? a.FeedID ?? a.FeedId ?? ""),
     title: plainText(a.title ?? a.Title ?? ""),
     author: (() => {
       const araw = formatAuthor(a.author ?? a.Author ?? "");
