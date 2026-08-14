@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import {
   BookOpenText,
-  Briefcase,
   CalendarDays,
   ChevronsDownUp,
   ChevronsUpDown,
   ChevronRight,
   Clock,
-  Eye,
   Folder,
   FolderPlus,
   Inbox,
@@ -32,12 +30,6 @@ import { compactSidebarClass } from "@/lib/uiGaps";
 import { cn } from "@/lib/utils";
 import type { CollectionId, Feed, FeedFolder, FolderDisplayMode } from "@/types/rss";
 import FeedIcon from "@/components/feed/FeedIcon.vue";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,45 +95,9 @@ const {
   setFeedNsfw,
   setFolderNsfw,
   setFolderDisplayMode,
-  setNsfwMode,
   moveFeedToFolder,
   deleteFeed,
 } = useRssStore();
-
-const nsfwToggling = ref(false);
-
-/** Office mode = hide NSFW (nsfwMode false). Button shows current office state. */
-const officeMode = computed(() => !settings.nsfwMode);
-
-const hasNsfwFeeds = computed(
-  () => feeds.value.some((f) => f.isNsfw) || folders.value.some((f) => f.isNsfw),
-);
-
-async function onToggleOfficeMode() {
-  if (nsfwToggling.value) return;
-  nsfwToggling.value = true;
-  try {
-    // Toggle: office on → nsfwMode false; office off → nsfwMode true
-    await setNsfwMode(officeMode.value);
-    // After toggle, officeMode reflects the new state.
-    if (officeMode.value) {
-      toast.success(t("nav.officeModeOnTitle"), {
-        description: t("nav.officeModeOnDesc"),
-        duration: 2800,
-      });
-    } else {
-      toast.success(t("nav.officeModeOffTitle"), {
-        description: t("nav.officeModeOffDesc"),
-        duration: 2800,
-      });
-    }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("nav.officeModeFailed"), { description: msg });
-  } finally {
-    nsfwToggling.value = false;
-  }
-}
 
 /** true = folder children hidden; persisted in localStorage (`lrss.folderCollapsed`). */
 const collapsedFolders = ref<Record<string, boolean>>(loadCollapsedFolders());
@@ -1125,38 +1081,6 @@ const smartItems = computed(() => [
     <template v-if="!webMode">
       <Separator class="opacity-70" />
       <div class="space-y-0.5 p-2.5">
-        <TooltipProvider :delay-duration="400">
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <button
-                type="button"
-                class="nav-row w-full"
-                :class="officeMode && 'nav-row-active'"
-                :disabled="nsfwToggling"
-                :aria-pressed="officeMode"
-                :aria-label="
-                  officeMode ? t('nav.officeModeOnAria') : t('nav.officeModeOffAria')
-                "
-                @click="onToggleOfficeMode"
-              >
-                <Briefcase v-if="officeMode" class="nav-icon" />
-                <Eye v-else class="nav-icon" />
-                <span class="min-w-0 flex-1 truncate text-left">
-                  {{ officeMode ? t("nav.officeMode") : t("nav.nsfwVisible") }}
-                </span>
-                <span
-                  v-if="hasNsfwFeeds && officeMode"
-                  class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground"
-                >
-                  {{ t("nav.nsfwHidden") }}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right" class="max-w-[220px] text-[12px]">
-              {{ t("nav.officeModeTooltip") }}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
         <button type="button" class="nav-row w-full" @click="openSettings">
           <Settings class="nav-icon" />
           <span class="flex-1 text-left">{{ t("nav.settings") }}</span>

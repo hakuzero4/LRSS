@@ -35,6 +35,9 @@ assert(zh.includes("autoRefreshOff:"), "zh auto-refresh-off copy");
 assert(!bar.includes('v-if="visible"'), "status bar stays mounted when idle");
 assert(bar.includes("selectedArticle"), "status bar reads the open article");
 assert(bar.includes("currentText"), "status bar shows open-item meta on the right");
+assert(bar.includes("setNsfwMode"), "status bar owns NSFW / show-all toggle");
+assert(bar.includes("nav.nsfwVisible"), "status bar shows 全部显示");
+assert(bar.includes("nav.officeMode"), "status bar shows office/NSFW mode");
 assert(zh.includes("activity:"), "zh activity i18n");
 assert(en.includes("activity:"), "en activity i18n");
 

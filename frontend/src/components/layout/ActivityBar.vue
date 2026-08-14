@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { Clock, LoaderCircle, Newspaper, RefreshCw } from "@lucide/vue";
+import { Briefcase, Clock, Eye, LoaderCircle, Newspaper, RefreshCw } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
 import { formatAbsolute, formatAuthor } from "@/lib/format";
 import { filterFeedsForSidebar } from "@/lib/nsfw";
 import { pickNextRefresh } from "@/lib/nextRefresh";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const { t } = useI18n();
 const {
@@ -16,7 +23,36 @@ const {
   feeds,
   folders,
   settings,
+  webMode,
+  setNsfwMode,
 } = useRssStore();
+
+const nsfwToggling = ref(false);
+const officeMode = computed(() => !settings.nsfwMode);
+
+async function applyNsfwMode(showNsfw: boolean) {
+  if (nsfwToggling.value || settings.nsfwMode === showNsfw) return;
+  nsfwToggling.value = true;
+  try {
+    await setNsfwMode(showNsfw);
+    if (showNsfw) {
+      toast.success(t("nav.officeModeOffTitle"), {
+        description: t("nav.officeModeOffDesc"),
+        duration: 2800,
+      });
+    } else {
+      toast.success(t("nav.officeModeOnTitle"), {
+        description: t("nav.officeModeOnDesc"),
+        duration: 2800,
+      });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("nav.officeModeFailed"), { description: msg });
+  } finally {
+    nsfwToggling.value = false;
+  }
+}
 
 const nowMs = ref(Date.now());
 let nowTimer: ReturnType<typeof setInterval> | null = null;
@@ -107,10 +143,12 @@ const currentText = computed(() => {
 <template>
   <div
     class="activity-bar flex h-7 shrink-0 items-center justify-between gap-3 overflow-hidden border-t border-border/70 bg-muted/35 px-3 text-[11.5px] text-muted-foreground"
-    role="status"
-    aria-live="polite"
   >
-    <div class="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+    <div
+      class="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden"
+      role="status"
+      aria-live="polite"
+    >
       <span
         v-if="refreshText"
         class="flex min-w-0 items-center gap-1.5 truncate"
@@ -144,13 +182,76 @@ const currentText = computed(() => {
       </span>
     </div>
 
-    <p
-      v-if="currentText"
-      class="min-w-0 max-w-[52%] shrink-0 truncate text-right"
-      :class="hasJobs ? '' : 'ml-auto'"
-      :title="currentText"
-    >
-      {{ currentText }}
-    </p>
+    <div class="flex min-w-0 shrink-0 items-center justify-end gap-2">
+      <p
+        v-if="currentText"
+        class="min-w-0 max-w-[42vw] truncate text-right"
+        :class="hasJobs || !webMode ? '' : 'ml-auto'"
+        :title="currentText"
+      >
+        {{ currentText }}
+      </p>
+      <template v-if="!webMode">
+        <span
+          v-if="currentText"
+          class="h-3 w-px shrink-0 bg-border"
+          aria-hidden="true"
+        />
+        <TooltipProvider :delay-duration="400">
+          <div
+            class="flex shrink-0 items-center gap-px rounded-md border border-border/80 bg-background/50 p-px"
+            role="group"
+            :aria-label="t('nav.officeModeTooltip')"
+          >
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="inline-flex h-5 items-center gap-1 rounded-[5px] px-1.5 text-[11px] font-medium transition-colors active:scale-[0.98] disabled:opacity-50"
+                  :class="
+                    officeMode
+                      ? 'text-muted-foreground hover:text-foreground'
+                      : 'bg-background text-foreground shadow-sm'
+                  "
+                  :aria-pressed="!officeMode"
+                  :aria-label="t('nav.officeModeOffAria')"
+                  :disabled="nsfwToggling"
+                  @click="applyNsfwMode(true)"
+                >
+                  <Eye class="size-3 shrink-0" />
+                  <span>{{ t("nav.nsfwVisible") }}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" class="max-w-[240px] text-[12px]">
+                {{ t("nav.officeModeTooltip") }}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="inline-flex h-5 items-center gap-1 rounded-[5px] px-1.5 text-[11px] font-medium transition-colors active:scale-[0.98] disabled:opacity-50"
+                  :class="
+                    officeMode
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  "
+                  :aria-pressed="officeMode"
+                  :aria-label="t('nav.officeModeOnAria')"
+                  :disabled="nsfwToggling"
+                  @click="applyNsfwMode(false)"
+                >
+                  <Briefcase class="size-3 shrink-0" />
+                  <span>{{ t("nav.officeMode") }}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" class="max-w-[240px] text-[12px]">
+                {{ t("nav.officeModeTooltip") }}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
+      </template>
+    </div>
   </div>
 </template>

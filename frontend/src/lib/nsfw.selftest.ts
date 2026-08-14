@@ -64,6 +64,7 @@ assert(
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const store = readFileSync(join(root, "composables/useRssStore.ts"), "utf8");
 const sidebar = readFileSync(join(root, "components/layout/AppSidebar.vue"), "utf8");
+const activity = readFileSync(join(root, "components/layout/ActivityBar.vue"), "utf8");
 const general = readFileSync(join(root, "components/settings/panels/GeneralPanel.vue"), "utf8");
 const feedsPanel = readFileSync(join(root, "components/settings/panels/FeedsPanel.vue"), "utf8");
 
@@ -80,6 +81,11 @@ assert(
   sidebar.includes("setFolderNsfw") || sidebar.includes("onFolderNsfwToggle"),
   "sidebar folder nsfw menu",
 );
+assert(!sidebar.includes("onToggleOfficeMode"), "office/NSFW mode is not in the sidebar");
+assert(!sidebar.includes("nav.nsfwVisible"), "show-all chip is not in the sidebar");
+assert(activity.includes("setNsfwMode"), "footer toggles nsfwMode");
+assert(activity.includes("nav.nsfwVisible"), "footer shows 全部显示");
+assert(activity.includes("nav.officeMode"), "footer shows office mode");
 assert(general.includes("nsfwMode"), "general toggle");
 assert(feedsPanel.includes("editNsfw") || feedsPanel.includes("setFeedNsfw"), "feeds edit nsfw");
 // settings list uses raw feeds not sidebarFeeds
