@@ -52,7 +52,9 @@ type UIPrefs struct {
 	Accent                string `json:"accent"` // blue|purple|teal|orange
 	CompactSidebar        bool   `json:"compactSidebar"`
 	// MicaBackdrop: Windows 11 Mica window material. Ignored on other OSes.
-	MicaBackdrop bool   `json:"micaBackdrop"`
+	MicaBackdrop bool `json:"micaBackdrop"`
+	// LiquidGlass: WWDC 2025 refractive chrome (CSS + SVG displacement).
+	LiquidGlass bool   `json:"liquidGlass"`
 	FontSize     string `json:"fontSize"` // sm|md|lg
 	// ReaderFontFamily is a CSS font family name for article body/title.
 	// Empty or "system" uses the app default sans stack.
@@ -105,6 +107,7 @@ func DefaultUIPrefs() UIPrefs {
 		Accent:                   "purple",
 		CompactSidebar:           false,
 		MicaBackdrop:             true, // Win11 desktop; no-op elsewhere / web access
+		LiquidGlass:              true, // refractive chrome; falls back to blur
 		FontSize:                 "md",
 		ReaderFontFamily:         "", // system / app default
 		ShowUnreadOnly:           false,

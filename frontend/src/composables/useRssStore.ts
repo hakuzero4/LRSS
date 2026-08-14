@@ -727,6 +727,7 @@ const settings = reactive<AppSettings>({
   accent: "purple",
   compactSidebar: false,
   micaBackdrop: true,
+  liquidGlass: true,
   fontSize: "md",
   readerFontFamily: "",
   showUnreadOnly: false,
@@ -1187,6 +1188,7 @@ function buildUIPrefs(): UIPrefs {
     accent: settings.accent,
     compactSidebar: settings.compactSidebar,
     micaBackdrop: settings.micaBackdrop,
+    liquidGlass: settings.liquidGlass,
     fontSize: settings.fontSize,
     readerFontFamily: settings.readerFontFamily ?? "",
     showUnreadOnly: settings.showUnreadOnly,
@@ -1308,6 +1310,9 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
 
   const mica = pickBool(p, "micaBackdrop", "MicaBackdrop");
   if (mica !== undefined) settings.micaBackdrop = mica;
+
+  const liquidGlass = pickBool(p, "liquidGlass", "LiquidGlass");
+  if (liquidGlass !== undefined) settings.liquidGlass = liquidGlass;
 
   const fontSize = p.fontSize ?? p.FontSize;
   if (typeof fontSize === "string" && FONT_SIZES.has(fontSize)) {
@@ -3157,6 +3162,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     accent: "purple",
     compactSidebar: false,
     micaBackdrop: true,
+    liquidGlass: true,
     fontSize: "md",
     readerFontFamily: "",
     showUnreadOnly: false,

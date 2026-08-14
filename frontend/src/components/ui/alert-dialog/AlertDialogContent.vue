@@ -40,6 +40,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
     />
     <AlertDialogContent
       data-slot="alert-dialog-content"
+      data-lg="dialog"
       :data-size="size"
       v-bind="{ ...$attrs, ...forwarded }"
       :class="

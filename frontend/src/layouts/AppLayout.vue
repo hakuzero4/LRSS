@@ -3,6 +3,7 @@ import { onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import AppSidebar from "@/components/layout/AppSidebar.vue";
 import ActivityBar from "@/components/layout/ActivityBar.vue";
+import { LiquidGlassHost } from "@/components/ui/liquid-glass";
 import AddFeedDialog from "@/components/feed/AddFeedDialog.vue";
 import FeedEditDialog from "@/components/feed/FeedEditDialog.vue";
 import SettingsDialog from "@/components/settings/SettingsDialog.vue";
@@ -34,7 +35,8 @@ async function onRetryBootstrap() {
 </script>
 
 <template>
-  <div class="app-shell flex h-screen w-screen overflow-hidden bg-background text-foreground">
+  <div class="app-shell lg-scene flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+    <LiquidGlassHost />
     <div
       v-if="bootstrapError && !backendReady"
       class="absolute top-0 right-0 left-0 z-50 flex items-center justify-center gap-3 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-[12.5px] text-destructive"
@@ -50,44 +52,42 @@ async function onRetryBootstrap() {
       </Button>
     </div>
 
-    <!-- Zen: reader only (sidebar + list hidden in ReaderView) -->
-    <template v-if="zenMode">
-      <main class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
-        <RouterView />
-        <ActivityBar />
-      </main>
-    </template>
-
-    <ResizablePanelGroup
-      v-else
-      id="lrss-shell"
-      direction="horizontal"
-      auto-save-id="lrss-shell"
-      class="h-full w-full"
-    >
-      <!-- Left: feed sidebar -->
-      <ResizablePanel
-        id="sidebar"
-        :default-size="18"
-        :min-size="12"
-        :max-size="36"
-        class="min-w-0"
-      >
-        <AppSidebar />
-      </ResizablePanel>
-
-      <ResizableHandle with-handle />
-
-      <!-- Center + right: routed reader (list + article) -->
-      <ResizablePanel id="main" :default-size="82" :min-size="40" class="min-w-0">
-        <main class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-          <div class="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <RouterView />
-          </div>
-          <ActivityBar />
+    <!-- Columns share one baseline. Status strip is window chrome, not a fourth card. -->
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <template v-if="zenMode">
+        <main class="main-stage flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
+          <RouterView />
         </main>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+      </template>
+
+      <ResizablePanelGroup
+        v-else
+        id="lrss-shell"
+        direction="horizontal"
+        auto-save-id="lrss-shell"
+        class="min-h-0 w-full flex-1"
+      >
+        <ResizablePanel
+          id="sidebar"
+          :default-size="18"
+          :min-size="12"
+          :max-size="36"
+          class="min-w-0"
+        >
+          <AppSidebar />
+        </ResizablePanel>
+
+        <ResizableHandle with-handle />
+
+        <ResizablePanel id="main" :default-size="82" :min-size="40" class="min-w-0">
+          <main class="main-stage flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+            <RouterView />
+          </main>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+
+      <ActivityBar />
+    </div>
 
     <!-- Settings first; nested feed dialogs after so equal-z portals still paint on top. -->
     <SettingsDialog v-if="!webMode" />

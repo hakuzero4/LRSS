@@ -44,6 +44,9 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 	if !cfg.MicaBackdrop {
 		t.Fatal("expected micaBackdrop true by default")
 	}
+	if !cfg.LiquidGlass {
+		t.Fatal("expected liquidGlass true by default")
+	}
 
 	// Round-trip
 	want := settings.UIPrefs{
@@ -215,6 +218,9 @@ func TestUIPrefs_PartialJSONKeepsDefaults(t *testing.T) {
 	}
 	if !cfg.EnableKeyboardShortcuts {
 		t.Fatal("EnableKeyboardShortcuts should stay default true")
+	}
+	if !cfg.LiquidGlass {
+		t.Fatal("LiquidGlass should stay default true")
 	}
 	// Nested readerToolbar missing from partial JSON → all buttons visible.
 	defTB := settings.DefaultReaderToolbarButtons()

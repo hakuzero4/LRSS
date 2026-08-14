@@ -69,7 +69,7 @@ const currentText = computed(() => {
 
 <template>
   <div
-    class="flex h-7 shrink-0 items-center justify-between gap-3 overflow-hidden border-t border-border/70 bg-muted/35 px-3 text-[11.5px] text-muted-foreground"
+    class="activity-bar flex h-7 shrink-0 items-center justify-between gap-3 overflow-hidden border-t border-border/70 bg-muted/35 px-3 text-[11.5px] text-muted-foreground"
     role="status"
     aria-live="polite"
   >

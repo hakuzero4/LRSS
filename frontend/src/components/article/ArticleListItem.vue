@@ -89,7 +89,7 @@ const isCard = computed(() => props.layout === "card");
         'article-row group w-full border-b border-border/50 px-3 py-3 text-left transition-colors duration-150',
         'hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
         'active:scale-[0.995] active:bg-black/[0.05] dark:active:bg-white/[0.06]',
-        active && 'bg-primary/10 dark:bg-primary/15',
+        active && 'article-row-active bg-primary/10 dark:bg-primary/15',
         !article.read && 'is-unread',
       )
     "

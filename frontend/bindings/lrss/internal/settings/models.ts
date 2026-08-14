@@ -159,6 +159,11 @@ export interface UIPrefs {
     "micaBackdrop": boolean;
 
     /**
+     * LiquidGlass: WWDC 2025 refractive chrome (CSS + SVG displacement).
+     */
+    "liquidGlass": boolean;
+
+    /**
      * sm|md|lg
      */
     "fontSize": string;

@@ -3,6 +3,7 @@
 // Web access with invalid/missing token: only WebAuthBlocked (no library UI).
 import { onBeforeMount, ref } from "vue";
 import { loadAppsvc } from "@/lib/backend";
+import { applyLiquidGlass } from "@/lib/liquidGlassRuntime";
 import { applyDesktopMica } from "@/lib/mica";
 import { isWebMode, webAuthState } from "@/lib/webMode";
 import WebAuthBlocked from "@/views/WebAuthBlocked.vue";
@@ -16,6 +17,7 @@ onBeforeMount(async () => {
     applyDesktopMica(isWebMode(), {
       enabled: true,
     });
+    applyLiquidGlass();
     gateReady.value = true;
   }
 });

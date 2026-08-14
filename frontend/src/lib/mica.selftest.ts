@@ -68,6 +68,10 @@ assert(
   /html\.mica\s+\.pane-chrome\s*\{[^}]*background:\s*transparent/.test(css),
   "mica pane headers are transparent",
 );
+assert(
+  css.includes("html.mica.liquid-glass .app-sidebar"),
+  "mica+glass large panes stay filter-free so wallpaper can show",
+);
 assert(css.includes('[data-slot="dialog-overlay"]'), "mica dims dialog overlay");
 assert(css.includes("backdrop-filter: none"), "mica overlay does not smear text");
 assert(css.includes('[data-slot="dialog-content"]'), "mica dialogs use solid tokens");

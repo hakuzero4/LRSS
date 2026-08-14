@@ -60,7 +60,7 @@ async function onCopy() {
 
 <template>
   <section
-    class="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-l border-border/80 bg-background"
+    class="side-pane flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden"
     role="complementary"
     :aria-label="t('article.markdownPanelTitle')"
   >

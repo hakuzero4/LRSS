@@ -8,6 +8,10 @@
           if (!window.__LRSS_WEB__ && /Windows/i.test(navigator.userAgent || "")) {
             document.documentElement.classList.add("mica");
           }
+          var reduce =
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-transparency: reduce)").matches;
+          if (!reduce) document.documentElement.classList.add("liquid-glass");
         } catch (_) {}
       })();
     </script>

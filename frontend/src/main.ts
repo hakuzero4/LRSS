@@ -2,11 +2,13 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { router } from "./router";
 import i18n, { detectInitialLocale } from "./i18n";
+import { applyLiquidGlass } from "@/lib/liquidGlassRuntime";
 import { applyDesktopMica } from "@/lib/mica";
 import "vue-sonner/style.css";
 import "./style.css";
 
 applyDesktopMica();
+applyLiquidGlass();
 
 const app = createApp(App);
 app.use(router);

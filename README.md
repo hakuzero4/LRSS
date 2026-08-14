@@ -150,6 +150,7 @@ Enable in **Settings → Advanced → Web access**.
 | --- | --- |
 | **Themes** | System / light / dark; accent presets + custom hex |
 | **Windows 11 Mica** | Optional full-window Mica (Settings → Appearance). 22H2+; needs hardware acceleration. Web access stays opaque. |
+| **Liquid Glass** | WWDC 2025 refractive chrome (CSS + SVG displacement). Falls back to blur when the OS asks to reduce transparency. |
 | **Compact sidebar** | Denser feed list |
 | **i18n** | Simplified Chinese · English |
 | **Keyboard shortcuts** | j/k next-prev · s star · m read · r refresh · z zen · `,` settings (toggleable) |

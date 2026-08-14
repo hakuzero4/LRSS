@@ -94,7 +94,7 @@ function openCite(cite: BriefingCite) {
 </script>
 
 <template>
-  <section class="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-background">
+  <section class="reader-pane flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden">
     <template v-if="selectedBriefing">
       <header class="pane-chrome flex h-12 shrink-0 items-center justify-between gap-2 px-4">
         <div class="min-w-0 flex-1 pr-2">

@@ -164,7 +164,7 @@ const emptyHint = computed(() => {
 </script>
 
 <template>
-  <section class="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
+  <section class="list-pane flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
     <header class="pane-chrome flex h-12 items-center gap-2 px-3">
       <div class="min-w-0 flex-1">
         <h2 class="truncate text-[13px] font-semibold tracking-tight">
@@ -240,7 +240,7 @@ const emptyHint = computed(() => {
       </TooltipProvider>
     </header>
 
-    <!-- Independent search module (not part of title chrome) -->
+    <div class="list-stack min-h-0 flex-1">
     <ArticleSearch />
 
     <div
@@ -278,7 +278,7 @@ const emptyHint = computed(() => {
             cn(
               'article-row group w-full border-b border-border/50 px-3 py-3 text-left transition-colors duration-150',
               'hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
-              item.id === selectedBriefingId && 'bg-primary/10 dark:bg-primary/15',
+              item.id === selectedBriefingId && 'article-row-active bg-primary/10 dark:bg-primary/15',
               !item.isRead && 'is-unread',
             )
           "
@@ -343,6 +343,7 @@ const emptyHint = computed(() => {
       >
         {{ t("common.loading") }}
       </p>
+    </div>
     </div>
   </section>
 </template>

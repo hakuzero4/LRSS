@@ -209,6 +209,8 @@ export interface UIPrefs {
   compactSidebar: boolean;
   /** Windows 11 Mica window material. No-op on other platforms / web access. */
   micaBackdrop: boolean;
+  /** WWDC 2025 Liquid Glass chrome (CSS + SVG refraction). */
+  liquidGlass: boolean;
   fontSize: string; // sm|md|lg
   /** CSS font family for article body; empty = app default. */
   readerFontFamily: string;
@@ -274,6 +276,8 @@ export interface AppSettings {
   compactSidebar: boolean;
   /** Windows 11 Mica window material. */
   micaBackdrop: boolean;
+  /** WWDC 2025 Liquid Glass chrome. */
+  liquidGlass: boolean;
 
   // 阅读
   fontSize: "sm" | "md" | "lg";

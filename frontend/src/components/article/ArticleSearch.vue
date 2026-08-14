@@ -15,7 +15,7 @@ const searchModel = computed({
 
 <template>
   <div class="article-search" role="search">
-    <div class="article-search-field">
+    <div class="article-search-field" data-lg="search">
       <Search class="article-search-icon" aria-hidden="true" />
       <input
         v-model="searchModel"
