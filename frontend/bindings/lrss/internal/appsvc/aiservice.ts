@@ -29,6 +29,37 @@ export function Ask(articleId: string, question: string, locale: string): $Cance
 }
 
 /**
+ * ChatCancel aborts an in-flight ChatSend for the session.
+ */
+export function ChatCancel(sessionId: string): $CancellablePromise<void> {
+    return $Call.ByID(4216949574, sessionId);
+}
+
+/**
+ * ChatClear deletes the article's assistant session.
+ * Empty articleId clears the library-wide session.
+ */
+export function ChatClear(articleId: string): $CancellablePromise<void> {
+    return $Call.ByID(2464545945, articleId);
+}
+
+/**
+ * ChatHistory returns the saved conversation for an article (empty if none).
+ * Empty articleId loads the library-wide session.
+ */
+export function ChatHistory(articleId: string): $CancellablePromise<$models.ChatHistoryResult> {
+    return $Call.ByID(734811652, articleId);
+}
+
+/**
+ * ChatSend streams a multi-turn answer about the current article and/or library
+ * (llm:stream, feature=chat).
+ */
+export function ChatSend(req: $models.ChatSendRequest): $CancellablePromise<$models.ChatSendResult> {
+    return $Call.ByID(1510792186, req);
+}
+
+/**
  * ClassifyPromo classifies the article as organic / promo / unclear (user-triggered).
  * locale is the app UI language for explanation text.
  */

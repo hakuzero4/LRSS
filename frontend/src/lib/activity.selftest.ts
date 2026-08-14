@@ -25,6 +25,7 @@ assert(store.includes("mergeLatestArticles"), "unread list merges new rows");
 assert(zh.includes("refreshFoundNew"), "zh toast for new articles");
 assert(en.includes("refreshFoundNew"), "en toast for new articles");
 assert(layout.includes("ActivityBar"), "AppLayout mounts ActivityBar");
+assert(layout.includes("AssistantPane"), "AppLayout mounts global assistant");
 assert(bar.includes("activity.refreshCurrent"), "bar uses refresh copy");
 assert(bar.includes("activity.briefingGenerating"), "bar uses briefing copy");
 assert(bar.includes("nextDueText"), "bar shows next auto-refresh countdown");

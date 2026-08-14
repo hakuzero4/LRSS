@@ -23,6 +23,9 @@ export {
 export type {
     AIResult,
     CacheClearResult,
+    ChatHistoryResult,
+    ChatSendRequest,
+    ChatSendResult,
     ClearAllResult,
     LLMStreamEvent,
     OPMLImportResult,

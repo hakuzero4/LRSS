@@ -22,6 +22,7 @@
 - `SettingsService.TestLLMConfig` — 发极短 completion，校验连通与鉴权
 - **`AIService`**（用户显式触发）  
   - `Summarize` / `Translate` / `Ask`  
+  - `ChatSend` / `ChatHistory` / `ChatClear` / `ChatCancel`（可附加文章、搜订阅库）  
   - `SuggestFolders` / `ApplySuggestedFolder`  
   - `ClassifyPromo` / `DetectContentFullness` / `EnsureFullContent`  
   - `TranslateSelection`  
@@ -34,9 +35,9 @@
 | **摘要** | 阅读器工具栏「生成摘要」/ ✨ | 流式写入正文上方 deck |
 | **翻译** | 工具栏语言图标 | 原文+译文对照，原文不覆盖 |
 | **划词翻译** | 选中正文 | 短文本固定 prompt |
-| **问答 / 解释** | ✨ →「问答」 | 针对当前文章提问 |
-| **标签 / 文件夹建议** | ✨ →「标签 / 文件夹建议」 | 本地关键词 + LLM；可一键移文件夹 |
-| **广告 / 软文判断** | ✨ →「广告 / 软文判断」 | organic / promo / unclear |
+| **阅读助手** | 侧栏「阅读助手」 | 全局多轮对话；+ 添加文章并可过滤/搜索订阅库；划词可「问这个」 |
+| **标签 / 文件夹建议** | 助手建议条 | 本地关键词 + LLM；可一键移文件夹 |
+| **广告 / 软文判断** | 助手建议条 | organic / promo / unclear |
 | **自动请求全文** | 设置 → AI 功能（可选） | 打开文章时判断 partial 并抓取 |
 
 **共性**
@@ -44,7 +45,7 @@
 - 模型配置在 **设置 → 模型**；功能开关在 **设置 → AI 功能**
 - **自动摘要**（可选）：打开文章时调用摘要，输出语言 = **当前界面语言**
 - 摘要 / 问答 / 建议 / 分类 的 prompt 与回复语言跟随 UI 语言（`zh-CN` → 简体中文）
-- 结果 Markdown 展示在右侧 AI 面板（可复制）
+- 摘要等一次性结果仍可缓存；阅读助手对话存在 `ai_chat_*`，不走功能缓存
 - 缓存：`llm_feature_cache`（article + feature + model + content 指纹 + locale）
 - 正文预算：`BuildArticleBundle` + `BudgetText`
 - 出站：`internal/httpx`（surf）→ OpenAI 兼容 `/chat/completions`
@@ -89,10 +90,11 @@
 
 | 功能 | 说明 |
 | --- | --- |
-| **多轮 Ask-your-library** | RAG：向量检索 Top-K 文章 → 拼上下文 → 回答 |
-| **流式输出** | SSE / chunk 推到前端（Wails 事件） |
-| **多模态** | 配图描述（可选，成本高） |
-| **工具调用** | 打开原文、加星、创建文件夹等 agent 动作（需严格确认） |
+| **多轮文章问答** | 已上线：`ChatSend` + 右侧助手栏（第一期） |
+| **Ask-your-library** | RAG：向量/FTS Top-K → 出处可点（第二期） |
+| **流式输出** | 已有 `llm:stream`（摘要 / 翻译 / 助手） |
+| **工具调用** | 加星、标已读、移文件夹等，须确认（第三期） |
+| **多模态** | 配图描述（不做） |
 
 ### 架构建议
 

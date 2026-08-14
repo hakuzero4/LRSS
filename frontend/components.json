@@ -22,5 +22,7 @@
   },
   "menuColor": "default",
   "menuAccent": "subtle",
-  "registries": {}
+  "registries": {
+    "@ai-elements-vue": "https://registry.ai-elements-vue.com/{name}.json"
+  }
 }

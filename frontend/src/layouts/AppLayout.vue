@@ -3,6 +3,7 @@ import { onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import AppSidebar from "@/components/layout/AppSidebar.vue";
 import ActivityBar from "@/components/layout/ActivityBar.vue";
+import AssistantPane from "@/components/article/AssistantPane.vue";
 import { LiquidGlassHost } from "@/components/ui/liquid-glass";
 import AddFeedDialog from "@/components/feed/AddFeedDialog.vue";
 import FeedEditDialog from "@/components/feed/FeedEditDialog.vue";
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/resizable";
 
 const { t } = useI18n();
-const { bootstrapError, backendReady, reloadLibrary, zenMode, webMode } = useRssStore();
+const { bootstrapError, backendReady, reloadLibrary, zenMode, webMode, assistant } = useRssStore();
 
 useTheme();
 useKeyboardShortcuts();
@@ -55,9 +56,17 @@ async function onRetryBootstrap() {
     <!-- Columns share one baseline. Status strip is window chrome, not a fourth card. -->
     <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <template v-if="zenMode">
-        <main class="main-stage flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
-          <RouterView />
-        </main>
+        <div class="flex min-h-0 min-w-0 w-full flex-1 overflow-hidden">
+          <main class="main-stage flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
+            <RouterView />
+          </main>
+          <aside
+            v-if="assistant.open"
+            class="min-h-0 w-[min(36%,28rem)] min-w-[16rem] max-w-[42%] shrink-0 border-l border-border/70"
+          >
+            <AssistantPane />
+          </aside>
+        </div>
       </template>
 
       <ResizablePanelGroup
@@ -79,11 +88,29 @@ async function onRetryBootstrap() {
 
         <ResizableHandle with-handle />
 
-        <ResizablePanel id="main" :default-size="82" :min-size="40" class="min-w-0">
+        <ResizablePanel
+          id="main"
+          :default-size="assistant.open ? 54 : 82"
+          :min-size="36"
+          class="min-w-0"
+        >
           <main class="main-stage flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
             <RouterView />
           </main>
         </ResizablePanel>
+
+        <template v-if="assistant.open">
+          <ResizableHandle with-handle />
+          <ResizablePanel
+            id="assistant"
+            :default-size="28"
+            :min-size="18"
+            :max-size="42"
+            class="min-w-0"
+          >
+            <AssistantPane />
+          </ResizablePanel>
+        </template>
       </ResizablePanelGroup>
 
       <ActivityBar />

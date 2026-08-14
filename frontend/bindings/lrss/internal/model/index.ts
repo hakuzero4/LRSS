@@ -8,6 +8,8 @@ export type {
     BriefingCite,
     BriefingPayload,
     BriefingTheme,
+    ChatCitation,
+    ChatMessage,
     Feed,
     Folder
 } from "./models.js";

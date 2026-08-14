@@ -11,12 +11,13 @@ import (
 // When nil, embedding enqueue is skipped.
 type EmbeddingEnabledFunc func(ctx context.Context) bool
 
-// Repos groups folder/feed/article/briefing repositories over one DB.
+// Repos groups folder/feed/article/briefing/chat repositories over one DB.
 type Repos struct {
 	Folders   *FolderRepo
 	Feeds     *FeedRepo
 	Articles  *ArticleRepo
 	Briefings *BriefingRepo
+	Chats     *ChatRepo
 }
 
 // Option configures Repos construction.
@@ -58,5 +59,6 @@ func New(db *sql.DB, opts ...Option) *Repos {
 			Vector:           cfg.vec,
 		}),
 		Briefings: NewBriefingRepo(db),
+		Chats:     NewChatRepo(db),
 	}
 }

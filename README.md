@@ -21,7 +21,7 @@
 
 | Capability | Details |
 | --- | --- |
-| **Three-pane layout** | Sidebar (smart lists / folders / feeds) · article list · reader |
+| **Three-pane layout** | Sidebar (smart lists / folders / feeds) · article list · reader · optional reading assistant |
 | **Smart lists** | Unread · Today · Starred · All · Recently read · optional **Briefing** — with live counts |
 | **Folders** | Nested-style organization; create / rename / delete; mark all read; refresh folder; move feeds; [list or image-card display](#folder-display) per folder |
 | **Feeds** | Favicons, unread badges, context menus, per-feed editor |
@@ -65,7 +65,7 @@ Some folders are all image feeds. Set **Display → Image cards** on the folder 
 | **HTML safety** | Article HTML sanitized with bluemonday before store/display |
 | **Fetch full content** | Toolbar, paced background queue, or optional on-open auto-fetch — [how it works](#fetch-full-content) |
 | **Typography** | Font size (sm/md/lg), system font picker, reader width (narrow → fill) |
-| **Reader toolbar** | Configurable: zen, star, read, summarize, translate, AI menu, fetch full, Markdown panel, open original |
+| **Reader toolbar** | Configurable: zen, star, read, summarize, translate, fetch full, Markdown panel, open original |
 | **Markdown panel** | Side panel for Markdown conversion of the article |
 
 ### Fetch full content
@@ -107,12 +107,12 @@ Requires **Settings → Models** chat endpoint. Feature toggles under **AI featu
 
 | Feature | Entry | Notes |
 | --- | --- | --- |
-| **Summarize** | Toolbar / ✨ | Streaming summary deck above the body; optional auto-summarize on open |
+| **Summarize** | Toolbar | Streaming summary deck above the body; optional auto-summarize on open |
 | **Translate** | Language icon | Original + translation side-by-side; original body never deleted |
 | **Selection translate** | Select text in body | Popup short-text translation |
-| **Ask / explain** | ✨ menu | Q&A on the current article |
-| **Folder / tag suggest** | ✨ menu | Local keywords + LLM; one-click move feed to folder |
-| **Promo / soft-ad classify** | ✨ menu | Manual organic / promo / unclear |
+| **Reading assistant** | Sidebar · 阅读助手 | One global multi-turn chat. Attach the open article, filter/search the library, and click `[n]` to jump to a source |
+| **Folder / tag suggest** | Assistant chips | Local keywords + LLM; one-click move feed to folder |
+| **Promo / soft-ad classify** | Assistant chips | Manual organic / promo / unclear |
 | **Auto full-fetch** | AI features toggle | Opens article → conservative partial check → fetch page |
 | **Cache** | Local SQLite | `article + feature + model + content fingerprint + locale` |
 | **Locale-aware prompts** | UI language | zh-CN UI → Chinese prompts/replies |

@@ -13,6 +13,7 @@ import {
   LocateFixed,
   Newspaper,
   Settings,
+  Sparkles,
   Star,
   X,
 } from "@lucide/vue";
@@ -82,6 +83,8 @@ const {
   selectedFeed,
   openAddFeedInFolder,
   openSettings,
+  assistant,
+  toggleAssistant,
   openFeedEdit,
   createFolder,
   renameFolder,
@@ -1081,6 +1084,16 @@ const smartItems = computed(() => [
     <template v-if="!webMode">
       <Separator class="opacity-70" />
       <div class="space-y-0.5 p-2.5">
+        <button
+          type="button"
+          class="nav-row w-full"
+          :class="assistant.open && 'nav-row-active'"
+          :aria-pressed="assistant.open"
+          @click="toggleAssistant"
+        >
+          <Sparkles class="nav-icon" />
+          <span class="flex-1 text-left">{{ t("ai.assistantTitle") }}</span>
+        </button>
         <button type="button" class="nav-row w-full" @click="openSettings">
           <Settings class="nav-icon" />
           <span class="flex-1 text-left">{{ t("nav.settings") }}</span>

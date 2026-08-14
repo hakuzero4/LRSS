@@ -10,10 +10,7 @@ import {
   LoaderCircle,
   MessageCircleQuestion,
   Newspaper,
-  ShieldAlert,
-  Sparkles,
   Star,
-  Tags,
   TextQuote,
   X,
 } from "@lucide/vue";
@@ -62,15 +59,13 @@ const {
   backendReady,
   zenMode,
   toggleZenMode,
-  aiPanel,
   summaryStream,
   translateView,
   aiSummarize,
   aiTranslate,
   aiTranslateSelection,
-  aiAsk,
-  aiSuggest,
-  aiClassify,
+  openAssistant,
+  assistantAttach,
 } = useRssStore();
 
 const scrollPaneRef = ref<HTMLElement | null>(null);
@@ -105,7 +100,6 @@ const selectPopup = reactive<SelectPopupState>({
   error: "",
   seq: 0,
 });
-const aiBusy = computed(() => aiPanel.busy);
 const summarizeBusy = computed(
   () =>
     summaryStream.busy &&
@@ -244,15 +238,6 @@ async function onFetchFullContent() {
   }
 }
 
-async function runAI(action: () => Promise<void>) {
-  try {
-    await action();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("ai.failed"), { description: msg });
-  }
-}
-
 /** Manual deck summary (also available when auto-summarize is off). */
 async function onSummarize() {
   const id = selectedArticle.value?.id;
@@ -310,24 +295,18 @@ function onTranslateClick() {
   void onTranslate();
 }
 
-function onAsk() {
-  const id = selectedArticle.value?.id;
-  if (!id) return;
-  const q = window.prompt(t("ai.askPrompt"), t("ai.askDefault"));
-  if (q === null) return;
-  void runAI(() => aiAsk(id, q));
-}
-
-function onSuggest() {
-  const id = selectedArticle.value?.id;
-  if (!id) return;
-  void runAI(() => aiSuggest(id));
-}
-
-function onClassify() {
-  const id = selectedArticle.value?.id;
-  if (!id) return;
-  void runAI(() => aiClassify(id));
+function onAskSelection() {
+  const text = selectPopup.source.trim();
+  if (!text) return;
+  if (selectedArticle.value) {
+    assistantAttach({
+      id: selectedArticle.value.id,
+      title: selectedArticle.value.title,
+      feedTitle: selectedFeed.value?.title,
+    });
+  }
+  void openAssistant({ selection: text, draft: t("ai.chipSelection") });
+  closeSelectPopup();
 }
 
 function closeSelectPopup() {
@@ -679,57 +658,6 @@ watch(
               </DropdownMenu>
             </template>
 
-            <DropdownMenu v-if="settings.readerToolbar.ai">
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <DropdownMenuTrigger as-child>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      :class="
-                        aiPanel.open || aiBusy
-                          ? 'text-primary bg-primary/10'
-                          : 'text-muted-foreground'
-                      "
-                      :disabled="!backendReady || aiBusy"
-                      :aria-label="t('ai.menu')"
-                    >
-                      <LoaderCircle
-                        v-if="aiBusy"
-                        class="size-4 animate-spin"
-                      />
-                      <Sparkles v-else class="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent>{{ t("ai.menu") }}</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end" class="w-52">
-                <DropdownMenuLabel>{{ t("ai.menu") }}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  :disabled="summarizeBusy"
-                  @click="onSummarize"
-                >
-                  <TextQuote class="mr-2 size-3.5" />
-                  {{ t("ai.summarize") }}
-                </DropdownMenuItem>
-                <DropdownMenuItem @click="onAsk">
-                  <MessageCircleQuestion class="mr-2 size-3.5" />
-                  {{ t("ai.ask") }}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem @click="onSuggest">
-                  <Tags class="mr-2 size-3.5" />
-                  {{ t("ai.suggest") }}
-                </DropdownMenuItem>
-                <DropdownMenuItem @click="onClassify">
-                  <ShieldAlert class="mr-2 size-3.5" />
-                  {{ t("ai.classify") }}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
             <Tooltip v-if="settings.readerToolbar.fetchFull">
               <TooltipTrigger as-child>
                 <Button
@@ -1017,11 +945,17 @@ watch(
           {{ selectPopup.result }}
         </p>
       </div>
-      <div
-        v-if="selectPopup.result && !selectPopup.busy"
-        class="select-translate-actions"
-      >
-        <button type="button" class="select-translate-action" @click="copySelectResult">
+      <div class="select-translate-actions">
+        <button type="button" class="select-translate-action" @click="onAskSelection">
+          <MessageCircleQuestion class="size-3.5" />
+          {{ t("ai.askSelection") }}
+        </button>
+        <button
+          v-if="selectPopup.result && !selectPopup.busy"
+          type="button"
+          class="select-translate-action"
+          @click="copySelectResult"
+        >
           <ClipboardCopy class="size-3.5" />
           {{ t("ai.selectCopy") }}
         </button>

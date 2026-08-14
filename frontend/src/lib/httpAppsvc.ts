@@ -177,6 +177,13 @@ export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
         postJSON("/api/ai/clear-translation", { articleId }),
       ApplySuggestedFolder: (articleId: string, folderId: string) =>
         postJSON("/api/ai/apply-folder", { articleId, folderId }),
+      ChatHistory: (articleId: string) =>
+        getJSON(`/api/ai/chat?articleId=${encodeURIComponent(articleId ?? "")}`),
+      ChatSend: async () => {
+        throw new Error("chat is desktop-only in this version");
+      },
+      ChatClear: async () => {},
+      ChatCancel: async () => {},
     },
   };
 }

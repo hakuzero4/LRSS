@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as model$0 from "../model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as web$0 from "../web/models.js";
 
 /**
@@ -33,6 +36,40 @@ export interface CacheClearResult {
 }
 
 /**
+ * ChatHistoryResult is the persisted transcript for an article.
+ */
+export interface ChatHistoryResult {
+    "sessionId": string;
+    "articleId": string;
+    "messages": model$0.ChatMessage[] | null;
+}
+
+/**
+ * ChatSendRequest is one user turn against the current article and/or library.
+ */
+export interface ChatSendRequest {
+    "sessionId": string;
+    "message": string;
+    "articleId": string;
+    "attachIds": string[] | null;
+    "collectionId": string;
+    "selection": string;
+    "locale": string;
+    "useLibrary": boolean;
+}
+
+/**
+ * ChatSendResult is the completed assistant turn.
+ */
+export interface ChatSendResult {
+    "sessionId": string;
+    "messageId": string;
+    "markdown": string;
+    "model": string;
+    "citations"?: model$0.ChatCitation[] | null;
+}
+
+/**
  * ClearAllResult is returned by ClearAllSubscriptions.
  */
 export interface ClearAllResult {
@@ -45,6 +82,7 @@ export interface ClearAllResult {
  */
 export interface LLMStreamEvent {
     "articleId": string;
+    "sessionId"?: string;
     "feature": string;
     "delta": string;
     "text": string;

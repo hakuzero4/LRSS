@@ -235,32 +235,59 @@ const backendReady = ref(false);
 const libraryLoading = ref(true);
 const bootstrapError = ref("");
 
-/** Right-side AI result panel (ask / suggest / classify / … — not summarize). */
-export type AIPanelState = {
-  open: boolean;
-  busy: boolean;
+export type AssistantCitation = {
+  n: number;
+  articleId: string;
   title: string;
-  markdown: string;
-  feature: string;
-  model: string;
-  cached: boolean;
-  folderId: string;
-  folderName: string;
-  verdict: string;
+  feedTitle?: string;
 };
 
-const aiPanel = reactive<AIPanelState>({
+export type AssistantMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: AssistantCitation[];
+};
+
+/** Right-side reading assistant (multi-turn chat). */
+export type AssistantAttach = {
+  id: string;
+  title: string;
+  feedTitle?: string;
+};
+
+export type AssistantState = {
+  open: boolean;
+  busy: boolean;
+  sessionId: string;
+  articleId: string | null;
+  messages: AssistantMessage[];
+  draft: string;
+  selection: string;
+  model: string;
+  error: string;
+  llmConfigured: boolean;
+  useLibrary: boolean;
+  attaches: AssistantAttach[];
+};
+
+const assistant = reactive<AssistantState>({
   open: false,
   busy: false,
-  title: "",
-  markdown: "",
-  feature: "",
+  sessionId: "",
+  articleId: null,
+  messages: [],
+  draft: "",
+  selection: "",
   model: "",
-  cached: false,
-  folderId: "",
-  folderName: "",
-  verdict: "",
+  error: "",
+  llmConfigured: false,
+  useLibrary: false,
+  attaches: [],
 });
+
+/** @deprecated use assistant — kept so older selftests / call sites compile during the swap. */
+const aiPanel = assistant;
 
 /** In-reader deck streaming for summarize (above body, replaces article.summary). */
 export type SummaryStreamState = {
@@ -310,6 +337,10 @@ async function ensureLLMStreamListener() {
       if (!d) return;
       const feature = String(d.feature ?? d.Feature ?? "");
       const articleId = String(d.articleId ?? d.ArticleID ?? "");
+      if (feature === "chat") {
+        handleChatStream(d);
+        return;
+      }
       if (!articleId) return;
 
       if (feature === "summarize") {
@@ -476,60 +507,227 @@ function applySavedTranslationView(articleId: string) {
   translateView.error = "";
 }
 
-function closeAIPanel() {
-  aiPanel.open = false;
-  aiPanel.busy = false;
-}
-
-function openAIPanelShell(title: string, feature: string) {
-  aiPanel.open = true;
-  aiPanel.busy = true;
-  aiPanel.title = title;
-  aiPanel.feature = feature;
-  aiPanel.markdown = "";
-  aiPanel.model = "";
-  aiPanel.cached = false;
-  aiPanel.folderId = "";
-  aiPanel.folderName = "";
-  aiPanel.verdict = "";
-}
-
-function applyAIResult(raw: any, title: string, feature: string) {
-  const r = raw ?? {};
-  aiPanel.open = true;
-  aiPanel.busy = false;
-  aiPanel.title = title;
-  aiPanel.feature = feature;
-  aiPanel.markdown = String(r.markdown ?? r.Markdown ?? "");
-  aiPanel.model = String(r.model ?? r.Model ?? "");
-  aiPanel.cached = !!(r.cached ?? r.Cached);
-  aiPanel.folderId = String(r.folderId ?? r.FolderID ?? "");
-  aiPanel.folderName = String(r.folderName ?? r.FolderName ?? "");
-  aiPanel.verdict = String(r.verdict ?? r.Verdict ?? "");
-}
-
-async function runAIFeature(
-  title: string,
-  feature: string,
-  call: (api: any) => Promise<any>,
-): Promise<void> {
-  openAIPanelShell(title, feature);
-  try {
-    if (!backendReady.value) {
-      throw new Error(t("ai.backendUnavailable"));
-    }
-    const api = await loadAppsvc();
-    if (!api?.AIService) {
-      throw new Error(t("ai.unavailable"));
-    }
-    const raw = await call(api);
-    applyAIResult(raw, title, feature);
-  } catch (e) {
-    aiPanel.busy = false;
-    aiPanel.markdown = "";
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(msg);
+function mapChatCitations(raw: unknown): AssistantCitation[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AssistantCitation[] = [];
+  for (const c of raw) {
+    if (!c || typeof c !== "object") continue;
+    const n = Number((c as any).n ?? (c as any).N ?? 0);
+    const articleId = String((c as any).articleId ?? (c as any).ArticleID ?? "");
+    if (!Number.isFinite(n) || n < 1 || !articleId) continue;
+    out.push({
+      n,
+      articleId,
+      title: String((c as any).title ?? (c as any).Title ?? ""),
+      feedTitle: String((c as any).feedTitle ?? (c as any).FeedTitle ?? ""),
+    });
   }
+  return out;
+}
+
+function mapChatMessages(raw: unknown): AssistantMessage[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AssistantMessage[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const role = String((m as any).role ?? (m as any).Role ?? "");
+    if (role !== "user" && role !== "assistant") continue;
+    out.push({
+      id: String((m as any).id ?? (m as any).ID ?? `m-${out.length}`),
+      role,
+      content: String((m as any).content ?? (m as any).Content ?? ""),
+      citations: mapChatCitations((m as any).citations ?? (m as any).Citations),
+    });
+  }
+  return out;
+}
+
+function handleChatStream(d: any) {
+  const sessionId = String(d.sessionId ?? d.SessionID ?? "");
+  if (sessionId && assistant.sessionId && sessionId !== assistant.sessionId) return;
+  const text = String(d.text ?? d.Text ?? "");
+  const done = !!(d.done ?? d.Done);
+  const err = String(d.error ?? d.Error ?? "");
+  const last = assistant.messages[assistant.messages.length - 1];
+  if (last?.role === "assistant") {
+    if (text) last.content = text;
+  }
+  if (done) {
+    assistant.busy = false;
+    if (err && !err.startsWith("save chat:")) assistant.error = err;
+    const model = String(d.model ?? d.Model ?? "");
+    if (model) assistant.model = model;
+  }
+}
+
+function closeAIPanel() {
+  assistant.open = false;
+  assistant.busy = false;
+}
+
+function closeAssistant() {
+  closeAIPanel();
+}
+
+async function refreshLLMConfigured() {
+  try {
+    const api = await loadAppsvc();
+    if (typeof api?.AIService?.IsLLMConfigured === "function") {
+      assistant.llmConfigured = !!(await api.AIService.IsLLMConfigured());
+    }
+  } catch {
+    assistant.llmConfigured = false;
+  }
+}
+
+async function loadAssistantHistory() {
+  assistant.error = "";
+  try {
+    const api = await loadAppsvc();
+    const fn = api?.AIService?.ChatHistory;
+    if (typeof fn !== "function") {
+      if (!assistant.sessionId) assistant.messages = [];
+      return;
+    }
+    const raw = await fn.call(api.AIService, "");
+    assistant.sessionId = String(raw?.sessionId ?? raw?.SessionID ?? "");
+    assistant.messages = mapChatMessages(raw?.messages ?? raw?.Messages);
+  } catch {
+    if (!assistant.messages.length) {
+      assistant.sessionId = "";
+    }
+  }
+}
+
+function toggleAssistant() {
+  if (assistant.open) {
+    closeAssistant();
+    return;
+  }
+  void openAssistant();
+}
+
+async function openAssistant(opts?: { selection?: string; draft?: string; useLibrary?: boolean }) {
+  assistant.open = true;
+  void ensureLLMStreamListener();
+  void refreshLLMConfigured();
+  if (opts?.selection) assistant.selection = opts.selection;
+  if (opts?.draft != null) assistant.draft = opts.draft;
+  if (opts?.useLibrary) assistant.useLibrary = true;
+  if (!assistant.sessionId && assistant.messages.length === 0) {
+    await loadAssistantHistory();
+  }
+}
+
+function assistantAttach(item: AssistantAttach) {
+  const id = String(item.id ?? "").trim();
+  if (!id) return;
+  if (assistant.attaches.some((a) => a.id === id)) return;
+  assistant.attaches.push({
+    id,
+    title: item.title?.trim() || id,
+    feedTitle: item.feedTitle,
+  });
+}
+
+function assistantDetach(id: string) {
+  assistant.attaches = assistant.attaches.filter((a) => a.id !== id);
+}
+
+function setAssistantUseLibrary(on: boolean) {
+  assistant.useLibrary = !!on;
+}
+
+async function assistantClear() {
+  try {
+    const api = await loadAppsvc();
+    const fn = api?.AIService?.ChatClear;
+    if (typeof fn === "function") await fn.call(api.AIService, "");
+  } catch {
+    /* still clear local */
+  }
+  assistant.messages = [];
+  assistant.sessionId = "";
+  assistant.error = "";
+  assistant.selection = "";
+  assistant.attaches = [];
+}
+
+async function assistantSend(text?: string, opts?: { useLibrary?: boolean }) {
+  const question = String(text ?? assistant.draft ?? "").trim();
+  if (!question) return;
+  if (!backendReady.value) throw new Error(t("ai.backendUnavailable"));
+  const api = await loadAppsvc();
+  const fn = api?.AIService?.ChatSend ?? (api as any)?.default?.AIService?.ChatSend;
+  if (typeof fn !== "function") throw new Error(t("ai.unavailable"));
+
+  const useLibrary = !!(opts?.useLibrary || assistant.useLibrary);
+  const attachIds = assistant.attaches.map((a) => a.id);
+  // Pinned attaches win. Otherwise one-turn context is the open article.
+  const articleId =
+    attachIds.length === 0 && !useLibrary ? selectedArticleId.value ?? "" : "";
+  assistant.open = true;
+  assistant.draft = "";
+  assistant.error = "";
+  assistant.busy = true;
+  void ensureLLMStreamListener();
+
+  const userId = `u-${Date.now()}`;
+  const asstId = `a-${Date.now()}`;
+  const payload = assistant.selection
+    ? `${question}\n\n> ${assistant.selection}`
+    : question;
+  assistant.messages.push({ id: userId, role: "user", content: payload });
+  assistant.messages.push({ id: asstId, role: "assistant", content: "" });
+
+  try {
+    const raw = await fn.call(api.AIService ?? api, {
+      sessionId: assistant.sessionId,
+      message: question,
+      articleId,
+      attachIds,
+      collectionId: collectionId.value,
+      selection: assistant.selection,
+      locale: uiLocale(),
+      useLibrary,
+    });
+    assistant.sessionId = String(raw?.sessionId ?? raw?.SessionID ?? assistant.sessionId);
+    const md = String(raw?.markdown ?? raw?.Markdown ?? "");
+    const last = assistant.messages[assistant.messages.length - 1];
+    if (last?.role === "assistant") {
+      if (md) last.content = md;
+      last.citations = mapChatCitations(raw?.citations ?? raw?.Citations);
+      if (raw?.messageId || raw?.MessageID) last.id = String(raw.messageId ?? raw.MessageID);
+    }
+    const model = String(raw?.model ?? raw?.Model ?? "");
+    if (model) assistant.model = model;
+    assistant.busy = false;
+    assistant.selection = "";
+  } catch (e) {
+    assistant.busy = false;
+    const msg = e instanceof Error ? e.message : String(e);
+    assistant.error = msg;
+    const last = assistant.messages[assistant.messages.length - 1];
+    if (last?.role === "assistant" && !last.content) {
+      assistant.messages.pop();
+    }
+    throw e;
+  }
+}
+
+async function assistantCancel() {
+  if (!assistant.sessionId) {
+    assistant.busy = false;
+    return;
+  }
+  try {
+    const api = await loadAppsvc();
+    const fn = api?.AIService?.ChatCancel;
+    if (typeof fn === "function") await fn.call(api.AIService, assistant.sessionId);
+  } catch {
+    /* ignore */
+  }
+  assistant.busy = false;
 }
 
 /** Current app UI locale for AI prompts (zh-CN / en-US). */
@@ -550,8 +748,6 @@ async function aiSummarize(articleId: string) {
   const api = await loadAppsvc();
   if (!api?.AIService?.Summarize) throw new Error(t("ai.unavailable"));
   beginSummaryStream(articleId);
-  // Do not open side AI panel for summarize.
-  aiPanel.open = false;
   try {
     const locale = uiLocale();
     const raw = await api.AIService.Summarize(articleId, locale);
@@ -613,7 +809,6 @@ async function aiTranslate(articleId: string, targetLang?: string) {
   }
 
   beginTranslateView(articleId, lang);
-  aiPanel.open = false;
   try {
     const raw = await translateFn.call(api?.AIService ?? api, articleId, lang);
     const text = String(
@@ -664,25 +859,19 @@ async function aiTranslateSelection(
   return out;
 }
 
-async function aiAsk(articleId: string, question: string) {
-  const locale = uiLocale();
-  await runAIFeature(t("ai.ask"), "ask", (api) =>
-    api.AIService.Ask(articleId, question ?? "", locale),
-  );
+async function aiAsk(_articleId: string, question: string) {
+  await openAssistant();
+  await assistantSend(question || t("ai.chipAbout"));
 }
 
-async function aiSuggest(articleId: string) {
-  const locale = uiLocale();
-  await runAIFeature(t("ai.suggest"), "suggest", (api) =>
-    api.AIService.SuggestFolders(articleId, locale),
-  );
+async function aiSuggest(_articleId: string) {
+  await openAssistant();
+  await assistantSend(t("ai.chipSuggest"));
 }
 
-async function aiClassify(articleId: string) {
-  const locale = uiLocale();
-  await runAIFeature(t("ai.classify"), "classify", (api) =>
-    api.AIService.ClassifyPromo(articleId, locale),
-  );
+async function aiClassify(_articleId: string) {
+  await openAssistant();
+  await assistantSend(t("ai.chipClassify"));
 }
 
 /** Last article id we already auto-summarized this session (avoid loops). */
@@ -694,7 +883,7 @@ async function maybeAutoSummarize(articleId: string) {
   if (!settings.autoSummarize) return;
   if (!backendReady.value) return;
   if (!articleId || articleId === lastAutoSummarizeId) return;
-  if (aiPanel.busy) return;
+  if (assistant.busy) return;
   lastAutoSummarizeId = articleId;
   try {
     await aiSummarize(articleId);
@@ -1103,6 +1292,7 @@ async function reloadLibrary() {
     backendReady.value = true;
     bootstrapError.value = "";
     libraryLoading.value = false;
+    void refreshLLMConfigured();
     await Promise.all([reloadArticles(), reloadSmartCounts()]);
     if (settings.smartBriefing) {
       void reloadBriefings();
@@ -1967,7 +2157,10 @@ async function setRecentReadLimit(n: number): Promise<void> {
   }
 }
 
-async function selectArticle(id: string | null, opts?: { keepBriefing?: boolean }) {
+async function selectArticle(
+  id: string | null,
+  opts?: { keepBriefing?: boolean; keepAssistant?: boolean },
+) {
   selectedArticleId.value = id;
   if (id && !opts?.keepBriefing) {
     selectedBriefingId.value = null;
@@ -3431,6 +3624,7 @@ export function useRssStore() {
     settingsOpen,
     zenMode,
     aiPanel,
+    assistant,
     summaryStream,
     translateView,
     clearTranslateView,
@@ -3478,6 +3672,15 @@ export function useRssStore() {
     toggleZenMode,
     setZenMode,
     closeAIPanel,
+    closeAssistant,
+    openAssistant,
+    toggleAssistant,
+    assistantSend,
+    assistantClear,
+    assistantCancel,
+    assistantAttach,
+    assistantDetach,
+    setAssistantUseLibrary,
     aiSummarize,
     aiTranslate,
     aiTranslateSelection,

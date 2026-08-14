@@ -13,14 +13,15 @@ import (
 
 // Feature identifiers for cache keys and prompts.
 const (
-	FeatureSummarize        = "summarize"
-	FeatureTranslate        = "translate"
-	FeatureSelectTranslate  = "select_translate"
+	FeatureSummarize       = "summarize"
+	FeatureTranslate       = "translate"
+	FeatureSelectTranslate = "select_translate"
 	FeatureContentFullness = "content_fullness"
 	FeatureAsk             = "ask"
 	FeatureSuggest         = "suggest"
 	FeatureClassify        = "classify"
 	FeatureBriefing        = "briefing"
+	FeatureChat            = "chat"
 )
 
 // Content fullness verdicts (DetectContentFullness / EnsureFullContent).
@@ -38,12 +39,14 @@ const DefaultMaxInputChars = 24000
 
 // ArticleInput is the article payload for feature prompts.
 type ArticleInput struct {
-	ID      string
-	Title   string
-	Summary string
-	Body    string // plain text preferred; HTML is stripped if needed
-	URL     string
-	Author  string
+	ID        string
+	Title     string
+	Summary   string
+	Body      string // plain text preferred; HTML is stripped if needed
+	URL       string
+	Author    string
+	FeedTitle string
+	Published string // RFC3339 or feed date; empty if unknown
 }
 
 // BudgetText truncates s to maxChars on a rune boundary, appending an ellipsis notice.
@@ -187,6 +190,8 @@ func SystemPromptFor(feature, locale string) string {
 		base = "You judge whether an RSS item body is a full article or only a partial/truncated excerpt. Reply with a strict VERDICT line only—no long essays."
 	case FeatureBriefing:
 		base = briefingSystemPromptBase
+	case FeatureChat:
+		base = articleChatSystemPromptBase
 	default:
 		base = "You are a helpful RSS reading assistant. Reply in Markdown."
 	}

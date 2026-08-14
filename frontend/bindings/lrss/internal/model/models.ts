@@ -92,6 +92,32 @@ export interface BriefingTheme {
 }
 
 /**
+ * ChatCitation maps a model [n] to a real article.
+ */
+export interface ChatCitation {
+    "n": number;
+    "articleId": string;
+    "title": string;
+    "feedTitle"?: string;
+}
+
+/**
+ * ChatMessage is one user or assistant turn.
+ */
+export interface ChatMessage {
+    "id": string;
+    "sessionId": string;
+
+    /**
+     * user | assistant
+     */
+    "role": string;
+    "content": string;
+    "citations"?: ChatCitation[] | null;
+    "createdAt": string;
+}
+
+/**
  * Feed is an RSS/Atom subscription.
  */
 export interface Feed {

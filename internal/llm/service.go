@@ -41,11 +41,11 @@ func NewChatter(cfg settings.LLMConfig) (Chatter, error) {
 
 // FeatureResult is returned to appsvc / UI.
 type FeatureResult struct {
-	Markdown  string `json:"markdown"`
-	Feature   string `json:"feature"`
-	Model     string `json:"model"`
-	Cached    bool   `json:"cached"`
-	FolderID  string `json:"folderId,omitempty"`
+	Markdown   string `json:"markdown"`
+	Feature    string `json:"feature"`
+	Model      string `json:"model"`
+	Cached     bool   `json:"cached"`
+	FolderID   string `json:"folderId,omitempty"`
 	FolderName string `json:"folderName,omitempty"`
 	// Verdict for classify: organic|promo|unclear
 	Verdict string `json:"verdict,omitempty"`
@@ -53,8 +53,8 @@ type FeatureResult struct {
 
 // Service runs user-triggered LLM features with cache.
 type Service struct {
-	Store   *settings.Store
-	Cache   *Cache
+	Store *settings.Store
+	Cache *Cache
 	// NewChatter defaults to NewChatter; inject in tests.
 	NewChatter func(cfg settings.LLMConfig) (Chatter, error)
 }
@@ -507,6 +507,52 @@ func (s *Service) Ask(ctx context.Context, a ArticleInput, question, locale stri
 	hash := ContentFingerprint(a)
 	extra := ContentFingerprint(ArticleInput{Body: question}) + "|loc=" + NormalizeUILocale(locale)
 	return s.runCached(ctx, a.ID, FeatureAsk, extra, hash, SystemPromptFor(FeatureAsk, locale), UserPromptAsk(bundle, question, locale))
+}
+
+// ChatArticleStream answers a multi-turn question about one or more articles.
+// Not cached — conversation state lives in ai_chat_messages.
+func (s *Service) ChatArticleStream(ctx context.Context, in ArticleChatInput, onChunk StreamHandler) (ArticleChatResult, error) {
+	if len(in.Excerpts) == 0 {
+		return ArticleChatResult{}, fmt.Errorf("article context is required")
+	}
+	cfg, err := s.loadCfg(ctx)
+	if err != nil {
+		return ArticleChatResult{}, err
+	}
+	chat, err := s.chatter(cfg)
+	if err != nil {
+		return ArticleChatResult{}, err
+	}
+	req := ChatRequest{Messages: BuildArticleChatMessages(in)}
+	var res ChatResponse
+	if sc, ok := chat.(streamChatter); ok {
+		res, err = sc.ChatStream(ctx, req, onChunk)
+	} else {
+		res, err = chat.Chat(ctx, req)
+		if err == nil && onChunk != nil && res.Content != "" {
+			onChunk(res.Content, res.Content)
+		}
+	}
+	if err != nil {
+		return ArticleChatResult{}, err
+	}
+	md := strings.TrimSpace(res.Content)
+	if md == "" {
+		return ArticleChatResult{}, fmt.Errorf("llm returned empty content")
+	}
+	if err := RejectIfIncomplete(res.FinishReason); err != nil {
+		return ArticleChatResult{}, err
+	}
+	modelName := res.Model
+	if modelName == "" {
+		modelName = chat.ModelName()
+	}
+	cites := MapArticleCitations(md, AllowedCites(in.Excerpts))
+	return ArticleChatResult{
+		Markdown:  md,
+		Model:     modelName,
+		Citations: cites,
+	}, nil
 }
 
 // FolderRef is a minimal folder for suggestions.

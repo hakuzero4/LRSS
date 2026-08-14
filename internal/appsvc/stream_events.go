@@ -7,6 +7,7 @@ import (
 // LLMStreamEvent is emitted to the frontend during streaming AI features.
 type LLMStreamEvent struct {
 	ArticleID string `json:"articleId"`
+	SessionID string `json:"sessionId,omitempty"`
 	Feature   string `json:"feature"`
 	Delta     string `json:"delta"`
 	Text      string `json:"text"`

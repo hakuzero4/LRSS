@@ -2,10 +2,8 @@
 import { ArrowLeft } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import ArticleList from "@/components/article/ArticleList.vue";
 import ArticleReader from "@/components/article/ArticleReader.vue";
-import AIResultPanel from "@/components/article/AIResultPanel.vue";
 import MarkdownPanel from "@/components/article/MarkdownPanel.vue";
 import BriefingList from "@/components/briefing/BriefingList.vue";
 import BriefingReader from "@/components/briefing/BriefingReader.vue";
@@ -27,9 +25,6 @@ const {
   collectionId,
   collectionDisplayMode,
   zenMode,
-  aiPanel,
-  closeAIPanel,
-  aiApplyFolder,
   selectArticle,
 } = useRssStore();
 
@@ -62,22 +57,10 @@ const markdownContent = computed(() => {
   });
 });
 
-const sidePanelOpen = computed(() => markdownOpen.value || aiPanel.open);
+const sidePanelOpen = computed(() => markdownOpen.value);
 
 function closeMarkdownPanel() {
   markdownOpen.value = false;
-}
-
-async function onApplyFolder(folderId: string) {
-  const id = selectedArticleId.value;
-  if (!id || !folderId) return;
-  try {
-    await aiApplyFolder(id, folderId);
-    toast.success(t("ai.folderApplied"));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(t("ai.folderApplyFailed"), { description: msg });
-  }
 }
 
 // Close AI/md panels when selection is cleared.
@@ -115,24 +98,7 @@ watch(selectedArticleId, (id) => {
       </div>
     </div>
     <div
-      v-if="aiPanel.open"
-      class="min-h-0 w-[min(42%,30rem)] min-w-[16rem] max-w-[50%] shrink-0"
-    >
-      <AIResultPanel
-        :title="aiPanel.title"
-        :content="aiPanel.markdown"
-        :model="aiPanel.model"
-        :cached="aiPanel.cached"
-        :busy="aiPanel.busy"
-        :folder-id="aiPanel.folderId"
-        :folder-name="aiPanel.folderName"
-        :verdict="aiPanel.verdict"
-        @close="closeAIPanel"
-        @apply-folder="onApplyFolder"
-      />
-    </div>
-    <div
-      v-else-if="markdownOpen"
+      v-if="markdownOpen"
       class="min-h-0 w-[min(40%,28rem)] min-w-[16rem] max-w-[48%] shrink-0"
     >
       <MarkdownPanel
@@ -193,30 +159,7 @@ watch(selectedArticleId, (id) => {
       <ArticleReader v-else v-model:markdown-open="markdownOpen" />
     </ResizablePanel>
 
-    <template v-if="aiPanel.open">
-      <ResizableHandle with-handle />
-      <ResizablePanel
-        id="article-ai"
-        :default-size="34"
-        :min-size="18"
-        :max-size="48"
-        class="min-w-0"
-      >
-        <AIResultPanel
-          :title="aiPanel.title"
-          :content="aiPanel.markdown"
-          :model="aiPanel.model"
-          :cached="aiPanel.cached"
-          :busy="aiPanel.busy"
-          :folder-id="aiPanel.folderId"
-          :folder-name="aiPanel.folderName"
-          :verdict="aiPanel.verdict"
-          @close="closeAIPanel"
-          @apply-folder="onApplyFolder"
-        />
-      </ResizablePanel>
-    </template>
-    <template v-else-if="markdownOpen">
+    <template v-if="markdownOpen">
       <ResizableHandle with-handle />
       <ResizablePanel
         id="article-markdown"
