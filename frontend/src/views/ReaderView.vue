@@ -155,7 +155,7 @@ watch(selectedArticleId, (id) => {
       :default-size="collectionDisplayMode === 'cards' ? (sidePanelOpen ? 36 : 50) : sidePanelOpen ? 24 : 34"
       :min-size="collectionDisplayMode === 'cards' ? 28 : 18"
       :max-size="collectionDisplayMode === 'cards' ? 70 : 50"
-      class="min-w-0"
+      class="h-full min-h-0 min-w-0 overflow-hidden"
     >
       <BriefingList v-if="collectionId === 'briefing'" />
       <ArticleList v-else />

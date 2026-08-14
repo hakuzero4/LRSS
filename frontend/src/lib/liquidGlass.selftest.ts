@@ -107,6 +107,17 @@ assert(css.includes("html.liquid-glass"), "css has liquid-glass tokens");
 assert(css.includes("--lg-tint"), "css has glass tint tokens");
 assert(css.includes("lg-scene"), "css has liquid-glass scene hook");
 assert(
+  /\.list-stack\s*\{[^}]*display:\s*flex/.test(css) &&
+    !/html\.liquid-glass\s+\.list-stack\s*\{[^}]*display:\s*flex/.test(css),
+  "list-stack is a flex column even without liquid-glass",
+);
+assert(!css.includes("overflow-y: scroll"), "no classic-windows overflow-y:scroll rail");
+assert(!css.includes("scrollbar-width: auto"), "no OS-classic scrollbar-width override");
+assert(
+  !/\*\s*\{\s*scrollbar-width/.test(css),
+  "no universal scrollbar-width (it disables ::-webkit-scrollbar)",
+);
+assert(
   !css.includes("--lg-inset"),
   "large panes are flush, not inset floating cards",
 );

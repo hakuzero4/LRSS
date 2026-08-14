@@ -240,7 +240,7 @@ const emptyHint = computed(() => {
       </TooltipProvider>
     </header>
 
-    <div class="list-stack min-h-0 flex-1">
+    <div class="list-stack flex min-h-0 flex-1 flex-col overflow-hidden">
     <ArticleSearch />
 
     <div
