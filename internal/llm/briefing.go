@@ -1,9 +1,12 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -35,7 +38,7 @@ Rules:
 - Each point must stand alone without the title: fact + so-what. If you delete the source title, the point must still make sense.
 - Cite only with input numbers like [3] or [3][7]. Never invent numbers. Never output URLs or article IDs.
 - Skip TOC/sponsor/listicles/duplicates with no extra fact.
-- watch = only time-sensitive follow-ups (dates, hearings, outages). Empty array is fine.
+- watch = array of objects {n, point} only. Never a string. Never an array of strings. Empty [] is fine.
 - Output ONLY valid JSON. No markdown fences.`
 
 // BriefingItem is one numbered input article for the briefing prompt.
@@ -47,20 +50,26 @@ type BriefingItem struct {
 	Summary   string
 }
 
-type briefingModelJSON struct {
-	Overview string `json:"overview"`
-	Themes   []struct {
-		Title   string `json:"title"`
-		Bullets []struct {
-			N     []int  `json:"n"`
-			Point string `json:"point"`
-		} `json:"bullets"`
-	} `json:"themes"`
-	Watch []struct {
-		N     []int  `json:"n"`
-		Point string `json:"point"`
-	} `json:"watch"`
+type briefingBulletJSON struct {
+	N     []int
+	Point string
 }
+
+type briefingThemeJSON struct {
+	Title   string
+	Bullets []briefingBulletJSON
+}
+
+type briefingModelJSON struct {
+	Overview string
+	Themes   []briefingThemeJSON
+	Watch    []briefingBulletJSON
+}
+
+var (
+	citeBracketRe = regexp.MustCompile(`\[(\d+)\]`)
+	citeCjkRe     = regexp.MustCompile(`【(\d+)】`)
+)
 
 // UserPromptBriefing builds the numbered item list for FeatureBriefing.
 func UserPromptBriefing(items []BriefingItem, locale string) string {
@@ -99,7 +108,8 @@ func UserPromptBriefing(items []BriefingItem, locale string) string {
 		b.WriteString("Task: Do not recap titles. Decide what in THIS BATCH is worth knowing (changes, numbers, conflicts, follow-ups). Merge duplicate coverage. One point may cite several [n]. Never paraphrase a title as the point.\n")
 	}
 	b.WriteString(`JSON only:
-{"overview":"synthesis, not a catalog","themes":[{"title":"development","bullets":[{"n":[1,4],"point":"fact + so-what"}]}],"watch":[]}
+{"overview":"synthesis, not a catalog","themes":[{"title":"development","bullets":[{"n":[1,4],"point":"fact + so-what"}]}],"watch":[{"n":[2],"point":"hearing Friday"}]}
+watch must be [] or [{n,point},...]. Never "watch":"text" or "watch":["text"].
 `)
 	b.WriteString(OutputLanguageInstruction(locale))
 	return b.String()
@@ -136,19 +146,314 @@ type BriefingSource struct {
 
 // ParseAndMapBriefing maps model JSON onto BriefingPayload.
 // Unknown n values are dropped. Empty themes after mapping is an error.
+// Local models often emit watch/bullets as strings; those are coerced or
+// dropped. A malformed watch field never fails the whole briefing.
 func ParseAndMapBriefing(raw string, byIndex map[int]BriefingSource) (model.BriefingPayload, error) {
-	raw = StripJSONFence(raw)
+	raw = extractJSONObject(raw)
 	if raw == "" {
 		return model.BriefingPayload{}, fmt.Errorf("empty briefing json")
 	}
-	var parsed briefingModelJSON
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+	var loose struct {
+		Overview json.RawMessage `json:"overview"`
+		Themes   json.RawMessage `json:"themes"`
+		Watch    json.RawMessage `json:"watch"`
+	}
+	if err := unmarshalBriefingJSON(raw, &loose); err != nil {
 		return model.BriefingPayload{}, fmt.Errorf("briefing json: %w", err)
+	}
+	parsed := briefingModelJSON{
+		Overview: parseOverview(loose.Overview),
+		Themes:   parseThemes(loose.Themes),
+		Watch:    parseBulletList(loose.Watch),
 	}
 	return mapParsedBriefing(parsed, func(n int) (BriefingSource, bool) {
 		r, ok := byIndex[n]
 		return r, ok
 	})
+}
+
+func extractJSONObject(raw string) string {
+	raw = StripJSONFence(raw)
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start >= 0 && end > start {
+		return strings.TrimSpace(raw[start : end+1])
+	}
+	return raw
+}
+
+func unmarshalBriefingJSON(raw string, dest any) error {
+	if err := json.Unmarshal([]byte(raw), dest); err == nil {
+		return nil
+	} else {
+		first := err
+		if soft := stripTrailingCommas(raw); soft != raw {
+			if err2 := json.Unmarshal([]byte(soft), dest); err2 == nil {
+				return nil
+			}
+		}
+		return first
+	}
+}
+
+func stripTrailingCommas(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inStr := false
+	esc := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inStr {
+			b.WriteByte(c)
+			if esc {
+				esc = false
+				continue
+			}
+			if c == '\\' {
+				esc = true
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		if c == '"' {
+			inStr = true
+			b.WriteByte(c)
+			continue
+		}
+		if c == ',' {
+			j := i + 1
+			for j < len(s) && (s[j] == ' ' || s[j] == '\n' || s[j] == '\r' || s[j] == '\t') {
+				j++
+			}
+			if j < len(s) && (s[j] == '}' || s[j] == ']') {
+				continue
+			}
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+func parseOverview(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return strings.TrimSpace(s)
+	}
+	if len(raw) > 0 && raw[0] == '[' {
+		var parts []string
+		if err := json.Unmarshal(raw, &parts); err == nil {
+			return strings.TrimSpace(strings.Join(parts, " "))
+		}
+	}
+	return ""
+}
+
+func parseThemes(raw json.RawMessage) []briefingThemeJSON {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" || raw[0] != '[' {
+		return nil
+	}
+	var elems []json.RawMessage
+	if err := json.Unmarshal(raw, &elems); err != nil {
+		return nil
+	}
+	var out []briefingThemeJSON
+	for _, el := range elems {
+		el = bytes.TrimSpace(el)
+		if len(el) == 0 || el[0] != '{' {
+			continue
+		}
+		var obj struct {
+			Title   string          `json:"title"`
+			Name    string          `json:"name"`
+			Theme   string          `json:"theme"`
+			Bullets json.RawMessage `json:"bullets"`
+			Items   json.RawMessage `json:"items"`
+			Points  json.RawMessage `json:"points"`
+		}
+		if err := json.Unmarshal(el, &obj); err != nil {
+			continue
+		}
+		title := strings.TrimSpace(firstFilled(obj.Title, obj.Name, obj.Theme))
+		if title == "" {
+			continue
+		}
+		bullets := parseBulletList(obj.Bullets)
+		if len(bullets) == 0 {
+			bullets = parseBulletList(obj.Items)
+		}
+		if len(bullets) == 0 {
+			bullets = parseBulletList(obj.Points)
+		}
+		out = append(out, briefingThemeJSON{Title: title, Bullets: bullets})
+	}
+	return out
+}
+
+func parseBulletList(raw json.RawMessage) []briefingBulletJSON {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var out []briefingBulletJSON
+	switch raw[0] {
+	case '[':
+		var elems []json.RawMessage
+		if err := json.Unmarshal(raw, &elems); err != nil {
+			return nil
+		}
+		for _, el := range elems {
+			n, point, ok := coerceBullet(el)
+			if !ok {
+				continue
+			}
+			out = append(out, briefingBulletJSON{N: n, Point: point})
+		}
+	case '{', '"':
+		n, point, ok := coerceBullet(raw)
+		if ok {
+			out = append(out, briefingBulletJSON{N: n, Point: point})
+		}
+	}
+	return out
+}
+
+func coerceBullet(raw json.RawMessage) (n []int, point string, ok bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, "", false
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil, "", false
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, "", false
+		}
+		return extractCiteNs(s), s, true
+	}
+	if raw[0] != '{' {
+		return nil, "", false
+	}
+	var obj struct {
+		N     json.RawMessage `json:"n"`
+		Ns    json.RawMessage `json:"ns"`
+		Index json.RawMessage `json:"index"`
+		Point string          `json:"point"`
+		Text  string          `json:"text"`
+		Item  string          `json:"item"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, "", false
+	}
+	point = strings.TrimSpace(firstFilled(obj.Point, obj.Text, obj.Item))
+	ns := parseNField(obj.N)
+	if len(ns) == 0 {
+		ns = parseNField(obj.Ns)
+	}
+	if len(ns) == 0 {
+		ns = parseNField(obj.Index)
+	}
+	if len(ns) == 0 {
+		ns = extractCiteNs(point)
+	}
+	if point == "" {
+		return nil, "", false
+	}
+	return ns, point, true
+}
+
+func parseNField(raw json.RawMessage) []int {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var ints []int
+	if err := json.Unmarshal(raw, &ints); err == nil {
+		return ints
+	}
+	if raw[0] == '[' {
+		var elems []json.RawMessage
+		if err := json.Unmarshal(raw, &elems); err == nil {
+			var out []int
+			for _, el := range elems {
+				out = append(out, parseNField(el)...)
+			}
+			return out
+		}
+	}
+	var n int
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return []int{n}
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		return []int{int(f)}
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		if ns := extractCiteNs(s); len(ns) > 0 {
+			return ns
+		}
+		return parseBareInts(s)
+	}
+	return nil
+}
+
+func extractCiteNs(s string) []int {
+	var out []int
+	seen := map[int]bool{}
+	add := func(n int) {
+		if n <= 0 || seen[n] {
+			return
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	for _, m := range citeBracketRe.FindAllStringSubmatch(s, -1) {
+		n, err := strconv.Atoi(m[1])
+		if err == nil {
+			add(n)
+		}
+	}
+	for _, m := range citeCjkRe.FindAllStringSubmatch(s, -1) {
+		n, err := strconv.Atoi(m[1])
+		if err == nil {
+			add(n)
+		}
+	}
+	return out
+}
+
+func parseBareInts(s string) []int {
+	var out []int
+	for _, part := range strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == '，' || r == ';' || r == ' '
+	}) {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err == nil && n > 0 {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func firstFilled(ss ...string) string {
+	for _, s := range ss {
+		if strings.TrimSpace(s) != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func mapParsedBriefing(parsed briefingModelJSON, lookup func(int) (BriefingSource, bool)) (model.BriefingPayload, error) {

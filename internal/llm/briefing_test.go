@@ -75,3 +75,72 @@ func TestParseAndMapBriefing_FenceAndEmptyThemes(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestParseAndMapBriefing_WatchAsStringArray(t *testing.T) {
+	// qwen-local often emits watch as []string; that used to fail the whole briefing.
+	raw := `{
+		"overview": "shift",
+		"themes": [{"title":"T","bullets":[{"n":[1],"point":"fact"}]}],
+		"watch": ["周五听证会", "[2] 周五听证会"]
+	}`
+	got, err := llm.ParseAndMapBriefing(raw, map[int]llm.BriefingSource{
+		1: {ID: "a", Title: "A", FeedTitle: "F"},
+		2: {ID: "b", Title: "B", FeedTitle: "F"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Themes) != 1 {
+		t.Fatalf("themes = %+v", got.Themes)
+	}
+	if len(got.Watch) != 1 || got.Watch[0].ArticleID != "b" {
+		t.Fatalf("watch = %+v", got.Watch)
+	}
+}
+
+func TestParseAndMapBriefing_WatchStringDoesNotFail(t *testing.T) {
+	raw := `{"overview":"x","themes":[{"title":"T","bullets":[{"n":[1],"point":"fact"}]}],"watch":"just a note"}`
+	got, err := llm.ParseAndMapBriefing(raw, map[int]llm.BriefingSource{
+		1: {ID: "a", Title: "A", FeedTitle: "F"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Watch) != 0 {
+		t.Fatalf("watch without cites should drop, got %+v", got.Watch)
+	}
+}
+
+func TestParseAndMapBriefing_LooseNAndPreamble(t *testing.T) {
+	raw := "here you go\n{\"overview\":\"x\",\"themes\":[{\"title\":\"T\",\"bullets\":[{\"n\":1,\"point\":\"fact\"}]}],\"watch\":{\"n\":\"2\",\"point\":\"soon\"}}\nthanks"
+	got, err := llm.ParseAndMapBriefing(raw, map[int]llm.BriefingSource{
+		1: {ID: "a", Title: "A", FeedTitle: "F"},
+		2: {ID: "b", Title: "B", FeedTitle: "F"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Themes) != 1 || got.Themes[0].Bullets[0].ArticleID != "a" {
+		t.Fatalf("themes = %+v", got.Themes)
+	}
+	if len(got.Watch) != 1 || got.Watch[0].ArticleID != "b" {
+		t.Fatalf("watch = %+v", got.Watch)
+	}
+}
+
+func TestParseAndMapBriefing_TrailingCommaAndStringBullets(t *testing.T) {
+	raw := `{
+		"overview": "x",
+		"themes": [{"title":"T","bullets":["[1] shipped today", {"n":[1],"point":"also ok"}],}],
+		"watch": [],
+	}`
+	got, err := llm.ParseAndMapBriefing(raw, map[int]llm.BriefingSource{
+		1: {ID: "a", Title: "A", FeedTitle: "F"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(got.Themes[0].Bullets); n != 2 {
+		t.Fatalf("bullets = %d want 2: %+v", n, got.Themes[0].Bullets)
+	}
+}
