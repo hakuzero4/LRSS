@@ -27,6 +27,9 @@ export type SettingsSectionId =
 
 export type FolderDisplayMode = "list" | "cards";
 
+/** Per-smart-list layout (unread/today/starred/recent/all). Missing = list. */
+export type SmartDisplayModes = Partial<Record<StartupCollectionId, FolderDisplayMode>>;
+
 export interface FeedFolder {
   id: string;
   name: string;
@@ -250,6 +253,8 @@ export interface UIPrefs {
   readerToolbar: ReaderToolbarButtons;
   /** UI language: zh-CN | en-US (synced to Web access via backend). */
   locale?: string;
+  /** Per smart-list layout (unread/today/starred/recent/all). */
+  smartDisplayModes?: SmartDisplayModes;
 }
 
 export interface AppSettings {
@@ -330,4 +335,6 @@ export interface AppSettings {
   translateReplaceOriginal?: boolean;
   /** Which icons show in the article reader top bar. */
   readerToolbar: ReaderToolbarButtons;
+  /** Per smart-list layout (unread/today/starred/recent/all). */
+  smartDisplayModes: SmartDisplayModes;
 }

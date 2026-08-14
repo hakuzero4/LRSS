@@ -94,6 +94,18 @@ type UIPrefs struct {
 	// Locale is the UI language: "zh-CN" | "en-US". Empty → default zh-CN.
 	// Shared with Web access so the browser UI matches the desktop app.
 	Locale string `json:"locale"`
+	// SmartDisplayModes is list|cards per smart list (unread/today/starred/recent/all).
+	// Empty string = list. Stored as a comparable struct so prefs tests can ==.
+	SmartDisplayModes SmartDisplayModes `json:"smartDisplayModes"`
+}
+
+// SmartDisplayModes is the article-list layout for each smart collection.
+type SmartDisplayModes struct {
+	Unread  string `json:"unread,omitempty"`
+	Today   string `json:"today,omitempty"`
+	Starred string `json:"starred,omitempty"`
+	Recent  string `json:"recent,omitempty"`
+	All     string `json:"all,omitempty"`
 }
 
 // DefaultUIPrefs matches frontend default settings in useRssStore.
@@ -203,7 +215,21 @@ func (c UIPrefs) Normalize() UIPrefs {
 			}
 		}
 	}
+	c.SmartDisplayModes.Unread = normalizeSmartDisplay(c.SmartDisplayModes.Unread)
+	c.SmartDisplayModes.Today = normalizeSmartDisplay(c.SmartDisplayModes.Today)
+	c.SmartDisplayModes.Starred = normalizeSmartDisplay(c.SmartDisplayModes.Starred)
+	c.SmartDisplayModes.Recent = normalizeSmartDisplay(c.SmartDisplayModes.Recent)
+	c.SmartDisplayModes.All = normalizeSmartDisplay(c.SmartDisplayModes.All)
 	return c
+}
+
+func normalizeSmartDisplay(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "cards", "card", "gallery", "grid":
+		return "cards"
+	default:
+		return ""
+	}
 }
 
 // LoadUIPrefs loads UI prefs with defaults when unset or partial.

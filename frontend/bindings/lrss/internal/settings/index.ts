@@ -7,6 +7,7 @@ export type {
     LibraryConfig,
     ReaderToolbarButtons,
     SearchConfig,
+    SmartDisplayModes,
     SyncConfig,
     UIPrefs,
     WebAccessConfig

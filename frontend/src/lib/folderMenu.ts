@@ -3,7 +3,13 @@
  * Kept free of Vue/Wails so they can be unit-tested and reused by the store.
  */
 
-import type { CollectionId, FolderDisplayMode } from "@/types/rss";
+import type { CollectionId, FolderDisplayMode, SmartDisplayModes, StartupCollectionId } from "@/types/rss";
+
+export const SMART_DISPLAY_IDS = ["unread", "today", "starred", "recent", "all"] as const satisfies readonly StartupCollectionId[];
+
+export function isSmartDisplayCollection(id: string): id is StartupCollectionId {
+  return (SMART_DISPLAY_IDS as readonly string[]).includes(id);
+}
 
 export type FolderMenuAction =
   | "open"
@@ -45,13 +51,17 @@ export function normalizeFolderDisplayMode(raw: unknown): FolderDisplayMode {
   return "list";
 }
 
-/** Layout for the current collection: folder mode, or a feed's parent folder. */
+/** Layout for the current collection: folder mode, a feed's parent folder, or a smart list. */
 export function resolveCollectionDisplayMode(
   collectionId: string,
   folders: ReadonlyArray<{ id: string; displayMode?: string | null }>,
   feeds: ReadonlyArray<{ id: string; folderId?: string | null }>,
+  smartModes?: Partial<Record<string, string>> | null,
 ): FolderDisplayMode {
   const col = (collectionId ?? "").trim();
+  if (isSmartDisplayCollection(col)) {
+    return normalizeFolderDisplayMode(smartModes?.[col]);
+  }
   if (col.startsWith("folder:")) {
     const id = col.slice("folder:".length);
     const folder = folders.find((f) => f.id === id);
@@ -66,6 +76,28 @@ export function resolveCollectionDisplayMode(
     return normalizeFolderDisplayMode(folder?.displayMode);
   }
   return "list";
+}
+
+export function parseSmartDisplayModes(raw: unknown): SmartDisplayModes {
+  if (!raw || typeof raw !== "object") return {};
+  const o = raw as Record<string, unknown>;
+  const out: SmartDisplayModes = {};
+  for (const id of SMART_DISPLAY_IDS) {
+    const pascal = id.charAt(0).toUpperCase() + id.slice(1);
+    const v = o[id] ?? o[pascal];
+    if (v == null || String(v).trim() === "") continue;
+    out[id] = normalizeFolderDisplayMode(v);
+  }
+  return out;
+}
+
+export function canToggleDisplayMode(
+  collectionId: string,
+  feeds: ReadonlyArray<{ id: string; folderId?: string | null }>,
+): boolean {
+  const col = (collectionId ?? "").trim();
+  if (isSmartDisplayCollection(col)) return true;
+  return folderIdForDisplayMode(col, feeds) !== "";
 }
 
 /** Folder whose displayMode applies to this collection; empty for smart lists / unfiled feeds. */

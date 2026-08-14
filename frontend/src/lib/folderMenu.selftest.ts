@@ -11,8 +11,11 @@ import {
   articleCardImage,
   feedIdsInFolder,
   folderCollectionId,
+  canToggleDisplayMode,
   folderIdForDisplayMode,
+  isSmartDisplayCollection,
   normalizeFolderDisplayMode,
+  parseSmartDisplayModes,
   resolveCollectionDisplayMode,
   unreadInFolder,
 } from "./folderMenu";
@@ -54,7 +57,26 @@ assert(
 assert(
   resolveCollectionDisplayMode("unread", [{ id: "f1", displayMode: "cards" }], []) ===
     "list",
-  "smart lists stay list",
+  "smart lists default to list",
+);
+assert(
+  resolveCollectionDisplayMode(
+    "unread",
+    [{ id: "f1", displayMode: "list" }],
+    [],
+    { unread: "cards" },
+  ) === "cards",
+  "unread can be cards",
+);
+assert(isSmartDisplayCollection("today"), "today is a smart display collection");
+assert(!isSmartDisplayCollection("briefing"), "briefing is not card-toggleable");
+assert(!isSmartDisplayCollection("folder:f1"), "folder is not a smart display id");
+assert(canToggleDisplayMode("unread", []), "unread can toggle");
+assert(canToggleDisplayMode("folder:f1", []), "folder can toggle");
+assert(!canToggleDisplayMode("feed:a", [{ id: "a" }]), "unfiled feed cannot toggle");
+assert(
+  parseSmartDisplayModes({ Unread: "gallery", all: "list" }).unread === "cards",
+  "parse smart modes",
 );
 assert(folderIdForDisplayMode("folder:f1", []) === "f1", "folder id from collection");
 assert(
@@ -133,6 +155,8 @@ assert(sidebar.includes("openAddFeedInFolder"), "sidebar openAddFeedInFolder");
 assert(sidebar.includes("setFolderDisplayMode") || sidebar.includes("onFolderDisplayMode"), "sidebar display mode");
 const list = readFileSync(join(root, "components/article/ArticleList.vue"), "utf8");
 assert(list.includes("toggleDisplayMode") && list.includes("LayoutGrid"), "list header display toggle");
+assert(list.includes("setCollectionDisplayMode"), "list toggle covers smart lists");
+assert(store.includes("setSmartListDisplayMode"), "store persists smart list layout");
 
 for (const key of [
   "folderMenu.open",

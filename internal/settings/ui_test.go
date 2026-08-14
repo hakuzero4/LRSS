@@ -125,6 +125,33 @@ func TestUIPrefs_NormalizeRecentReadLimit(t *testing.T) {
 	}
 }
 
+func TestUIPrefs_SmartDisplayModes(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "smart-display.db")
+	database, err := db.Open(ctx, db.Options{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := settings.NewStore(database.SQL)
+
+	if err := store.SetUIPrefs(ctx, settings.UIPrefs{
+		SmartDisplayModes: settings.SmartDisplayModes{Unread: "gallery", Today: "list"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := store.LoadUIPrefs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SmartDisplayModes.Unread != "cards" {
+		t.Fatalf("unread = %q want cards", cfg.SmartDisplayModes.Unread)
+	}
+	if cfg.SmartDisplayModes.Today != "" {
+		t.Fatalf("today list should store empty, got %q", cfg.SmartDisplayModes.Today)
+	}
+}
+
 func TestUIPrefs_NormalizeLocale(t *testing.T) {
 	got := (settings.UIPrefs{Locale: "en"}).Normalize().Locale
 	if got != "en-US" {

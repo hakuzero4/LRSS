@@ -73,6 +73,17 @@ export interface SearchConfig {
 }
 
 /**
+ * SmartDisplayModes is the article-list layout for each smart collection.
+ */
+export interface SmartDisplayModes {
+    "unread"?: string;
+    "today"?: string;
+    "starred"?: string;
+    "recent"?: string;
+    "all"?: string;
+}
+
+/**
  * SyncConfig is remote backup/sync for subscription list (OPML only).
  */
 export interface SyncConfig {
@@ -247,6 +258,12 @@ export interface UIPrefs {
      * Shared with Web access so the browser UI matches the desktop app.
      */
     "locale": string;
+
+    /**
+     * SmartDisplayModes is list|cards per smart list (unread/today/starred/recent/all).
+     * Empty string = list. Stored as a comparable struct so prefs tests can ==.
+     */
+    "smartDisplayModes": SmartDisplayModes;
 }
 
 /**

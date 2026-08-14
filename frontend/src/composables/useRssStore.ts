@@ -10,7 +10,10 @@ import { parseBilingualPairs, type BilingualPair } from "@/lib/bilingual";
 import {
   feedIdsInFolder,
   folderCollectionId,
+  folderIdForDisplayMode,
+  isSmartDisplayCollection,
   normalizeFolderDisplayMode,
+  parseSmartDisplayModes,
   resolveCollectionDisplayMode,
 } from "@/lib/folderMenu";
 import { applyShowUnreadOnly } from "@/lib/readingSettings";
@@ -31,6 +34,7 @@ import type {
   FeedFolder,
   FolderDisplayMode,
   LibraryConfig,
+  SmartDisplayModes,
   OPMLImportProgress,
   OPMLImportResult,
   ReaderToolbarButtons,
@@ -826,6 +830,7 @@ const settings = reactive<AppSettings>({
   autoFetchFull: false,
   translateReplaceOriginal: false,
   readerToolbar: { ...DEFAULT_READER_TOOLBAR },
+  smartDisplayModes: {},
 });
 
 function isToday(iso: string): boolean {
@@ -957,7 +962,12 @@ const collectionTitle = computed(() => {
 });
 
 const collectionDisplayMode = computed(() =>
-  resolveCollectionDisplayMode(collectionId.value, folders.value, feeds.value),
+  resolveCollectionDisplayMode(
+    collectionId.value,
+    folders.value,
+    feeds.value,
+    settings.smartDisplayModes,
+  ),
 );
 
 const filteredArticles = computed(() => {
@@ -1286,6 +1296,7 @@ function buildUIPrefs(): UIPrefs {
     translateReplaceOriginal: settings.translateReplaceOriginal,
     readerToolbar: { ...settings.readerToolbar },
     locale: resolveLocale(String(i18n.global.locale.value || "zh-CN")),
+    smartDisplayModes: { ...settings.smartDisplayModes },
   };
 }
 
@@ -1479,6 +1490,11 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
   if (trReplace !== undefined) settings.translateReplaceOriginal = trReplace;
 
   applyReaderToolbar(p.readerToolbar ?? p.ReaderToolbar);
+
+  const smartModes = p.smartDisplayModes ?? p.SmartDisplayModes;
+  if (smartModes && typeof smartModes === "object") {
+    settings.smartDisplayModes = parseSmartDisplayModes(smartModes);
+  }
 }
 
 /** Merge reader toolbar flags; missing keys keep current defaults. */
@@ -3197,6 +3213,33 @@ async function setFolderDisplayMode(id: string, mode: FolderDisplayMode): Promis
   }
 }
 
+async function setSmartListDisplayMode(
+  id: StartupCollectionId,
+  mode: FolderDisplayMode,
+): Promise<void> {
+  if (!isSmartDisplayCollection(id)) return;
+  const next = normalizeFolderDisplayMode(mode);
+  const modes: SmartDisplayModes = { ...settings.smartDisplayModes };
+  if (next === "list") delete modes[id];
+  else modes[id] = next;
+  settings.smartDisplayModes = modes;
+  await persistUIPrefs(true);
+}
+
+async function setCollectionDisplayMode(
+  collection: string,
+  mode: FolderDisplayMode,
+): Promise<void> {
+  const col = collection.trim();
+  if (isSmartDisplayCollection(col)) {
+    await setSmartListDisplayMode(col, mode);
+    return;
+  }
+  const folderId = folderIdForDisplayMode(col, feeds.value);
+  if (!folderId) return;
+  await setFolderDisplayMode(folderId, mode);
+}
+
 async function setFolderNsfw(id: string, nsfw: boolean): Promise<void> {
   const api = await loadAppsvc();
   const fn = api?.FeedService?.SetFolderNsfw;
@@ -3259,6 +3302,7 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     autoFetchFull: false,
     translateReplaceOriginal: false,
     readerToolbar: { ...DEFAULT_READER_TOOLBAR },
+    smartDisplayModes: {},
   };
   applyUIPrefs(defaults);
   Object.assign(settings.readerToolbar, DEFAULT_READER_TOOLBAR);
@@ -3464,6 +3508,8 @@ export function useRssStore() {
     createFolder,
     renameFolder,
     setFolderDisplayMode,
+    setSmartListDisplayMode,
+    setCollectionDisplayMode,
     deleteFolder,
     markFolderRead,
     refreshFolderFeeds,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CheckCheck, LayoutGrid, LayoutList, Newspaper, RefreshCw, Star } from "@lucide/vue";
 import { toast } from "vue-sonner";
-import { folderIdForDisplayMode } from "@/lib/folderMenu";
+import { canToggleDisplayMode } from "@/lib/folderMenu";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRssStore } from "@/composables/useRssStore";
@@ -44,7 +44,7 @@ const {
   markAllRead,
   refreshFeeds,
   openAddFeed,
-  setFolderDisplayMode,
+  setCollectionDisplayMode,
 } = useRssStore();
 
 const feedById = computed(() => new Map(feeds.value.map((f) => [f.id, f])));
@@ -64,21 +64,19 @@ const empty = computed(
   () => filteredArticles.value.length === 0 && visibleStarredBriefings.value.length === 0,
 );
 
-const displayFolderId = computed(() =>
-  folderIdForDisplayMode(collectionId.value, feeds.value),
+const showDisplayToggle = computed(
+  () => !webMode.value && canToggleDisplayMode(collectionId.value, feeds.value),
 );
-const showDisplayToggle = computed(() => !webMode.value && !!displayFolderId.value);
 const cardsOn = computed(() => collectionDisplayMode.value === "cards");
 const displayToggleLabel = computed(() =>
   cardsOn.value ? t("article.displayToggleToList") : t("article.displayToggleToCards"),
 );
 
 async function toggleDisplayMode() {
-  const id = displayFolderId.value;
-  if (!id) return;
+  if (!showDisplayToggle.value) return;
   const next = cardsOn.value ? "list" : "cards";
   try {
-    await setFolderDisplayMode(id, next);
+    await setCollectionDisplayMode(collectionId.value, next);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     toast.error(t("folderMenu.displayModeFailed"), { description: msg });
