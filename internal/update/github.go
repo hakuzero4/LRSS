@@ -147,58 +147,79 @@ func (c *Client) LatestRelease(ctx context.Context) (*ReleaseInfo, error) {
 }
 
 // PickAsset chooses the best download for the current platform.
+// Accepts both unversioned names (lrss-windows-amd64.exe) and
+// versioned ones (lrss-0.1.12-windows-amd64.exe).
 func PickAsset(assets []Asset, goos, goarch string) (Asset, error) {
 	if len(assets) == 0 {
 		return Asset{}, fmt.Errorf("no_assets")
 	}
-	names := make([]string, 0, len(assets))
-	byName := map[string]Asset{}
+	var best Asset
+	bestScore := 0
 	for _, a := range assets {
 		n := strings.TrimSpace(a.Name)
 		if n == "" || a.BrowserDownloadURL == "" {
 			continue
 		}
-		// Prefer non-archive bare binaries when both exist.
-		byName[n] = a
-		names = append(names, n)
+		if s := assetScore(n, goos, goarch); s > bestScore {
+			best = a
+			bestScore = s
+		}
 	}
+	if bestScore == 0 {
+		return Asset{}, fmt.Errorf("no_matching_asset")
+	}
+	return best, nil
+}
 
-	var candidates []string
+func assetScore(name, goos, goarch string) int {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" || n == "sha256sums.txt" {
+		return 0
+	}
+	arch := strings.ToLower(strings.TrimSpace(goarch))
+	if arch == "" || !strings.Contains(n, arch) {
+		return 0
+	}
 	switch goos {
 	case "windows":
-		candidates = []string{
-			fmt.Sprintf("lrss-windows-%s.exe", goarch),
-			fmt.Sprintf("lrss-windows-%s.exe.zip", goarch),
-			fmt.Sprintf("lrss-windows-%s.zip", goarch),
+		if !strings.Contains(n, "windows") {
+			return 0
+		}
+		if strings.HasSuffix(n, ".exe") {
+			return 30
+		}
+		if strings.HasSuffix(n, ".zip") {
+			return 20
 		}
 	case "linux":
-		candidates = []string{
-			fmt.Sprintf("lrss-linux-%s", goarch),
-			fmt.Sprintf("lrss-linux-%s.tar.gz", goarch),
+		if !strings.Contains(n, "linux") {
+			return 0
 		}
+		if strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tgz") {
+			return 20
+		}
+		if strings.Contains(n, ".zip") || strings.HasSuffix(n, ".exe") {
+			return 0
+		}
+		return 30
 	case "darwin":
-		// Arch-specific .app only (CI no longer ships universal — too slow to build).
-		candidates = []string{
-			fmt.Sprintf("LRSS-macOS-%s.app.zip", goarch),
-			fmt.Sprintf("lrss-darwin-%s.tar.gz", goarch),
-			fmt.Sprintf("lrss-darwin-%s", goarch),
+		if !strings.Contains(n, "macos") && !strings.Contains(n, "darwin") {
+			return 0
 		}
-	default:
-		return Asset{}, fmt.Errorf("unsupported_os:%s", goos)
-	}
-
-	for _, want := range candidates {
-		if a, ok := byName[want]; ok {
-			return a, nil
+		if strings.Contains(n, "universal") {
+			return 0
 		}
-		// case-insensitive fallback
-		for _, n := range names {
-			if strings.EqualFold(n, want) {
-				return byName[n], nil
-			}
+		if strings.HasSuffix(n, ".app.zip") {
+			return 30
+		}
+		if strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tgz") {
+			return 15
+		}
+		if !strings.Contains(n, ".zip") {
+			return 10
 		}
 	}
-	return Asset{}, fmt.Errorf("no_matching_asset")
+	return 0
 }
 
 // Check compares the running version to the latest GitHub release.

@@ -205,11 +205,11 @@ Prebuilt apps are published on GitHub Releases when a version tag is pushed:
 
 | Asset | Platform |
 | --- | --- |
-| `lrss-windows-amd64.exe` | Windows x64 |
-| `lrss-windows-arm64.exe` | Windows ARM64 |
-| `lrss-linux-amd64` | Linux x64 |
-| `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon** (M1/M2/M3…) |
-| `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
+| `lrss-<version>-windows-amd64.exe` | Windows x64 |
+| `lrss-<version>-windows-arm64.exe` | Windows ARM64 |
+| `lrss-<version>-linux-amd64` | Linux x64 |
+| `LRSS-<version>-macOS-arm64.app.zip` | **macOS Apple Silicon** (M1/M2/M3…) |
+| `LRSS-<version>-macOS-amd64.app.zip` | **macOS Intel** |
 
 **Windows / Linux:** release binaries are **UPX**-packed to keep download size down (~½). Builds are **not code-signed**; Windows SmartScreen may block the first run — click **More info** → **Run anyway**.
 

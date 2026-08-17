@@ -38,7 +38,6 @@ jobs:
             kind: binary
             goos: windows
             goarch: amd64
-            artifact: lrss-windows-amd64.exe
             out_name: lrss.exe
 
           - name: Windows arm64
@@ -46,7 +45,6 @@ jobs:
             kind: binary
             goos: windows
             goarch: arm64
-            artifact: lrss-windows-arm64.exe
             out_name: lrss.exe
 
           # —— Linux ——
@@ -55,7 +53,6 @@ jobs:
             kind: binary
             goos: linux
             goarch: amd64
-            artifact: lrss-linux-amd64
             out_name: lrss
 
           # —— macOS (.app; single-arch only — universal was ~50m+: 2× build + slow UPX) ——
@@ -64,18 +61,33 @@ jobs:
             kind: macos-app
             goos: darwin
             goarch: arm64
-            artifact: LRSS-macOS-arm64
 
           - name: macOS amd64
             os: macos-latest
             kind: macos-app
             goos: darwin
             goarch: amd64
-            artifact: LRSS-macOS-amd64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver="$(sed -n 's/^export const APP_VERSION = "\(.*\)";/\1/p' frontend/src/lib/appMeta.ts | head -n1)"
+          fi
+          if [[ -z "${ver}" ]]; then
+            echo "could not resolve version" >&2
+            exit 1
+          fi
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${ver}"
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -169,7 +181,7 @@ jobs:
             pct=$(( after * 100 / before ))
             echo "UPX: ${before} → ${after} bytes (${pct}% of original)"
           else
-            echo "UPX failed for ${{ matrix.artifact }}; shipping uncompressed."
+            echo "UPX failed for ${{ matrix.goos }}/${{ matrix.goarch }}; shipping uncompressed."
             if [[ "${{ matrix.goarch }}" == "arm64" ]]; then
               exit 0
             fi
@@ -179,6 +191,8 @@ jobs:
       - name: Stage binary artifact
         if: matrix.kind == 'binary'
         shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -189,16 +203,20 @@ jobs:
             find bin -type f 2>/dev/null || true
             exit 1
           fi
-          cp "$src" "dist/${{ matrix.artifact }}"
+          base="lrss-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
           if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            dest="${base}.exe"
+            cp "$src" "dist/${dest}"
             if command -v powershell.exe >/dev/null 2>&1; then
-              powershell.exe -NoProfile -Command "Compress-Archive -Path 'dist/${{ matrix.artifact }}' -DestinationPath 'dist/${{ matrix.artifact }}.zip' -Force"
+              powershell.exe -NoProfile -Command "Compress-Archive -Path 'dist/${dest}' -DestinationPath 'dist/${base}.zip' -Force"
             else
-              (cd dist && zip -9 "${{ matrix.artifact }}.zip" "${{ matrix.artifact }}")
+              (cd dist && zip -9 "${base}.zip" "${dest}")
             fi
           else
-            chmod +x "dist/${{ matrix.artifact }}"
-            tar -C dist -czf "dist/${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}"
+            dest="${base}"
+            cp "$src" "dist/${dest}"
+            chmod +x "dist/${dest}"
+            tar -C dist -czf "dist/${dest}.tar.gz" "${dest}"
           fi
           ls -la dist/
 
@@ -220,24 +238,28 @@ jobs:
       - name: Stage macOS .app zip
         if: matrix.kind == 'macos-app'
         shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          rm -rf "dist/${{ matrix.artifact }}.app"
-          cp -R bin/lrss.app "dist/${{ matrix.artifact }}.app"
+          zipname="LRSS-${VERSION}-macOS-${{ matrix.goarch }}.app.zip"
+          # Keep LRSS.app inside the zip so Finder still shows a normal app name.
+          stage="$(mktemp -d)"
+          cp -R bin/lrss.app "${stage}/LRSS.app"
           if command -v ditto >/dev/null 2>&1; then
             ditto -c -k --sequesterRsrc --keepParent \
-              "dist/${{ matrix.artifact }}.app" \
-              "dist/${{ matrix.artifact }}.app.zip"
+              "${stage}/LRSS.app" \
+              "dist/${zipname}"
           else
-            (cd dist && zip -ry "${{ matrix.artifact }}.app.zip" "${{ matrix.artifact }}.app")
+            (cd "${stage}" && zip -ry "${OLDPWD}/dist/${zipname}" "LRSS.app")
           fi
           ls -la dist/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: ${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.meta.outputs.version }}
           path: |
             dist/*
           if-no-files-found: error
@@ -300,11 +322,11 @@ jobs:
 
             | Asset | Platform |
             | --- | --- |
-            | `lrss-windows-amd64.exe` / `.zip` | Windows x64 (UPX) |
-            | `lrss-windows-arm64.exe` / `.zip` | Windows ARM64 (UPX when supported) |
-            | `lrss-linux-amd64` / `.tar.gz` | Linux x64 (UPX) |
-            | `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon** |
-            | `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
+            | `lrss-<version>-windows-amd64.exe` / `.zip` | Windows x64 (UPX) |
+            | `lrss-<version>-windows-arm64.exe` / `.zip` | Windows ARM64 (UPX when supported) |
+            | `lrss-<version>-linux-amd64` / `.tar.gz` | Linux x64 (UPX) |
+            | `LRSS-<version>-macOS-arm64.app.zip` | **macOS Apple Silicon** |
+            | `LRSS-<version>-macOS-amd64.app.zip` | **macOS Intel** |
             | `SHA256SUMS.txt` | Checksums |
 
             ### Windows (SmartScreen)

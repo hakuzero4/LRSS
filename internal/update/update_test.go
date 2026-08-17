@@ -47,3 +47,26 @@ func TestPickAsset(t *testing.T) {
 		t.Fatal("darwin amd64 should fail without arch-specific asset")
 	}
 }
+
+func TestPickAsset_VersionedNames(t *testing.T) {
+	assets := []update.Asset{
+		{Name: "lrss-0.1.12-windows-amd64.exe", BrowserDownloadURL: "https://x/win"},
+		{Name: "lrss-0.1.12-windows-amd64.zip", BrowserDownloadURL: "https://x/winz"},
+		{Name: "lrss-0.1.12-linux-amd64", BrowserDownloadURL: "https://x/lin"},
+		{Name: "lrss-0.1.12-linux-amd64.tar.gz", BrowserDownloadURL: "https://x/lint"},
+		{Name: "LRSS-0.1.12-macOS-arm64.app.zip", BrowserDownloadURL: "https://x/mac"},
+		{Name: "SHA256SUMS.txt", BrowserDownloadURL: "https://x/sum"},
+	}
+	a, err := update.PickAsset(assets, "windows", "amd64")
+	if err != nil || a.Name != "lrss-0.1.12-windows-amd64.exe" {
+		t.Fatalf("windows prefers versioned exe: %+v %v", a, err)
+	}
+	a, err = update.PickAsset(assets, "linux", "amd64")
+	if err != nil || a.Name != "lrss-0.1.12-linux-amd64" {
+		t.Fatalf("linux prefers bare binary: %+v %v", a, err)
+	}
+	a, err = update.PickAsset(assets, "darwin", "arm64")
+	if err != nil || a.Name != "LRSS-0.1.12-macOS-arm64.app.zip" {
+		t.Fatalf("darwin versioned zip: %+v %v", a, err)
+	}
+}

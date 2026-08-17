@@ -217,11 +217,11 @@ YouTube 字幕回退可选：将 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) �
 
 | 资源 | 平台 |
 | --- | --- |
-| `lrss-windows-amd64.exe` | Windows x64 |
-| `lrss-windows-arm64.exe` | Windows ARM64 |
-| `lrss-linux-amd64` | Linux x64 |
-| `LRSS-macOS-arm64.app.zip` | **macOS Apple Silicon**（M1/M2/M3…） |
-| `LRSS-macOS-amd64.app.zip` | **macOS Intel** |
+| `lrss-<version>-windows-amd64.exe` | Windows x64 |
+| `lrss-<version>-windows-arm64.exe` | Windows ARM64 |
+| `lrss-<version>-linux-amd64` | Linux x64 |
+| `LRSS-<version>-macOS-arm64.app.zip` | **macOS Apple Silicon**（M1/M2/M3…） |
+| `LRSS-<version>-macOS-amd64.app.zip` | **macOS Intel** |
 
 **Windows / Linux：** 发布二进制会 **UPX 压缩**（体积大约减半）。**未做代码签名**；Windows SmartScreen 可能提示「已保护你的电脑」——点 **更多信息** → **仍要运行**。
 
