@@ -70,3 +70,16 @@ func TestPickAsset_VersionedNames(t *testing.T) {
 		t.Fatalf("darwin versioned zip: %+v %v", a, err)
 	}
 }
+
+func TestPickAsset_SkipsWindowsInstaller(t *testing.T) {
+	assets := []update.Asset{
+		{Name: "lrss-0.1.13-windows-amd64-setup.exe", BrowserDownloadURL: "https://x/setup"},
+		{Name: "lrss-0.1.13-windows-amd64-installer.exe", BrowserDownloadURL: "https://x/nsis"},
+		{Name: "lrss-0.1.13-windows-amd64.exe", BrowserDownloadURL: "https://x/win"},
+		{Name: "lrss-0.1.13-windows-amd64.zip", BrowserDownloadURL: "https://x/zip"},
+	}
+	a, err := update.PickAsset(assets, "windows", "amd64")
+	if err != nil || a.Name != "lrss-0.1.13-windows-amd64.exe" {
+		t.Fatalf("must pick portable exe, not setup: %+v %v", a, err)
+	}
+}

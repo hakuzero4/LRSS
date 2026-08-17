@@ -176,6 +176,10 @@ func assetScore(name, goos, goarch string) int {
 	if n == "" || n == "sha256sums.txt" {
 		return 0
 	}
+	// Installers are for humans; in-app update must keep the portable binary.
+	if strings.Contains(n, "setup") || strings.Contains(n, "installer") || strings.Contains(n, "nsis") {
+		return 0
+	}
 	arch := strings.ToLower(strings.TrimSpace(goarch))
 	if arch == "" || !strings.Contains(n, arch) {
 		return 0

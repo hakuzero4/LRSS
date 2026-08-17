@@ -220,13 +220,15 @@ YouTube 字幕回退可选：将 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) �
 
 | 资源 | 平台 |
 | --- | --- |
-| `lrss-<version>-windows-amd64.exe` | Windows x64 |
-| `lrss-<version>-windows-arm64.exe` | Windows ARM64 |
+| `lrss-<version>-windows-amd64.exe` / `.zip` | Windows x64 **绿色版** |
+| `lrss-<version>-windows-amd64-setup.exe` | Windows x64 **安装包**（开始菜单 + 卸载） |
+| `lrss-<version>-windows-arm64.exe` / `.zip` | Windows ARM64 **绿色版** |
+| `lrss-<version>-windows-arm64-setup.exe` | Windows ARM64 **安装包** |
 | `lrss-<version>-linux-amd64` | Linux x64 |
 | `LRSS-<version>-macOS-arm64.app.zip` | **macOS Apple Silicon**（M1/M2/M3…） |
 | `LRSS-<version>-macOS-amd64.app.zip` | **macOS Intel** |
 
-**Windows / Linux：** 发布二进制会 **UPX 压缩**（体积大约减半）。**未做代码签名**；Windows SmartScreen 可能提示「已保护你的电脑」——点 **更多信息** → **仍要运行**。
+**Windows：** 要安装版下 `-setup.exe`（快捷方式 + 程序和功能卸载）；绿色版下普通 `.exe` / `.zip`。**Windows / Linux** 绿色二进制会 **UPX 压缩**（体积大约减半）。**未做代码签名**；SmartScreen 可能提示「已保护你的电脑」——点 **更多信息** → **仍要运行**。
 
 **macOS：** 标准 `.app`（CI ad-hoc 签名；无 universal / 无 UPX）。首次被拦截：右键 → **打开**。
 

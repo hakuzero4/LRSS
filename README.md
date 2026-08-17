@@ -208,13 +208,15 @@ Prebuilt apps are published on GitHub Releases when a version tag is pushed:
 
 | Asset | Platform |
 | --- | --- |
-| `lrss-<version>-windows-amd64.exe` | Windows x64 |
-| `lrss-<version>-windows-arm64.exe` | Windows ARM64 |
+| `lrss-<version>-windows-amd64.exe` / `.zip` | Windows x64 **portable** |
+| `lrss-<version>-windows-amd64-setup.exe` | Windows x64 **installer** (NSIS, Start Menu + uninstall) |
+| `lrss-<version>-windows-arm64.exe` / `.zip` | Windows ARM64 **portable** |
+| `lrss-<version>-windows-arm64-setup.exe` | Windows ARM64 **installer** |
 | `lrss-<version>-linux-amd64` | Linux x64 |
 | `LRSS-<version>-macOS-arm64.app.zip` | **macOS Apple Silicon** (M1/M2/M3…) |
 | `LRSS-<version>-macOS-amd64.app.zip` | **macOS Intel** |
 
-**Windows / Linux:** release binaries are **UPX**-packed to keep download size down (~½). Builds are **not code-signed**; Windows SmartScreen may block the first run — click **More info** → **Run anyway**.
+**Windows:** pick `-setup.exe` for a normal install (shortcuts + Add/Remove Programs), or the plain `.exe` / `.zip` for a portable copy. **Windows / Linux** portable binaries are **UPX**-packed (~½ size). Builds are **not code-signed**; SmartScreen may block the first run — click **More info** → **Run anyway**.
 
 **macOS:** real `.app` bundles (ad-hoc signed on GitHub runners; no universal fat binary; no UPX). First open: right-click → **Open** if Gatekeeper blocks.
 

@@ -220,6 +220,57 @@ jobs:
           fi
           ls -la dist/
 
+      # ── Windows: NSIS installer (portable exe is already in dist/) ──
+      - name: Install NSIS
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $nsis = "C:\Program Files (x86)\NSIS"
+          if (-not (Test-Path (Join-Path $nsis "makensis.exe"))) {
+            throw "makensis.exe not found after choco install"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $nsis
+
+      - name: Build NSIS installer
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          ARCH: ${{ matrix.goarch }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          $bin = Join-Path $env:GITHUB_WORKSPACE "bin\lrss.exe"
+          if (-not (Test-Path $bin)) { throw "missing $bin" }
+          $nsisDir = Join-Path $env:GITHUB_WORKSPACE "build\windows\nsis"
+          Push-Location $nsisDir
+          try {
+            wails3 generate webview2bootstrapper -dir $nsisDir
+            $flag = if ($env:ARCH -eq "arm64") { "ARG_WAILS_ARM64_BINARY" } else { "ARG_WAILS_AMD64_BINARY" }
+            & $makensis `
+              "-D${flag}=$bin" `
+              "-DINFO_PROJECTNAME=LRSS" `
+              "-DINFO_PRODUCTNAME=LRSS" `
+              "-DINFO_COMPANYNAME=LRSS" `
+              "-DINFO_PRODUCTVERSION=$env:VERSION" `
+              "-DINFO_COPYRIGHT=(c) 2026, LRSS" `
+              "project.nsi"
+            if ($LASTEXITCODE -ne 0) { throw "makensis failed: $LASTEXITCODE" }
+          } finally {
+            Pop-Location
+          }
+          $built = Join-Path $env:GITHUB_WORKSPACE "bin\LRSS-$($env:ARCH)-installer.exe"
+          if (-not (Test-Path $built)) {
+            Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE "bin") | Format-Table Name, Length
+            throw "missing installer $built"
+          }
+          $destDir = Join-Path $env:GITHUB_WORKSPACE "dist"
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+          $dest = Join-Path $destDir "lrss-$($env:VERSION)-windows-$($env:ARCH)-setup.exe"
+          Copy-Item $built $dest -Force
+          Get-Item $dest | Format-List Name, Length
+
       # ── macOS: single-arch .app (no UPX — .app.zip is enough) ───────
       - name: Build macOS .app
         if: matrix.kind == 'macos-app'
@@ -322,8 +373,10 @@ jobs:
 
             | Asset | Platform |
             | --- | --- |
-            | `lrss-<version>-windows-amd64.exe` / `.zip` | Windows x64 (UPX) |
-            | `lrss-<version>-windows-arm64.exe` / `.zip` | Windows ARM64 (UPX when supported) |
+            | `lrss-<version>-windows-amd64.exe` / `.zip` | Windows x64 portable (UPX) |
+            | `lrss-<version>-windows-amd64-setup.exe` | Windows x64 **installer** (NSIS) |
+            | `lrss-<version>-windows-arm64.exe` / `.zip` | Windows ARM64 portable (UPX when supported) |
+            | `lrss-<version>-windows-arm64-setup.exe` | Windows ARM64 **installer** (NSIS) |
             | `lrss-<version>-linux-amd64` / `.tar.gz` | Linux x64 (UPX) |
             | `LRSS-<version>-macOS-arm64.app.zip` | **macOS Apple Silicon** |
             | `LRSS-<version>-macOS-amd64.app.zip` | **macOS Intel** |
