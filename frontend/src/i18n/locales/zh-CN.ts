@@ -704,6 +704,9 @@ export default {
       statusQueued: "排队 {pending} 篇",
       statusJudging: "正在判断…",
       statusKept: "已精选 {n} 篇",
+      errTimeout:
+        "模型接口超时了。精选要等一整批 JSON，接口太慢或卡住时会一直停在「正在判断」。请确认模型能正常对话，或换更快的接口后再点「扫描当前未读」。",
+      errGeneric: "上次分拣失败：{err}",
       keepFolders: "精选文件夹",
       keepFoldersDesc:
         "把精选文章分到子文件夹。删除文件夹不会删除文章，文章回到精选根。",

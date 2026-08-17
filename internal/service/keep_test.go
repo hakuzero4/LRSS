@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,6 +108,28 @@ func keepVerdictJSON(articleID string) string {
 	// articleID is unused: JudgeKeepBatch maps n → KeepItem.ID.
 	_ = articleID
 	return `{"items":[{"n":1,"keep":true,"confidence":0.95,"reason":"high signal original reporting","topics":["tech"]}]}`
+}
+
+func TestKeepWorker_RecordsJudgeError(t *testing.T) {
+	ctx, store, repos := openKeepEnv(t)
+	enableKeepFilter(t, ctx, store, "")
+	art := insertKeepArticle(t, ctx, repos, "Will Fail", "sum", "body")
+	stub := &keepStubChat{model: "x", err: errors.New("timeout awaiting response headers")}
+	llmSvc := &llm.Service{
+		Store: store,
+		NewChatter: func(cfg settings.LLMConfig) (llm.Chatter, error) {
+			return stub, nil
+		},
+	}
+	w := service.NewKeepWorker(store, repos.Articles, repos.Feeds, repos.Folders, llmSvc)
+	w.Enqueue(ctx, []string{art.ID})
+	w.NotifyForce()
+	if _, err := w.TryJudge(ctx); err == nil {
+		t.Fatal("expected chatter error")
+	}
+	if !strings.Contains(w.LastError(), "timeout awaiting response headers") {
+		t.Fatalf("LastError=%q", w.LastError())
+	}
 }
 
 func TestKeepWorker_SkipWhenOffOrNoLLM(t *testing.T) {

@@ -95,7 +95,7 @@ func main() {
 	briefingAPI := appsvc.NewBriefingService(briefingWorker)
 	syncAPI := appsvc.NewSync(store, library)
 	// Keep in sync with frontend/src/lib/appMeta.ts APP_VERSION and git tags.
-	updateAPI := appsvc.NewUpdate("0.1.15")
+	updateAPI := appsvc.NewUpdate("0.1.16")
 
 	// Optional browser access (same SPA; reader tools + reading assistant + star/read; no settings UI).
 	webServer := web.New(web.APIDeps{
@@ -354,6 +354,15 @@ func runKeepDrain(ctx context.Context, w *service.KeepWorker) {
 	if w == nil {
 		return
 	}
+	try := func() {
+		did, err := w.TryJudge(ctx)
+		if err != nil {
+			log.Printf("smart filter: %v", err)
+		} else if did {
+			log.Printf("smart filter: judged a batch")
+		}
+	}
+	try()
 	t := time.NewTicker(15 * time.Second)
 	defer t.Stop()
 	for {
@@ -361,12 +370,7 @@ func runKeepDrain(ctx context.Context, w *service.KeepWorker) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			did, err := w.TryJudge(ctx)
-			if err != nil {
-				log.Printf("smart filter: %v", err)
-			} else if did {
-				log.Printf("smart filter: judged a batch")
-			}
+			try()
 		}
 	}
 }

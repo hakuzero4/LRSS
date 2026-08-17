@@ -54,5 +54,7 @@ assert(bar.includes("keepText"), "activity bar shows keep progress");
 assert(zh.includes("activeTitle:") && en.includes("activeTitle:"), "i18n active title");
 assert(zh.includes("logTitle:") && en.includes("logTitle:"), "i18n log title");
 assert(zh.includes("keepJudging:") && en.includes("keepJudging:"), "i18n keep activity");
+assert(zh.includes("errTimeout:") && en.includes("errTimeout:"), "i18n keep timeout");
+assert(filters.includes("keepErrorText"), "filters panel shows keep errors");
 
 console.log("filterStatus.selftest: OK");

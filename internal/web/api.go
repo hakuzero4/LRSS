@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -135,6 +136,7 @@ func (s *Server) handleJobActivity(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Keep != nil {
 		a.KeepState, a.KeepPending, a.KeepLast = s.deps.Keep.Snapshot()
 		a.KeepLog = s.deps.Keep.RecentDecisions(r.Context())
+		a.KeepError = s.deps.Keep.LastError()
 	}
 	if s.deps.Library != nil {
 		a.ArticlesAdded = s.deps.Library.InsertedTotal()
@@ -577,6 +579,11 @@ func (s *Server) handleScanKeep(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	go func() {
+		if _, jerr := s.deps.Keep.TryJudge(context.Background()); jerr != nil {
+			log.Printf("smart filter: %v", jerr)
+		}
+	}()
 	writeJSON(w, http.StatusOK, map[string]any{"queued": n})
 }
 

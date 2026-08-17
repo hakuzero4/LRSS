@@ -716,6 +716,9 @@ export default {
       statusQueued: "{pending} queued",
       statusJudging: "Judging…",
       statusKept: "{n} in Picks",
+      errTimeout:
+        "The model timed out. Picks waits for a full JSON batch, so a slow or stuck endpoint stays on “Judging”. Check that chat works, or try a faster model, then scan unread again.",
+      errGeneric: "Last judgment failed: {err}",
       keepFolders: "Picks folders",
       keepFoldersDesc:
         "File Picks into subfolders. Deleting a folder does not delete articles; they return to the Picks root.",

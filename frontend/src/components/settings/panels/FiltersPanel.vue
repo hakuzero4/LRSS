@@ -50,6 +50,16 @@ const keywordCount = computed(() => parseBlockKeywords(settings.blockKeywords).l
 const modelReady = computed(() => assistant.llmConfigured);
 const scanning = ref(false);
 
+const keepErrorText = computed(() => {
+  const raw = jobActivity.keepError.trim();
+  if (!raw) return "";
+  const low = raw.toLowerCase();
+  if (low.includes("timeout") || low.includes("deadline") || low.includes("awaiting response")) {
+    return t("settings.filters.errTimeout");
+  }
+  return t("settings.filters.errGeneric", { err: raw });
+});
+
 const statusLine = computed(() => {
   const parts: string[] = [];
   if (jobActivity.keepState === "judging") {
@@ -325,6 +335,12 @@ async function onScanUnread() {
         <p class="mt-2 text-[11.5px] tabular-nums text-muted-foreground">
           {{ statusLine }}
         </p>
+        <p
+          v-if="keepErrorText"
+          class="mt-1.5 text-[12px] leading-relaxed text-destructive"
+        >
+          {{ keepErrorText }}
+        </p>
       </div>
     </section>
 
@@ -342,7 +358,7 @@ async function onScanUnread() {
           v-if="!keepLog.length"
           class="px-3.5 py-3 text-[12px] leading-relaxed text-muted-foreground"
         >
-          {{ t("settings.filters.logEmpty") }}
+          {{ keepErrorText || t("settings.filters.logEmpty") }}
         </p>
         <ul v-else class="divide-y divide-border/60">
           <li

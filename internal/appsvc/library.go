@@ -3,6 +3,7 @@ package appsvc
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -93,6 +94,7 @@ func (s *FeedService) JobActivity() service.JobActivity {
 	if s.keep != nil {
 		a.KeepState, a.KeepPending, a.KeepLast = s.keep.Snapshot()
 		a.KeepLog = s.keep.RecentDecisions(context.Background())
+		a.KeepError = s.keep.LastError()
 	}
 	a.ArticlesAdded = s.lib.InsertedTotal()
 	return a
@@ -279,6 +281,11 @@ func (s *FeedService) ScanUnreadForKeep() (ScanKeepResult, error) {
 	if err != nil {
 		return ScanKeepResult{}, err
 	}
+	go func() {
+		if _, jerr := s.keep.TryJudge(context.Background()); jerr != nil {
+			log.Printf("smart filter: %v", jerr)
+		}
+	}()
 	return ScanKeepResult{Queued: n}, nil
 }
 

@@ -17,6 +17,8 @@ type JobActivity struct {
 	KeepLast         int      `json:"keepLast,omitempty"`
 	// KeepLog is the newest keep/skip decisions (capped) so the UI can show why.
 	KeepLog []KeepDecision `json:"keepLog,omitempty"`
+	// KeepError is the last judge failure (empty after a successful batch).
+	KeepError string `json:"keepError,omitempty"`
 	// ArticlesAdded is a process-lifetime insert counter (not a per-tick delta).
 	ArticlesAdded int `json:"articlesAdded"`
 }

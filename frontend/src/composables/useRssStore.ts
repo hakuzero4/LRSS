@@ -106,6 +106,7 @@ export type JobActivity = {
   keepPending: number;
   keepLast: number;
   keepLog: KeepDecision[];
+  keepError: string;
   articlesAdded: number;
 };
 
@@ -122,6 +123,7 @@ const idleJobActivity = (): JobActivity => ({
   keepPending: 0,
   keepLast: 0,
   keepLog: [],
+  keepError: "",
   articlesAdded: 0,
 });
 
@@ -156,6 +158,7 @@ function applyJobActivity(raw: unknown) {
   jobActivity.keepPending = parseCountField(o.keepPending ?? o.KeepPending);
   jobActivity.keepLast = parseCountField(o.keepLast ?? o.KeepLast);
   jobActivity.keepLog = parseKeepLog(o.keepLog ?? o.KeepLog);
+  jobActivity.keepError = String(o.keepError ?? o.KeepError ?? "").trim();
   jobActivity.articlesAdded = parseCountField(o.articlesAdded ?? o.ArticlesAdded);
   if (jobActivity.feedTitle || jobActivity.pending > 0) {
     jobActivity.refreshing = true;

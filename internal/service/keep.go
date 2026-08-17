@@ -18,10 +18,10 @@ const (
 	KeyKeepPending        = "app.keep_pending"
 	KeyKeepLog            = "app.keep_log"
 	keepDebounce          = 20 * time.Second
-	keepBatchSize         = 12
+	keepBatchSize         = 6
 	keepMaxBatchesPerTick = 2
 	keepScanUnreadCap     = 80
-	keepJudgeTimeout      = 90 * time.Second
+	keepJudgeTimeout      = 4 * time.Minute
 	keepLogMax            = 40
 )
 
@@ -59,6 +59,7 @@ type KeepWorker struct {
 	force    bool
 	judging  bool
 	lastKept int
+	lastErr  string
 }
 
 func NewKeepWorker(
@@ -212,7 +213,36 @@ func (w *KeepWorker) TryJudge(ctx context.Context) (bool, error) {
 		w.mu.Unlock()
 	}()
 
-	return w.judge(ctx, snapshot, prefs)
+	did, jerr := w.judge(ctx, snapshot, prefs)
+	if jerr != nil {
+		w.setLastError(jerr)
+		return did, jerr
+	}
+	w.setLastError(nil)
+	return did, nil
+}
+
+func (w *KeepWorker) setLastError(err error) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err == nil {
+		w.lastErr = ""
+		return
+	}
+	w.lastErr = strings.TrimSpace(err.Error())
+}
+
+// LastError is the most recent judge failure (empty after a successful batch).
+func (w *KeepWorker) LastError() string {
+	if w == nil {
+		return ""
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.lastErr
 }
 
 func (w *KeepWorker) keepFolderRefs(ctx context.Context) []llm.KeepFolderRef {

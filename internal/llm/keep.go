@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -416,19 +417,35 @@ func (s *Service) JudgeKeepBatch(ctx context.Context, items []KeepItem, profile,
 	if err != nil {
 		return nil, err
 	}
-	chat, err := s.chatter(cfg)
-	if err != nil {
-		return nil, err
-	}
 	strictness = NormalizeKeepStrictness(strictness)
-	res, err := chat.Chat(ctx, ChatRequest{
+	req := ChatRequest{
 		Messages: []Message{
 			{Role: "system", Content: SystemPromptFor(FeatureKeep, locale)},
 			{Role: "user", Content: UserPromptKeep(items, profile, strictness, locale, folders)},
 		},
-	})
-	if err != nil {
-		return nil, err
+	}
+	// Tests inject NewChatter (Chat only). Production streams with a long
+	// timeout — same reason as briefing: non-stream waits for the whole JSON
+	// and often dies on "timeout awaiting response headers".
+	var res ChatResponse
+	if s.NewChatter != nil {
+		chat, err := s.NewChatter(cfg)
+		if err != nil {
+			return nil, err
+		}
+		res, err = chat.Chat(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		client, err := NewClientWithTimeout(cfg, 4*time.Minute)
+		if err != nil {
+			return nil, err
+		}
+		res, err = client.ChatStream(ctx, req, nil)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := RejectIfIncomplete(res.FinishReason); err != nil {
 		return nil, err

@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "0.1.15"
+		"file_version": "0.1.16"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.1.15",
+			"ProductVersion": "0.1.16",
 			"CompanyName": "My Company",
 			"FileDescription": "A LRSS application",
 			"LegalCopyright": "© 2026, My Company",
