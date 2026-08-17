@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Briefcase, Clock, Eye, LoaderCircle, Newspaper, RefreshCw } from "@lucide/vue";
+import { BookmarkPlus, Briefcase, Clock, Eye, LoaderCircle, Newspaper, RefreshCw } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -99,6 +99,21 @@ const briefingText = computed(() => {
   return "";
 });
 
+const keepText = computed(() => {
+  const a = jobActivity;
+  if (a.keepState === "judging") {
+    return a.keepPending > 0
+      ? t("activity.keepJudgingN", { n: a.keepPending })
+      : t("activity.keepJudging");
+  }
+  if (a.keepState === "queued" || a.keepPending > 0) {
+    return a.keepPending > 0
+      ? t("activity.keepQueuedN", { n: a.keepPending })
+      : t("activity.keepQueued");
+  }
+  return "";
+});
+
 const nextDue = computed(() => {
   if (!settings.autoRefresh) return null;
   const visible = filterFeedsForSidebar(feeds.value, settings.nsfwMode, folders.value);
@@ -115,7 +130,9 @@ const nextDueText = computed(() => {
   return t("activity.nextDue", { name: n.title, n: n.minutes });
 });
 
-const hasJobs = computed(() => !!(refreshText.value || briefingText.value || nextDueText.value));
+const hasJobs = computed(
+  () => !!(refreshText.value || briefingText.value || keepText.value || nextDueText.value),
+);
 
 /** Right-side identity of whatever is open in the reader. */
 const currentText = computed(() => {
@@ -179,6 +196,22 @@ const currentText = computed(() => {
           class="size-3 shrink-0 animate-spin"
         />
         <span class="truncate">{{ briefingText }}</span>
+      </span>
+      <span
+        v-if="(refreshText || briefingText) && keepText"
+        class="h-3 w-px shrink-0 bg-border"
+        aria-hidden="true"
+      />
+      <span
+        v-if="keepText"
+        class="flex min-w-0 items-center gap-1.5 truncate"
+      >
+        <BookmarkPlus class="size-3 shrink-0" />
+        <LoaderCircle
+          v-if="jobActivity.keepState === 'judging'"
+          class="size-3 shrink-0 animate-spin"
+        />
+        <span class="truncate">{{ keepText }}</span>
       </span>
     </div>
 

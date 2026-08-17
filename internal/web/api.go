@@ -134,6 +134,7 @@ func (s *Server) handleJobActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.deps.Keep != nil {
 		a.KeepState, a.KeepPending, a.KeepLast = s.deps.Keep.Snapshot()
+		a.KeepLog = s.deps.Keep.RecentDecisions(r.Context())
 	}
 	if s.deps.Library != nil {
 		a.ArticlesAdded = s.deps.Library.InsertedTotal()

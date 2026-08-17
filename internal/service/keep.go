@@ -16,12 +16,30 @@ import (
 
 const (
 	KeyKeepPending        = "app.keep_pending"
+	KeyKeepLog            = "app.keep_log"
 	keepDebounce          = 20 * time.Second
 	keepBatchSize         = 12
 	keepMaxBatchesPerTick = 2
 	keepScanUnreadCap     = 80
 	keepJudgeTimeout      = 90 * time.Second
+	keepLogMax            = 40
 )
+
+// KeepDecision is one visible keep/skip outcome for Settings → Filters.
+type KeepDecision struct {
+	ArticleID  string  `json:"articleId"`
+	Title      string  `json:"title"`
+	Outcome    string  `json:"outcome"` // kept | skipped
+	Gate       string  `json:"gate"`    // keyword | untitled | nsfw | ai | confidence | unsure
+	Reason     string  `json:"reason,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+	Folder     string  `json:"folder,omitempty"`
+	At         string  `json:"at"`
+}
+
+type keepLogFile struct {
+	Items []KeepDecision `json:"items"`
+}
 
 type keepPending struct {
 	IDs           []string `json:"ids"`
@@ -235,6 +253,7 @@ func (w *KeepWorker) judge(ctx context.Context, ids []string, prefs settings.UIP
 	var (
 		skipIDs    []string
 		candidates []candidate
+		decisions  []KeepDecision
 	)
 	for _, id := range ids {
 		a, err := w.articles.Get(ctx, id)
@@ -242,16 +261,22 @@ func (w *KeepWorker) judge(ctx context.Context, ids []string, prefs settings.UIP
 			skipIDs = append(skipIDs, id)
 			continue
 		}
-		if a.IsKept || isUntitledKeepTitle(a.Title) {
+		if a.IsKept {
 			skipIDs = append(skipIDs, id)
+			continue
+		}
+		if isUntitledKeepTitle(a.Title) {
+			skipIDs = append(skipIDs, id)
+			decisions = append(decisions, keepSkipDecision(a, "untitled", "", 0, ""))
 			continue
 		}
 		sum := ""
 		if a.Summary != nil {
 			sum = *a.Summary
 		}
-		if matchesKeepBlockKeywords(a.Title, sum, blockKws) {
+		if kw := firstKeepBlockKeyword(a.Title, sum, blockKws); kw != "" {
 			skipIDs = append(skipIDs, id)
+			decisions = append(decisions, keepSkipDecision(a, "keyword", kw, 0, ""))
 			continue
 		}
 		if w.feeds == nil {
@@ -265,6 +290,7 @@ func (w *KeepWorker) judge(ctx context.Context, ids []string, prefs settings.UIP
 		}
 		if excludeNsfw && feedIsNsfw(ctx, w.folders, feed) {
 			skipIDs = append(skipIDs, id)
+			decisions = append(decisions, keepSkipDecision(a, "nsfw", "", 0, ""))
 			continue
 		}
 		candidates = append(candidates, candidate{art: a, feed: feed})
@@ -272,6 +298,10 @@ func (w *KeepWorker) judge(ctx context.Context, ids []string, prefs settings.UIP
 
 	if len(skipIDs) > 0 {
 		w.removeConsumed(ctx, skipIDs)
+	}
+	if len(decisions) > 0 {
+		w.recordDecisions(ctx, decisions)
+		decisions = decisions[:0]
 	}
 	if len(candidates) == 0 {
 		return false, nil
@@ -332,10 +362,25 @@ func (w *KeepWorker) judge(ctx context.Context, ids []string, prefs settings.UIP
 		return false, err
 	}
 
+	byID := make(map[string]candidate, len(candidates))
+	for _, c := range candidates {
+		byID[c.art.ID] = c
+	}
 	kept := 0
 	for _, v := range verdicts {
 		id := strings.TrimSpace(v.ArticleID)
-		if id == "" || !inBatch[id] || !v.Keep {
+		if id == "" || !inBatch[id] {
+			continue
+		}
+		c := byID[id]
+		if !v.Keep {
+			gate := "ai"
+			if v.ThresholdRejected {
+				gate = "confidence"
+			} else if strings.TrimSpace(v.Reason) == "" {
+				gate = "unsure"
+			}
+			decisions = append(decisions, keepSkipDecision(c.art, gate, v.Reason, v.Confidence, v.FolderName))
 			continue
 		}
 		if err := w.articles.Keep(ctx, id, v.Reason, "filter", v.Confidence, v.Topics); err != nil {
@@ -347,8 +392,18 @@ func (w *KeepWorker) judge(ctx context.Context, ids []string, prefs settings.UIP
 				log.Printf("keep folder %s → %s: %v", id, fid, err)
 			}
 		}
+		decisions = append(decisions, KeepDecision{
+			ArticleID:  c.art.ID,
+			Title:      c.art.Title,
+			Outcome:    "kept",
+			Gate:       "ai",
+			Reason:     strings.TrimSpace(v.Reason),
+			Confidence: v.Confidence,
+			Folder:     strings.TrimSpace(v.FolderName),
+		})
 		kept++
 	}
+	w.recordDecisions(ctx, decisions)
 	w.removeConsumed(ctx, judgedIDs)
 	w.mu.Lock()
 	w.lastKept += kept
@@ -385,6 +440,75 @@ func (w *KeepWorker) removeConsumed(ctx context.Context, consumed []string) {
 	p.IDs = keep
 	if err := w.store.SetJSON(ctx, KeyKeepPending, p); err != nil {
 		log.Printf("keep pending save: %v", err)
+	}
+}
+
+// RecentDecisions returns the newest keep/skip outcomes (newest first).
+func (w *KeepWorker) RecentDecisions(ctx context.Context) []KeepDecision {
+	if w == nil || w.store == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var file keepLogFile
+	if err := w.store.GetJSON(ctx, KeyKeepLog, &file); err != nil {
+		return nil
+	}
+	if len(file.Items) == 0 {
+		return nil
+	}
+	out := make([]KeepDecision, len(file.Items))
+	copy(out, file.Items)
+	return out
+}
+
+func (w *KeepWorker) recordDecisions(ctx context.Context, add []KeepDecision) {
+	if w == nil || w.store == nil || len(add) == 0 {
+		return
+	}
+	var file keepLogFile
+	_ = w.store.GetJSON(ctx, KeyKeepLog, &file)
+	now := time.Now().UTC().Format(time.RFC3339)
+	seen := map[string]bool{}
+	out := make([]KeepDecision, 0, keepLogMax)
+	for _, d := range add {
+		id := strings.TrimSpace(d.ArticleID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		if strings.TrimSpace(d.At) == "" {
+			d.At = now
+		}
+		d.ArticleID = id
+		out = append(out, d)
+	}
+	for _, d := range file.Items {
+		id := strings.TrimSpace(d.ArticleID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, d)
+		if len(out) >= keepLogMax {
+			break
+		}
+	}
+	if err := w.store.SetJSON(ctx, KeyKeepLog, keepLogFile{Items: out}); err != nil {
+		log.Printf("keep log save: %v", err)
+	}
+}
+
+func keepSkipDecision(a model.Article, gate, reason string, conf float64, folder string) KeepDecision {
+	return KeepDecision{
+		ArticleID:  a.ID,
+		Title:      a.Title,
+		Outcome:    "skipped",
+		Gate:       gate,
+		Reason:     strings.TrimSpace(reason),
+		Confidence: conf,
+		Folder:     strings.TrimSpace(folder),
 	}
 }
 
@@ -467,14 +591,18 @@ func parseKeepBlockKeywords(raw string) []string {
 }
 
 func matchesKeepBlockKeywords(title, summary string, kws []string) bool {
+	return firstKeepBlockKeyword(title, summary, kws) != ""
+}
+
+func firstKeepBlockKeyword(title, summary string, kws []string) string {
 	if len(kws) == 0 {
-		return false
+		return ""
 	}
 	hay := strings.ToLower(title) + "\n" + strings.ToLower(summary)
 	for _, kw := range kws {
 		if kw != "" && strings.Contains(hay, kw) {
-			return true
+			return kw
 		}
 	}
-	return false
+	return ""
 }

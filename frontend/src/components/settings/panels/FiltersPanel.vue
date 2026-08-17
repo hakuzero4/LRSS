@@ -5,6 +5,15 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
 import { parseBlockKeywords } from "@/lib/articleFilters";
+import {
+  formatKeepConfidence,
+  keepConfidenceThreshold,
+  parseKeepLog,
+  profileIsEmpty,
+  profilePreview,
+  smartKeepState,
+  type KeepDecision,
+} from "@/lib/filterStatus";
 import { firstLevelKeepFolders, keepFolderOptions } from "@/lib/keepFolders";
 import SettingsGroup from "@/components/settings/SettingsGroup.vue";
 import SettingsRow from "@/components/settings/SettingsRow.vue";
@@ -33,6 +42,8 @@ const {
   createKeepFolder,
   deleteKeepFolder,
   webMode,
+  closeSettings,
+  selectArticle,
 } = useRssStore();
 
 const keywordCount = computed(() => parseBlockKeywords(settings.blockKeywords).length);
@@ -51,6 +62,135 @@ const statusLine = computed(() => {
   parts.push(t("settings.filters.statusKept", { n: smartCounts.kept }));
   return parts.join(" · ");
 });
+
+type ActiveRule = { id: string; on: boolean; title: string; detail: string };
+
+const activeRules = computed((): ActiveRule[] => {
+  const kws = parseBlockKeywords(settings.blockKeywords);
+  const smart = smartKeepState(settings.smartFilterEnabled, modelReady.value);
+  const thr = keepConfidenceThreshold(settings.smartFilterStrictness);
+  const strictLabel =
+    settings.smartFilterStrictness === "loose"
+      ? t("settings.filters.loose")
+      : settings.smartFilterStrictness === "strict"
+        ? t("settings.filters.strict")
+        : t("settings.filters.standard");
+  const folderNames = keepFolders.value.map((f) => f.name).filter(Boolean);
+  const smartOn = smart === "on";
+  const smartTitle =
+    smart === "on"
+      ? t("settings.filters.activeSmartOn", { strict: strictLabel, threshold: thr.toFixed(2) })
+      : smart === "need-model"
+        ? t("settings.filters.activeSmartNeedModel")
+        : t("settings.filters.activeSmartOff");
+  return [
+    {
+      id: "duplicates",
+      on: settings.hideDuplicateTitles,
+      title: t("settings.filters.activeDuplicates"),
+      detail: settings.hideDuplicateTitles
+        ? t("settings.filters.activeDuplicatesOn")
+        : t("settings.filters.activeDuplicatesOff"),
+    },
+    {
+      id: "keywords",
+      on: kws.length > 0,
+      title: t("settings.filters.activeKeywordsTitle"),
+      detail: kws.length
+        ? t("settings.filters.activeKeywords", { words: kws.join(t("activity.listSep")) })
+        : t("settings.filters.activeKeywordsOff"),
+    },
+    {
+      id: "unread",
+      on: settings.showUnreadOnly,
+      title: t("settings.filters.activeUnreadOnly"),
+      detail: settings.showUnreadOnly
+        ? t("settings.filters.activeUnreadOnlyOn")
+        : t("settings.filters.activeUnreadOnlyOff"),
+    },
+    {
+      id: "office",
+      on: !settings.nsfwMode,
+      title: t("settings.filters.layerOffice"),
+      detail: settings.nsfwMode
+        ? t("settings.filters.activeOfficeOff")
+        : t("settings.filters.activeOffice"),
+    },
+    {
+      id: "smart",
+      on: smartOn,
+      title: t("settings.filters.layerSmart"),
+      detail: smartTitle,
+    },
+    {
+      id: "profile",
+      on: smartOn && !profileIsEmpty(settings.smartFilterProfile),
+      title: t("settings.filters.profile"),
+      detail: !smartOn
+        ? t("settings.filters.activeProfileIdle")
+        : profileIsEmpty(settings.smartFilterProfile)
+          ? t("settings.filters.activeProfileEmpty")
+          : t("settings.filters.activeProfileSet", {
+              preview: profilePreview(settings.smartFilterProfile),
+            }),
+    },
+    {
+      id: "folders",
+      on: smartOn && folderNames.length > 0,
+      title: t("settings.filters.keepFolders"),
+      detail: folderNames.length
+        ? t("settings.filters.activeFolders", { names: folderNames.join(t("activity.listSep")) })
+        : t("settings.filters.activeFoldersNone"),
+    },
+  ];
+});
+
+const keepLog = computed(() =>
+  jobActivity.keepLog.length ? jobActivity.keepLog : parseKeepLog(jobActivity.keepLog),
+);
+
+function gateLabel(d: KeepDecision): string {
+  switch (d.gate) {
+    case "keyword":
+      return t("settings.filters.gateKeyword", { keyword: d.reason || "—" });
+    case "untitled":
+      return t("settings.filters.gateUntitled");
+    case "nsfw":
+      return t("settings.filters.gateNsfw");
+    case "confidence": {
+      const pct = formatKeepConfidence(d.confidence);
+      return pct
+        ? t("settings.filters.gateConfidence", { confidence: pct })
+        : t("settings.filters.gateAi");
+    }
+    case "unsure":
+      return t("settings.filters.gateUnsure");
+    default:
+      return d.outcome === "kept"
+        ? d.folder
+          ? t("settings.filters.logKeptFolder", { folder: d.folder })
+          : t("settings.filters.logKept")
+        : d.reason || t("settings.filters.gateAi");
+  }
+}
+
+function logLine(d: KeepDecision): string {
+  const bits = [gateLabel(d)];
+  if (d.outcome === "kept") {
+    const pct = formatKeepConfidence(d.confidence);
+    if (pct) bits.push(`${pct}%`);
+    if (d.reason) bits.push(d.reason);
+  } else if (d.gate !== "keyword" && d.reason && d.gate !== "untitled" && d.gate !== "nsfw") {
+    bits.push(d.reason);
+  }
+  return bits.filter(Boolean).join(" · ");
+}
+
+function onOpenDecision(d: KeepDecision) {
+  if (!d.articleId) return;
+  closeSettings();
+  void selectArticle(d.articleId);
+}
 
 function onHideDuplicates(v: boolean) {
   settings.hideDuplicateTitles = v;
@@ -150,6 +290,93 @@ async function onScanUnread() {
 
 <template>
   <div class="space-y-7">
+    <section class="space-y-3">
+      <header class="space-y-0.5">
+        <h3 class="text-[13px] font-semibold tracking-tight">
+          {{ t("settings.filters.activeTitle") }}
+        </h3>
+        <p class="text-[12px] leading-relaxed text-muted-foreground">
+          {{ t("settings.filters.activeDesc") }}
+        </p>
+      </header>
+      <div class="rounded-xl border border-border/70 bg-card/50 px-3.5 py-3 shadow-sm shadow-black/[0.02]">
+        <ul class="space-y-2.5">
+          <li
+            v-for="rule in activeRules"
+            :key="rule.id"
+            class="flex items-start gap-2.5"
+          >
+            <span
+              class="mt-1.5 size-1.5 shrink-0 rounded-full"
+              :class="rule.on ? 'bg-primary' : 'bg-muted-foreground/35'"
+              :aria-label="rule.on ? t('settings.filters.ruleOn') : t('settings.filters.ruleOff')"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="text-[13px] font-medium leading-snug">{{ rule.title }}</p>
+              <p class="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                {{ rule.detail }}
+              </p>
+            </div>
+          </li>
+        </ul>
+        <p class="mt-3 border-t border-border/60 pt-3 text-[12px] leading-relaxed text-muted-foreground">
+          {{ t("settings.filters.processBody") }}
+        </p>
+        <p class="mt-2 text-[11.5px] tabular-nums text-muted-foreground">
+          {{ statusLine }}
+        </p>
+      </div>
+    </section>
+
+    <section class="space-y-3">
+      <header class="space-y-0.5">
+        <h3 class="text-[13px] font-semibold tracking-tight">
+          {{ t("settings.filters.logTitle") }}
+        </h3>
+        <p class="text-[12px] leading-relaxed text-muted-foreground">
+          {{ t("settings.filters.logDesc") }}
+        </p>
+      </header>
+      <div class="overflow-hidden rounded-xl border border-border/70 bg-card/50 shadow-sm shadow-black/[0.02]">
+        <p
+          v-if="!keepLog.length"
+          class="px-3.5 py-3 text-[12px] leading-relaxed text-muted-foreground"
+        >
+          {{ t("settings.filters.logEmpty") }}
+        </p>
+        <ul v-else class="divide-y divide-border/60">
+          <li
+            v-for="d in keepLog"
+            :key="d.articleId + d.at"
+          >
+            <button
+              type="button"
+              class="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/40 active:scale-[0.995]"
+              @click="onOpenDecision(d)"
+            >
+              <span
+                class="mt-1.5 size-1.5 shrink-0 rounded-full"
+                :class="d.outcome === 'kept' ? 'bg-primary' : 'bg-muted-foreground/40'"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-[13px] font-medium">
+                  {{ d.title || t("settings.filters.logNoTitle") }}
+                </span>
+                <span class="mt-0.5 block truncate text-[12px] text-muted-foreground">
+                  {{
+                    d.outcome === "kept"
+                      ? t("settings.filters.logKeptMark")
+                      : t("settings.filters.logSkipMark")
+                  }}
+                  · {{ logLine(d) }}
+                </span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </section>
+
     <SettingsGroup
       :title="t('settings.filters.group')"
       :description="t('settings.filters.groupDesc')"

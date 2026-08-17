@@ -7,8 +7,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   applyArticleFilters,
+  applyArticleView,
   applyBlockKeywords,
   applyHideDuplicateTitles,
+  firstBlockKeyword,
   matchesBlockKeywords,
   normalizeTitle,
   parseBlockKeywords,
@@ -86,10 +88,31 @@ assert(
   `pipeline got ${pipe.map((x) => x.id)}`,
 );
 
+assert(firstBlockKeyword({ id: "1", title: "Weekly Sponsored Deal", summary: "" }, ["sponsored"]) === "sponsored", "first keyword");
+const view = applyArticleView(
+  [
+    { id: "1", title: "Dup", summary: "", feedId: "ok" },
+    { id: "2", title: "dup", summary: "", feedId: "ok" },
+    { id: "3", title: "Keep me", summary: "广告", feedId: "ok" },
+    { id: "4", title: "NSFW one", summary: "fine", feedId: "ns" },
+    { id: "5", title: "Also keep", summary: "fine", feedId: "ok" },
+  ],
+  {
+    hideDuplicateTitles: true,
+    blockKeywords: "广告",
+    isHiddenFeed: (a) => a.feedId === "ns",
+  },
+);
+assert(view.visible.map((x) => x.id).join(",") === "1,5", `view visible ${view.visible.map((x) => x.id)}`);
+assert(view.hidden.some((h) => h.article.id === "2" && h.cause === "duplicate"), "dup hide");
+assert(view.hidden.some((h) => h.article.id === "3" && h.cause === "keyword" && h.keyword === "广告"), "kw hide");
+assert(view.hidden.some((h) => h.article.id === "4" && h.cause === "nsfw"), "nsfw hide");
+
 // wiring: store applies filters
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const store = readFileSync(join(root, "composables/useRssStore.ts"), "utf8");
-assert(store.includes("applyArticleFilters"), "store must call applyArticleFilters");
+assert(store.includes("applyArticleView"), "store must call applyArticleView");
+assert(store.includes("hiddenByFilters"), "store exposes hiddenByFilters");
 assert(store.includes("hideDuplicateTitles"), "store reads hideDuplicateTitles");
 assert(store.includes("blockKeywords"), "store reads blockKeywords");
 

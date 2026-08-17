@@ -53,6 +53,8 @@ type KeepVerdict struct {
 	Topics     []string
 	FolderID   string
 	FolderName string
+	// ThresholdRejected is true when the model said keep but confidence was below the bar.
+	ThresholdRejected bool
 }
 
 // MatchKeepFolder maps a model folder name onto an existing ref.
@@ -480,6 +482,7 @@ func applyKeepThreshold(items []KeepItem, parsed []KeepVerdict, thr float64) []K
 		v := parsed[idx]
 		if v.Keep && v.Confidence < thr {
 			v.Keep = false
+			v.ThresholdRejected = true
 		}
 		v.ArticleID = it.ID
 		out[i] = v

@@ -1,7 +1,8 @@
 import { computed, reactive, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import i18n from "@/i18n";
-import { applyArticleFilters } from "@/lib/articleFilters";
+import { applyArticleView, type HiddenByFilter } from "@/lib/articleFilters";
+import { parseKeepLog, type KeepDecision } from "@/lib/filterStatus";
 import { loadAppsvc, mapArticle, mapBriefing, mapFeed, mapFolder, mapKeepFolders } from "@/lib/backend";
 import { applyAppLocale, resolveLocale } from "@/i18n";
 import { setLocalePersistHook } from "@/composables/useLocale";
@@ -23,7 +24,7 @@ import {
   parseKeepFolderId,
 } from "@/lib/keepFolders";
 import { applyShowUnreadOnly } from "@/lib/readingSettings";
-import { filterArticlesByNsfwMode, filterFeedsForSidebar } from "@/lib/nsfw";
+import { filterFeedsForSidebar, hiddenNsfwFeedIds } from "@/lib/nsfw";
 import {
   mergeArticleIntoPools,
   resolveAddFeedFolderId,
@@ -104,6 +105,7 @@ export type JobActivity = {
   keepState: "" | "queued" | "judging";
   keepPending: number;
   keepLast: number;
+  keepLog: KeepDecision[];
   articlesAdded: number;
 };
 
@@ -119,6 +121,7 @@ const idleJobActivity = (): JobActivity => ({
   keepState: "",
   keepPending: 0,
   keepLast: 0,
+  keepLog: [],
   articlesAdded: 0,
 });
 
@@ -152,6 +155,7 @@ function applyJobActivity(raw: unknown) {
   jobActivity.keepState = keepState === "judging" || keepState === "queued" ? keepState : "";
   jobActivity.keepPending = parseCountField(o.keepPending ?? o.KeepPending);
   jobActivity.keepLast = parseCountField(o.keepLast ?? o.KeepLast);
+  jobActivity.keepLog = parseKeepLog(o.keepLog ?? o.KeepLog);
   jobActivity.articlesAdded = parseCountField(o.articlesAdded ?? o.ArticlesAdded);
   if (jobActivity.feedTitle || jobActivity.pending > 0) {
     jobActivity.refreshing = true;
@@ -1221,7 +1225,7 @@ const collectionDisplayMode = computed(() =>
   ),
 );
 
-const filteredArticles = computed(() => {
+const articleView = computed(() => {
   // Backend search results replace collection list while a query is active.
   const usingBackendHits = searchArticles.value != null && searchQuery.value.trim().length > 0;
   let list = usingBackendHits ? [...searchArticles.value!] : [...articles.value];
@@ -1279,27 +1283,26 @@ const filteredArticles = computed(() => {
   }
   // Office mode: hide NSFW only on smart lists. Explicit feed:/folder: keeps content
   // visible (e.g. just-added sensitive feed after subscribe).
-  {
-    const col = collectionId.value;
-    const smart =
-      col === "unread" ||
-      col === "today" ||
-      col === "starred" ||
-      col === "kept" ||
-      col.startsWith("kept:") ||
-      col === "recent" ||
-      col === "all";
-    if (smart) {
-      list = filterArticlesByNsfwMode(list, feeds.value, settings.nsfwMode, folders.value);
-    }
-  }
-  // Settings → Filters: block keywords + optional duplicate titles.
-  list = applyArticleFilters(list, {
+  const col = collectionId.value;
+  const smart =
+    col === "unread" ||
+    col === "today" ||
+    col === "starred" ||
+    col === "kept" ||
+    col.startsWith("kept:") ||
+    col === "recent" ||
+    col === "all";
+  const nsfwFeeds =
+    smart && !settings.nsfwMode ? hiddenNsfwFeedIds(feeds.value, folders.value) : new Set<string>();
+  return applyArticleView(list, {
     hideDuplicateTitles: settings.hideDuplicateTitles,
     blockKeywords: settings.blockKeywords,
+    isHiddenFeed: nsfwFeeds.size > 0 ? (a) => nsfwFeeds.has(a.feedId) : undefined,
   });
-  return list;
 });
+
+const filteredArticles = computed(() => articleView.value.visible);
+const hiddenByFilters = computed((): HiddenByFilter<Article>[] => articleView.value.hidden);
 
 /** Folders visible in the sidebar (office mode hides isNsfw folders). */
 const sidebarFolders = computed(() =>
@@ -3960,6 +3963,7 @@ export function useRssStore() {
     collectionTitle,
     collectionDisplayMode,
     filteredArticles,
+    hiddenByFilters,
     selectedArticle,
     selectedFeed,
     selectCollection,

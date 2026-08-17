@@ -22,6 +22,7 @@ const { t } = useI18n();
 const {
   feeds,
   filteredArticles,
+  hiddenByFilters,
   collectionId,
   collectionTitle,
   selectedArticleId,
@@ -84,6 +85,20 @@ async function toggleDisplayMode() {
 }
 
 const listEl = ref<HTMLElement | null>(null);
+const showHidden = ref(false);
+
+const hiddenLabel = computed(() => {
+  const n = hiddenByFilters.value.length;
+  if (n <= 0) return "";
+  return n === 1 ? t("article.hiddenByRulesOne") : t("article.hiddenByRules", { n });
+});
+
+function hideReason(cause: string, keyword?: string): string {
+  if (cause === "keyword") return t("article.hideKeyword", { keyword: keyword || "—" });
+  if (cause === "duplicate") return t("article.hideDuplicate");
+  if (cause === "nsfw") return t("article.hideNsfw");
+  return cause;
+}
 
 watch(selectedArticleId, async (id) => {
   if (!id || !listEl.value) return;
@@ -100,6 +115,7 @@ watch(selectedBriefingId, async (id) => {
 });
 
 watch(collectionId, () => {
+  showHidden.value = false;
   if (listEl.value) listEl.value.scrollTop = 0;
 });
 
@@ -170,6 +186,15 @@ const emptyHint = computed(() => {
         </h2>
         <p class="text-[11px] text-muted-foreground tabular-nums">
           {{ articleCountLabel }}
+          <button
+            v-if="hiddenLabel"
+            type="button"
+            class="ml-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            :aria-expanded="showHidden"
+            @click="showHidden = !showHidden"
+          >
+            · {{ hiddenLabel }}
+          </button>
           <span v-if="searchBusy" class="ml-1">· {{ t("shell.searching") }}</span>
           <span
             v-else-if="searchQuery.trim() && searchSource === 'backend'"
@@ -237,6 +262,32 @@ const emptyHint = computed(() => {
         </Tooltip>
       </TooltipProvider>
     </header>
+
+    <div
+      v-if="showHidden && hiddenByFilters.length"
+      class="max-h-40 shrink-0 overflow-auto border-b border-border/60 bg-muted/25"
+    >
+      <p class="px-3 pt-2 text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+        {{ t("article.hiddenPanelTitle") }}
+      </p>
+      <ul class="pb-1.5">
+        <li
+          v-for="hit in hiddenByFilters"
+          :key="hit.article.id"
+        >
+          <button
+            type="button"
+            class="flex w-full items-baseline gap-2 px-3 py-1.5 text-left hover:bg-muted/50"
+            @click="selectArticle(hit.article.id)"
+          >
+            <span class="min-w-0 flex-1 truncate text-[12px]">{{ hit.article.title }}</span>
+            <span class="shrink-0 text-[11px] text-muted-foreground">
+              {{ hideReason(hit.cause, hit.keyword) }}
+            </span>
+          </button>
+        </li>
+      </ul>
+    </div>
 
     <div class="list-stack flex min-h-0 flex-1 flex-col overflow-hidden">
     <ArticleSearch />

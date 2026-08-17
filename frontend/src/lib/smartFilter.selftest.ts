@@ -28,6 +28,7 @@ assert(store.includes("setKeepFolder"), "store can move kept articles");
 assert(filters.includes("smartFilterEnabled"), "filters panel binds toggle");
 assert(filters.includes("smartFilterProfile"), "filters panel has profile");
 assert(filters.includes("createKeepFolder"), "filters panel can add keep folders");
+assert(filters.includes("activeTitle") || filters.includes("activeRules"), "filters panel shows live rules");
 assert(sidebar.includes("rootKeepFolders"), "sidebar keep tree");
 assert(sidebar.includes("onCreateKeepFolder"), "sidebar can create keep folder");
 assert(reader.includes("setKeepFolder"), "reader can setKeepFolder");

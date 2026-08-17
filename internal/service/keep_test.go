@@ -182,6 +182,10 @@ func TestKeepWorker_NotifyForceKeepsArticle(t *testing.T) {
 	if !got.IsKept || got.KeepSource != "filter" || got.KeepConfidence < 0.7 {
 		t.Fatalf("keep fields = isKept=%v src=%q conf=%v reason=%q", got.IsKept, got.KeepSource, got.KeepConfidence, got.KeepReason)
 	}
+	log := w.RecentDecisions(ctx)
+	if len(log) == 0 || log[0].ArticleID != art.ID || log[0].Outcome != "kept" || log[0].Gate != "ai" {
+		t.Fatalf("keep log = %+v", log)
+	}
 }
 
 func TestKeepWorker_BlockKeywordConsumed(t *testing.T) {
@@ -254,6 +258,10 @@ func TestKeepWorker_BlockKeywordOnly_NoChatter(t *testing.T) {
 	_, pending, _ := w.Snapshot()
 	if pending != 0 {
 		t.Fatalf("blocked id should be consumed, pending=%d", pending)
+	}
+	log := w.RecentDecisions(ctx)
+	if len(log) != 1 || log[0].ArticleID != blocked.ID || log[0].Gate != "keyword" || log[0].Reason != "ads" {
+		t.Fatalf("keyword skip log = %+v", log)
 	}
 }
 
@@ -460,6 +468,10 @@ func TestKeepWorker_KeepFalseDoesNotFile(t *testing.T) {
 	}
 	if kept {
 		t.Fatal("keep=false must not write article_keeps")
+	}
+	log := w.RecentDecisions(ctx)
+	if len(log) == 0 || log[0].ArticleID != art.ID || log[0].Outcome != "skipped" || log[0].Gate != "ai" || log[0].Reason != "ad" {
+		t.Fatalf("skip log = %+v", log)
 	}
 }
 

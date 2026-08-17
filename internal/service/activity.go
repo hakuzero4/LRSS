@@ -15,6 +15,8 @@ type JobActivity struct {
 	KeepState        string   `json:"keepState,omitempty"` // queued | judging
 	KeepPending      int      `json:"keepPending,omitempty"`
 	KeepLast         int      `json:"keepLast,omitempty"`
+	// KeepLog is the newest keep/skip decisions (capped) so the UI can show why.
+	KeepLog []KeepDecision `json:"keepLog,omitempty"`
 	// ArticlesAdded is a process-lifetime insert counter (not a per-tick delta).
 	ArticlesAdded int `json:"articlesAdded"`
 }

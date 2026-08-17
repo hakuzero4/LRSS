@@ -92,6 +92,7 @@ func (s *FeedService) JobActivity() service.JobActivity {
 	}
 	if s.keep != nil {
 		a.KeepState, a.KeepPending, a.KeepLast = s.keep.Snapshot()
+		a.KeepLog = s.keep.RecentDecisions(context.Background())
 	}
 	a.ArticlesAdded = s.lib.InsertedTotal()
 	return a

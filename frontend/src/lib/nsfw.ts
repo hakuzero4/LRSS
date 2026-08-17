@@ -46,6 +46,23 @@ export function shouldExcludeNsfwArticles(nsfwMode: boolean): boolean {
   return !nsfwMode;
 }
 
+/** Feed IDs hidden in office mode (feed flag or parent folder). */
+export function hiddenNsfwFeedIds<F extends NsfwFeed>(
+  feeds: readonly F[],
+  nsfwFolderIds?: ReadonlySet<string> | readonly NsfwFolder[],
+): Set<string> {
+  const folderNsfw = toNsfwFolderSet(nsfwFolderIds);
+  return new Set(
+    feeds
+      .filter((f) => {
+        if (f.isNsfw) return true;
+        const fid = f.folderId?.trim();
+        return !!(fid && folderNsfw.has(fid));
+      })
+      .map((f) => f.id),
+  );
+}
+
 /** Filter articles by feed NSFW flag or parent folder NSFW (client double-check). */
 export function filterArticlesByNsfwMode<
   T extends { feedId: string },
@@ -57,16 +74,7 @@ export function filterArticlesByNsfwMode<
   nsfwFolderIds?: ReadonlySet<string> | readonly NsfwFolder[],
 ): T[] {
   if (nsfwMode) return articles.slice();
-  const folderNsfw = toNsfwFolderSet(nsfwFolderIds);
-  const hiddenFeedIds = new Set(
-    feeds
-      .filter((f) => {
-        if (f.isNsfw) return true;
-        const fid = f.folderId?.trim();
-        return !!(fid && folderNsfw.has(fid));
-      })
-      .map((f) => f.id),
-  );
+  const hiddenFeedIds = hiddenNsfwFeedIds(feeds, nsfwFolderIds);
   if (hiddenFeedIds.size === 0) return articles.slice();
   return articles.filter((a) => !hiddenFeedIds.has(a.feedId));
 }

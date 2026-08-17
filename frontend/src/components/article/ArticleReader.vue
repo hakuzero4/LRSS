@@ -28,6 +28,7 @@ import {
 } from "@/lib/readingSettings";
 import { cn } from "@/lib/utils";
 import { keepFolderOptions } from "@/lib/keepFolders";
+import { formatKeepConfidence } from "@/lib/filterStatus";
 import { articleDisplayHTML } from "@/lib/youtubeEmbed";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +56,7 @@ const {
   selectedArticleId,
   selectedFeed,
   settings,
+  jobActivity,
   toggleStar,
   toggleKeep,
   setKeepFolder,
@@ -121,6 +123,30 @@ const currentKeepFolderLabel = computed(() => {
   const id = selectedArticle.value?.keepFolderId;
   if (!id) return t("keepFolder.root");
   return keepFolders.value.find((f) => f.id === id)?.name ?? t("keepFolder.root");
+});
+
+const keepExplainText = computed(() => {
+  const a = selectedArticle.value;
+  if (!a) return "";
+  if (a.kept) {
+    if (a.keepSource === "manual") return t("article.keepWhyManual");
+    const pct = formatKeepConfidence(a.keepConfidence);
+    const head = pct ? t("article.keepWhyAi", { pct }) : t("article.kept");
+    return a.keepReason ? `${head} · ${a.keepReason}` : head;
+  }
+  const d = jobActivity.keepLog.find((x) => x.articleId === a.id);
+  if (!d || d.outcome !== "skipped") return "";
+  let why = "";
+  if (d.gate === "keyword") why = t("article.hideKeyword", { keyword: d.reason || "—" });
+  else if (d.gate === "untitled") why = t("settings.filters.gateUntitled");
+  else if (d.gate === "nsfw") why = t("article.hideNsfw");
+  else if (d.gate === "confidence") {
+    const pct = formatKeepConfidence(d.confidence);
+    why = pct ? t("settings.filters.gateConfidence", { confidence: pct }) : t("settings.filters.gateAi");
+    if (d.reason) why = `${why} · ${d.reason}`;
+  } else if (d.gate === "unsure") why = t("settings.filters.gateUnsure");
+  else why = d.reason || t("settings.filters.gateAi");
+  return t("article.keepSkip", { why });
 });
 
 async function onSetKeepFolder(folderId: string) {
@@ -809,7 +835,7 @@ watch(
                 <span class="truncate">
                   {{
                     selectedArticle.kept
-                      ? selectedArticle.keepReason || t("article.kept")
+                      ? t("article.kept")
                       : t("article.keep")
                   }}
                 </span>
@@ -855,6 +881,12 @@ watch(
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            <p
+              v-if="keepExplainText"
+              class="mt-2 text-[12px] leading-relaxed text-muted-foreground"
+            >
+              {{ keepExplainText }}
+            </p>
 
             <!-- Summary deck: feed or AI (streams in place above body) -->
             <aside
