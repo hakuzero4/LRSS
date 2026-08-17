@@ -1,6 +1,6 @@
 # LRSS 数据库设计
 
-本地 SQLite 库，路径由 `internal/db.DefaultPath()` 决定（XDG data home，Windows 通常为 `%LOCALAPPDATA%/LRSS/data/lrss.db`）。
+本地 SQLite 库，路径由 `internal/db.DefaultPath()` 决定（XDG data home，Windows 安装版通常为 `%LOCALAPPDATA%/LRSS/data/lrss.db`）。`wails3 task dev` / `go test` 走独立目录 `%LOCALAPPDATA%/LRSS-dev/`，避免和安装版抢同一份库与 WebView2 用户数据。可用环境变量 `LRSS_PROFILE=prod|dev` 或 `LRSS_DATA_DIR` 覆盖。
 
 ## 表关系
 

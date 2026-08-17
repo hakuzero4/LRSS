@@ -1,11 +1,16 @@
 package appsvc
 
-import "lrss/internal/web"
+import (
+	"lrss/internal/model"
+	"lrss/internal/web"
+)
 
 // WebAIBridge adapts AIService to web.AI (no import cycle with handler package).
 type WebAIBridge struct {
 	S *AIService
 }
+
+var _ web.AI = WebAIBridge{}
 
 // NewWebAI returns a web.AI from the Wails AI service (nil-safe).
 func NewWebAI(s *AIService) web.AI {
@@ -80,4 +85,70 @@ func (b WebAIBridge) ClearTranslation(articleId string) error {
 
 func (b WebAIBridge) ApplySuggestedFolder(articleId, folderId string) error {
 	return b.S.ApplySuggestedFolder(articleId, folderId)
+}
+
+func mapChatSendResult(r ChatSendResult) web.ChatSendResult {
+	return web.ChatSendResult{
+		SessionID: r.SessionID,
+		MessageID: r.MessageID,
+		Markdown:  r.Markdown,
+		Model:     r.Model,
+		Citations: r.Citations,
+	}
+}
+
+func (b WebAIBridge) ChatHistory(articleId string) (web.ChatHistoryResult, error) {
+	r, err := b.S.ChatHistory(articleId)
+	if err != nil {
+		return web.ChatHistoryResult{}, err
+	}
+	if r.Messages == nil {
+		r.Messages = []model.ChatMessage{}
+	}
+	return web.ChatHistoryResult{
+		SessionID: r.SessionID,
+		ArticleID: r.ArticleID,
+		Messages:  r.Messages,
+	}, nil
+}
+
+func (b WebAIBridge) ChatClear(articleId string) error {
+	return b.S.ChatClear(articleId)
+}
+
+func (b WebAIBridge) ChatCancel(sessionId string) error {
+	return b.S.ChatCancel(sessionId)
+}
+
+func (b WebAIBridge) ChatSend(req web.ChatSendRequest) (web.ChatSendResult, error) {
+	r, err := b.S.ChatSend(ChatSendRequest{
+		SessionID:    req.SessionID,
+		Message:      req.Message,
+		ArticleID:    req.ArticleID,
+		AttachIDs:    req.AttachIDs,
+		CollectionID: req.CollectionID,
+		Selection:    req.Selection,
+		Locale:       req.Locale,
+		UseLibrary:   req.UseLibrary,
+	})
+	return mapChatSendResult(r), err
+}
+
+func (b WebAIBridge) SubscribeStream(fn func(web.AIStreamEvent)) func() {
+	if fn == nil {
+		return func() {}
+	}
+	return SubscribeLLMStream(func(ev LLMStreamEvent) {
+		fn(web.AIStreamEvent{
+			ArticleID: ev.ArticleID,
+			SessionID: ev.SessionID,
+			Feature:   ev.Feature,
+			Delta:     ev.Delta,
+			Text:      ev.Text,
+			Done:      ev.Done,
+			Error:     ev.Error,
+			Model:     ev.Model,
+			Cached:    ev.Cached,
+		})
+	})
 }

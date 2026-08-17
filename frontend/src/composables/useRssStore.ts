@@ -5,7 +5,7 @@ import { applyArticleFilters } from "@/lib/articleFilters";
 import { loadAppsvc, mapArticle, mapBriefing, mapFeed, mapFolder } from "@/lib/backend";
 import { applyAppLocale, resolveLocale } from "@/i18n";
 import { setLocalePersistHook } from "@/composables/useLocale";
-import { isWebMode, webMode } from "@/lib/webMode";
+import { getWebToken, isWebMode, webMode } from "@/lib/webMode";
 import { parseBilingualPairs, type BilingualPair } from "@/lib/bilingual";
 import {
   feedIdsInFolder,
@@ -328,28 +328,50 @@ const translateView = reactive<TranslateViewState>({
 
 let llmStreamUnsub: (() => void) | null = null;
 
+function applyLLMStreamEvent(d: any) {
+  if (!d) return;
+  const feature = String(d.feature ?? d.Feature ?? "");
+  const articleId = String(d.articleId ?? d.ArticleID ?? "");
+  if (feature === "chat") {
+    handleChatStream(d);
+    return;
+  }
+  if (!articleId) return;
+  if (feature === "summarize") {
+    handleSummarizeStream(d, articleId);
+    return;
+  }
+  if (feature === "translate") {
+    handleTranslateStream(d, articleId);
+  }
+}
+
+function connectWebLLMStream(): (() => void) | null {
+  if (typeof EventSource === "undefined") return null;
+  const token = getWebToken();
+  const q = token ? `?token=${encodeURIComponent(token)}` : "";
+  const es = new EventSource(`/api/ai/stream${q}`);
+  es.onmessage = (ev) => {
+    try {
+      applyLLMStreamEvent(JSON.parse(ev.data));
+    } catch {
+      /* ignore keepalive / malformed */
+    }
+  };
+  return () => es.close();
+}
+
 async function ensureLLMStreamListener() {
   if (llmStreamUnsub || typeof window === "undefined") return;
+  if (isWebMode()) {
+    const unsub = connectWebLLMStream();
+    if (unsub) llmStreamUnsub = unsub;
+    return;
+  }
   try {
     const { Events } = await import("@wailsio/runtime");
     llmStreamUnsub = Events.On("llm:stream", (ev: { data?: any }) => {
-      const d = ev?.data ?? ev;
-      if (!d) return;
-      const feature = String(d.feature ?? d.Feature ?? "");
-      const articleId = String(d.articleId ?? d.ArticleID ?? "");
-      if (feature === "chat") {
-        handleChatStream(d);
-        return;
-      }
-      if (!articleId) return;
-
-      if (feature === "summarize") {
-        handleSummarizeStream(d, articleId);
-        return;
-      }
-      if (feature === "translate") {
-        handleTranslateStream(d, articleId);
-      }
+      applyLLMStreamEvent(ev?.data ?? ev);
     });
   } catch {
     /* pure vite preview */
@@ -2085,6 +2107,8 @@ async function bootstrap() {
       void reloadBriefings();
     }
     startJobActivityPoll();
+    if (isWebMode()) void ensureLLMStreamListener();
+    void refreshLLMConfigured();
   }
 }
 

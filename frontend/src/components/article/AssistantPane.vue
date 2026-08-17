@@ -52,7 +52,6 @@ const {
   filteredArticles,
   articles,
   feeds,
-  webMode,
   closeAssistant,
   assistantSend,
   assistantClear,
@@ -80,7 +79,7 @@ const libraryChips = computed(() => {
 });
 
 const empty = computed(() => assistant.messages.length === 0);
-const composerDisabled = computed(() => webMode.value || !assistant.llmConfigured);
+const composerDisabled = computed(() => !assistant.llmConfigured);
 const status = computed(() => {
   if (assistant.busy) return "streaming" as const;
   if (assistant.error) return "error" as const;
@@ -342,7 +341,7 @@ provide("lrssOpenCite", (n: number) => openCite(n));
         </ConversationEmptyState>
 
         <Suggestions
-          v-if="empty && !assistant.busy && assistant.llmConfigured && !webMode"
+          v-if="empty && !assistant.busy && assistant.llmConfigured"
           class="max-w-full flex-wrap"
         >
           <template v-if="selectedArticle">

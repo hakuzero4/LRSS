@@ -1081,25 +1081,23 @@ const smartItems = computed(() => [
       </ContextMenu>
     </div>
 
-    <template v-if="!webMode">
-      <Separator class="opacity-70" />
-      <div class="space-y-0.5 p-2.5">
-        <button
-          type="button"
-          class="nav-row w-full"
-          :class="assistant.open && 'nav-row-active'"
-          :aria-pressed="assistant.open"
-          @click="toggleAssistant"
-        >
-          <Sparkles class="nav-icon" />
-          <span class="flex-1 text-left">{{ t("ai.assistantTitle") }}</span>
-        </button>
-        <button type="button" class="nav-row w-full" @click="openSettings">
-          <Settings class="nav-icon" />
-          <span class="flex-1 text-left">{{ t("nav.settings") }}</span>
-        </button>
-      </div>
-    </template>
+    <Separator class="opacity-70" />
+    <div class="space-y-0.5 p-2.5">
+      <button
+        type="button"
+        class="nav-row w-full"
+        :class="assistant.open && 'nav-row-active'"
+        :aria-pressed="assistant.open"
+        @click="toggleAssistant"
+      >
+        <Sparkles class="nav-icon" />
+        <span class="flex-1 text-left">{{ t("ai.assistantTitle") }}</span>
+      </button>
+      <button v-if="!webMode" type="button" class="nav-row w-full" @click="openSettings">
+        <Settings class="nav-icon" />
+        <span class="flex-1 text-left">{{ t("nav.settings") }}</span>
+      </button>
+    </div>
 
     <!-- Rename folder / feed -->
     <Dialog :open="renameOpen" @update:open="(v) => (renameOpen = v)">

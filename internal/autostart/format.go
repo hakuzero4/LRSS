@@ -5,11 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-)
 
-const (
-	appName     = "LRSS"
-	darwinLabel = "com.lrss.app"
+	"lrss/internal/appdata"
 )
 
 // quotePath wraps path in double quotes when it contains whitespace.
@@ -39,7 +36,7 @@ func desktopFile(exe string) string {
 	b.WriteString("[Desktop Entry]\n")
 	b.WriteString("Type=Application\n")
 	b.WriteString("Name=")
-	b.WriteString(appName)
+	b.WriteString(appdata.AppName())
 	b.WriteString("\n")
 	b.WriteString("Exec=")
 	b.WriteString(quotePath(exe))
@@ -56,7 +53,7 @@ func launchAgentPlist(exe string) string {
 	b.WriteString("<dict>\n")
 	b.WriteString("\t<key>Label</key>\n")
 	b.WriteString("\t<string>")
-	b.WriteString(darwinLabel)
+	b.WriteString(appdata.DarwinLabel())
 	b.WriteString("</string>\n")
 	b.WriteString("\t<key>ProgramArguments</key>\n")
 	b.WriteString("\t<array>\n")
@@ -72,11 +69,11 @@ func launchAgentPlist(exe string) string {
 }
 
 func desktopFilePath(home string) string {
-	return filepath.Join(home, ".config", "autostart", "lrss.desktop")
+	return filepath.Join(home, ".config", "autostart", appdata.DesktopFileName())
 }
 
 func launchAgentPath(home string) string {
-	return filepath.Join(home, "Library", "LaunchAgents", darwinLabel+".plist")
+	return filepath.Join(home, "Library", "LaunchAgents", appdata.DarwinLabel()+".plist")
 }
 
 func fileExists(path string) (bool, error) {

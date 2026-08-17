@@ -1,26 +1,20 @@
 package db
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 
-	"github.com/adrg/xdg"
+	"lrss/internal/appdata"
 )
 
-const (
-	appDirName  = "LRSS"
-	dbFileName  = "lrss.db"
-	dataSubPath = "data"
-)
+const dbFileName = "lrss.db"
 
 // DefaultPath returns the user-scoped SQLite path, e.g.
 // Windows: %LOCALAPPDATA%/LRSS/data/lrss.db
+// Dev builds (`wails3 task dev`, go test) use LRSS-dev instead.
 func DefaultPath() (string, error) {
-	// Prefer XDG data home (works cross-platform via adrg/xdg).
-	dir := filepath.Join(xdg.DataHome, appDirName, dataSubPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("create data dir: %w", err)
+	dir, err := appdata.DataDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(dir, dbFileName), nil
 }

@@ -28,6 +28,8 @@
   - `TranslateSelection`  
   - `IsLLMConfigured`
 
+Web 访问走同一套 `AIService`：`GET/POST /api/ai/chat`、`POST /api/ai/chat/clear|cancel`，流式用 `GET /api/ai/stream`（SSE，`llm:stream`）。
+
 ### 已上线 AI 功能（设置 → 模型 / AI 功能）
 
 | 功能 | 入口 | 说明 |
@@ -35,7 +37,7 @@
 | **摘要** | 阅读器工具栏「生成摘要」/ ✨ | 流式写入正文上方 deck |
 | **翻译** | 工具栏语言图标 | 原文+译文对照，原文不覆盖 |
 | **划词翻译** | 选中正文 | 短文本固定 prompt |
-| **阅读助手** | 侧栏「阅读助手」 | 全局多轮对话；+ 添加文章并可过滤/搜索订阅库；划词可「问这个」 |
+| **阅读助手** | 侧栏「阅读助手」（桌面 + Web 访问） | 全局多轮对话；+ 添加文章并可过滤/搜索订阅库；划词可「问这个」。Web 走 `/api/ai/chat` + `/api/ai/stream` |
 | **标签 / 文件夹建议** | 助手建议条 | 本地关键词 + LLM；可一键移文件夹 |
 | **广告 / 软文判断** | 助手建议条 | organic / promo / unclear |
 | **自动请求全文** | 设置 → AI 功能（可选） | 打开文章时判断 partial 并抓取 |

@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"lrss/internal/appdata"
 	"lrss/internal/appsvc"
 	"lrss/internal/db"
 	"lrss/internal/desktop"
@@ -39,7 +40,7 @@ func main() {
 		log.Fatalf("open database: %v", err)
 	}
 	defer database.Close()
-	log.Printf("database ready: %s", database.Path)
+	log.Printf("profile=%s database ready: %s", appdata.DirName(), database.Path)
 
 	vs := db.VectorInfo()
 	if vs.Loaded {
@@ -88,9 +89,9 @@ func main() {
 	briefingAPI := appsvc.NewBriefingService(briefingWorker)
 	syncAPI := appsvc.NewSync(store, library)
 	// Keep in sync with frontend/src/lib/appMeta.ts APP_VERSION and git tags.
-	updateAPI := appsvc.NewUpdate("0.1.10")
+	updateAPI := appsvc.NewUpdate("0.1.11")
 
-	// Optional browser access (same SPA; reader toolbar tools + star/read; no settings UI).
+	// Optional browser access (same SPA; reader tools + reading assistant + star/read; no settings UI).
 	webServer := web.New(web.APIDeps{
 		Library:  library,
 		Store:    store,
@@ -121,7 +122,7 @@ func main() {
 	go runStartupPurge(ctx, library, store)
 
 	appOpts := application.Options{
-		Name:        "LRSS",
+		Name:        appdata.AppName(),
 		Description: "Local-first RSS reader with optional vector search",
 		Services: []application.Service{
 			application.NewService(settingsAPI),
@@ -151,10 +152,16 @@ func main() {
 		)
 		log.Printf("hardware acceleration disabled (WebView2 --disable-gpu)")
 	}
+	if wvDir, err := appdata.WebViewUserDataDir(); err != nil {
+		log.Printf("webview user data dir: %v", err)
+	} else if wvDir != "" {
+		appOpts.Windows.WebviewUserDataPath = wvDir
+		log.Printf("webview user data: %s", wvDir)
+	}
 	app := application.New(appOpts)
 
 	winOpts := application.WebviewWindowOptions{
-		Title:  "LRSS",
+		Title:  appdata.DisplayName(),
 		Width:  1280,
 		Height: 800,
 		Mac: application.MacWindow{

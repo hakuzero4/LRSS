@@ -32,6 +32,8 @@ assert(zh.includes("webAuth:"), "zh-CN webAuth strings");
 assert(en.includes("webAuth:"), "en-US webAuth strings");
 assert(backend.includes("isWailsRuntime"), "desktop uses Wails bindings, not /api/meta");
 assert(http.includes("isWailsHost"), "http adapter skips wails.localhost");
+assert(http.includes("/api/ai/chat"), "http adapter exposes reading assistant");
+assert(!http.includes("desktop-only"), "chat is not desktop-only");
 assert(http.includes("content-type") || http.includes("contentType") || http.includes("includes(\"json\")"), "reject HTML as /api/meta");
 const viteCfg = readFileSync(join(root, "..", "vite.config.ts"), "utf8");
 assert(viteCfg.includes("lrss-api-not-web") || viteCfg.includes("/api/meta"), "vite does not SPA-fallback /api/meta");

@@ -83,6 +83,11 @@ func (s *Server) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/ai/ensure-full", s.handleAIEnsureFull)
 	mux.HandleFunc("POST /api/ai/clear-translation", s.handleAIClearTranslation)
 	mux.HandleFunc("POST /api/ai/apply-folder", s.handleAIApplyFolder)
+	mux.HandleFunc("GET /api/ai/chat", s.handleAIChatHistory)
+	mux.HandleFunc("POST /api/ai/chat", s.handleAIChatSend)
+	mux.HandleFunc("POST /api/ai/chat/clear", s.handleAIChatClear)
+	mux.HandleFunc("POST /api/ai/chat/cancel", s.handleAIChatCancel)
+	mux.HandleFunc("GET /api/ai/stream", s.handleAIStream)
 }
 
 func (s *Server) handleJobActivity(w http.ResponseWriter, r *http.Request) {

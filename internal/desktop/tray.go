@@ -4,6 +4,8 @@ import (
 	"log"
 	"sync/atomic"
 
+	"lrss/internal/appdata"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -32,8 +34,8 @@ func Setup(app *application.App, win *application.WebviewWindow, icon []byte, ho
 	if len(icon) > 0 {
 		systray.SetIcon(icon)
 	}
-	systray.SetLabel("LRSS")
-	systray.SetTooltip("LRSS")
+	systray.SetLabel(appdata.DisplayName())
+	systray.SetTooltip(appdata.DisplayName())
 
 	var currentMenu *application.Menu
 	rebuildMenu := func() {

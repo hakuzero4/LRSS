@@ -21,7 +21,7 @@ func isEnabled() (bool, error) {
 	}
 	defer k.Close()
 
-	val, _, err := k.GetStringValue(windowsRunValueName)
+	val, _, err := k.GetStringValue(runValueName())
 	if err == registry.ErrNotExist {
 		return false, nil
 	}
@@ -44,7 +44,7 @@ func setEnabled(enabled bool) error {
 		return fmt.Errorf("open registry Run key: %w", err)
 	}
 	defer k.Close()
-	if err := k.SetStringValue(windowsRunValueName, quotePath(exe)); err != nil {
+	if err := k.SetStringValue(runValueName(), quotePath(exe)); err != nil {
 		return fmt.Errorf("set registry Run value: %w", err)
 	}
 	return nil
@@ -59,7 +59,7 @@ func deleteRunValue() error {
 		return fmt.Errorf("open registry Run key: %w", err)
 	}
 	defer k.Close()
-	err = k.DeleteValue(windowsRunValueName)
+	err = k.DeleteValue(runValueName())
 	if err == nil || err == registry.ErrNotExist {
 		return nil
 	}

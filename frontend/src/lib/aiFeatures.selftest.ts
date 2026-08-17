@@ -23,6 +23,7 @@ const aisvc = readFileSync(
   join(root, "../bindings/lrss/internal/appsvc/aiservice.ts"),
   "utf8",
 );
+const http = readFileSync(join(root, "lib/httpAppsvc.ts"), "utf8");
 
 for (const key of [
   "aiSummarize",
@@ -98,5 +99,14 @@ for (const fn of [
   assert(aisvc.includes(`function ${fn}`), `binding ${fn}`);
 }
 assert(!aisvc.includes("function DailyDigest"), "binding must drop DailyDigest");
+
+assert(http.includes('postJSON("/api/ai/chat"'), "web ChatSend hits /api/ai/chat");
+assert(http.includes("/api/ai/chat/clear"), "web ChatClear");
+assert(http.includes("/api/ai/chat/cancel"), "web ChatCancel");
+assert(http.includes("/api/ai/stream") || store.includes("/api/ai/stream"), "web llm stream");
+assert(!http.includes("desktop-only"), "reading assistant is not desktop-only");
+assert(!panel.includes("webMode.value || !assistant.llmConfigured"), "web can compose");
+assert(sidebar.includes("toggleAssistant"), "sidebar assistant toggle stays visible");
+assert(sidebar.includes('v-if="!webMode"') && sidebar.includes("openSettings"), "settings stay desktop-only");
 
 console.log("aiFeatures.selftest: OK");

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"lrss/internal/appdata"
 )
 
 // Status is the Wails-facing launch-at-login snapshot.
@@ -18,10 +20,17 @@ type Status struct {
 
 // Test-only hooks. Production code must not call these.
 var (
-	windowsRunValueName = "LRSS"
+	windowsRunValueName = ""
 	userHomeDir         = os.UserHomeDir
 	resolveExe          = resolveExecutable
 )
+
+func runValueName() string {
+	if windowsRunValueName != "" {
+		return windowsRunValueName
+	}
+	return appdata.WindowsRunValue()
+}
 
 // Supported reports whether this OS has a launch-at-login implementation.
 func Supported() bool {

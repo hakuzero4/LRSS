@@ -10,6 +10,7 @@ import (
 )
 
 func TestUnixSetEnabled_TempHome(t *testing.T) {
+	t.Setenv("LRSS_PROFILE", "prod")
 	home := t.TempDir()
 	restore := SetHomeDirForTest(home)
 	t.Cleanup(restore)

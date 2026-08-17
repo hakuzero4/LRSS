@@ -110,7 +110,7 @@ Requires **Settings → Models** chat endpoint. Feature toggles under **AI featu
 | **Summarize** | Toolbar | Streaming summary deck above the body; optional auto-summarize on open |
 | **Translate** | Language icon | Original + translation side-by-side; original body never deleted |
 | **Selection translate** | Select text in body | Popup short-text translation |
-| **Reading assistant** | Sidebar · 阅读助手 | One global multi-turn chat. Attach the open article, filter/search the library, and click `[n]` to jump to a source |
+| **Reading assistant** | Sidebar · 阅读助手 | One global multi-turn chat on desktop **and web access**. Attach the open article, filter/search the library, and click `[n]` to jump to a source |
 | **Folder / tag suggest** | Assistant chips | Local keywords + LLM; one-click move feed to folder |
 | **Promo / soft-ad classify** | Assistant chips | Manual organic / promo / unclear |
 | **Auto full-fetch** | AI features toggle | Opens article → conservative partial check → fetch page |
@@ -138,7 +138,7 @@ Enable in **Settings → Advanced → Web access**.
 | **Same SPA** | Browser opens the same reading UI as desktop |
 | **Bind** | `localhost` (127.0.0.1) or **LAN** (0.0.0.0) |
 | **Port / token** | Default port `18765`; Bearer or `?token=`; LAN empty token auto-generated |
-| **Allowed** | Browse, star, mark read, mark-all-read, search, reader tools (if enabled on desktop) |
+| **Allowed** | Browse, star, mark read, mark-all-read, search, reader tools (if enabled on desktop), **reading assistant** (same LLM as desktop) |
 | **Blocked** | Settings UI, feed/folder CRUD, refresh, OPML, sync management |
 | **Invalid token** | Full-page block only — no empty library shell |
 | **Locale** | Follows desktop UIPrefs language |
@@ -166,7 +166,7 @@ Enable in **Settings → Advanced → Web access**.
 - **Local-first**: library in SQLite on disk (no cloud account required)
 - **API keys** stored only on-device (masked in UI)
 - **Outbound HTTP** via fingerprint-friendly client (`enetx/surf` / `internal/httpx`)
-- Data path: XDG data home; on Windows typically `%LOCALAPPDATA%/LRSS/data/lrss.db`
+- Data path: XDG data home; on Windows the installed app uses `%LOCALAPPDATA%/LRSS/data/lrss.db`. `wails3 task dev` uses `%LOCALAPPDATA%/LRSS-dev/` so it can run next to the installed app (override with `LRSS_PROFILE` / `LRSS_DATA_DIR`)
 
 ---
 
@@ -237,6 +237,7 @@ cd frontend && npm install && cd ..
 wails3 generate bindings
 
 # Dev: native window + Vite HMR
+# Uses a separate LRSS-dev data folder so it can run next to an installed LRSS.
 wails3 task dev
 ```
 

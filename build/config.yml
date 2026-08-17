@@ -11,7 +11,7 @@ info:
   description: "Wails v3 + Vue 3 + shadcn-vue desktop app template" # The application description
   copyright: "(c) 2026, LRSS" # Copyright text
   comments: "Desktop template with Vue and shadcn-vue" # Comments
-  version: "0.1.10" # The application version (keep in sync with frontend/src/lib/appMeta.ts)
+  version: "0.1.11" # The application version (keep in sync with frontend/src/lib/appMeta.ts)
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension
   #                               # If not set and Assets.car exists, defaults to "appicon"

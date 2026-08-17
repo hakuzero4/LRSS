@@ -34,6 +34,7 @@ func TestQuotePath(t *testing.T) {
 }
 
 func TestDesktopFile(t *testing.T) {
+	t.Setenv("LRSS_PROFILE", "prod")
 	tests := []struct {
 		name string
 		exe  string
@@ -76,6 +77,7 @@ func TestDesktopFile(t *testing.T) {
 }
 
 func TestLaunchAgentPlist(t *testing.T) {
+	t.Setenv("LRSS_PROFILE", "prod")
 	tests := []struct {
 		name string
 		exe  string
@@ -118,6 +120,7 @@ func TestLaunchAgentPlist(t *testing.T) {
 }
 
 func TestAutostartPaths(t *testing.T) {
+	t.Setenv("LRSS_PROFILE", "prod")
 	home := filepath.Join("home", "me")
 	gotDesk := desktopFilePath(home)
 	wantDesk := filepath.Join(home, ".config", "autostart", "lrss.desktop")
@@ -128,6 +131,25 @@ func TestAutostartPaths(t *testing.T) {
 	wantAgent := filepath.Join(home, "Library", "LaunchAgents", "com.lrss.app.plist")
 	if gotAgent != wantAgent {
 		t.Fatalf("agent path = %q want %q", gotAgent, wantAgent)
+	}
+}
+
+func TestAutostartPaths_DevProfile(t *testing.T) {
+	t.Setenv("LRSS_PROFILE", "dev")
+	home := filepath.Join("home", "me")
+	gotDesk := desktopFilePath(home)
+	wantDesk := filepath.Join(home, ".config", "autostart", "lrss-dev.desktop")
+	if gotDesk != wantDesk {
+		t.Fatalf("desktop path = %q want %q", gotDesk, wantDesk)
+	}
+	gotAgent := launchAgentPath(home)
+	wantAgent := filepath.Join(home, "Library", "LaunchAgents", "com.lrss.app.dev.plist")
+	if gotAgent != wantAgent {
+		t.Fatalf("agent path = %q want %q", gotAgent, wantAgent)
+	}
+	body := desktopFile("/usr/bin/lrss")
+	if !strings.Contains(body, "Name=LRSS Dev") {
+		t.Fatalf("dev desktop name:\n%s", body)
 	}
 }
 

@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"lrss/internal/db"
@@ -131,6 +132,9 @@ func TestDefaultPath(t *testing.T) {
 	}
 	if path == "" {
 		t.Fatal("empty path")
+	}
+	if !strings.HasSuffix(path, "lrss.db") {
+		t.Fatalf("path = %q", path)
 	}
 	t.Logf("default db path: %s", path)
 }
