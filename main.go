@@ -20,6 +20,7 @@ import (
 	"lrss/internal/settings"
 	"lrss/internal/web"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
@@ -129,6 +130,7 @@ func main() {
 	// Delayed retention purge so startup is not contending on SQLite.
 	go runStartupPurge(ctx, library, store)
 
+	var window *application.WebviewWindow
 	appOpts := application.Options{
 		Name:        appdata.AppName(),
 		Description: "Local-first RSS reader with optional vector search",
@@ -149,6 +151,19 @@ func main() {
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
+		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: uuid.NewSHA1(uuid.NameSpaceDNS, []byte("hakuzero4/LRSS")).String(),
+			OnSecondInstanceLaunch: func(_ application.SecondInstanceData) {
+				if window == nil {
+						return
+				}
+				if window.IsMinimised() {
+					window.UnMinimise()
+				}
+				window.Show()
+				window.Focus()
+			},
 		},
 	}
 	// Hardware acceleration off → disable GPU compositing (takes effect this launch).
@@ -184,7 +199,7 @@ func main() {
 	if desktop.ApplyMica(&winOpts, uiPrefs.HardwareAcceleration, uiPrefs.MicaBackdrop, uiPrefs.Theme) {
 		log.Printf("windows mica backdrop enabled")
 	}
-	window := app.Window.NewWithOptions(winOpts)
+	window = app.Window.NewWithOptions(winOpts)
 	settingsAPI.SetOnUIPrefs(func(prefs settings.UIPrefs) {
 		desktop.ApplyWindowMicaFrom(window, prefs.MicaBackdrop && prefs.HardwareAcceleration)
 	})
