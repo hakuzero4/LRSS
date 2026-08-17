@@ -24,6 +24,8 @@ type APIDeps struct {
 	AI AI
 	// Briefing is optional (desktop worker). Web is read + star/read only.
 	Briefing *service.BriefingWorker
+	// Keep is optional (desktop smart-filter worker).
+	Keep *service.KeepWorker
 }
 
 func (d APIDeps) excludeNsfw(ctx context.Context) bool {
@@ -38,8 +40,12 @@ func (d APIDeps) excludeNsfw(ctx context.Context) bool {
 }
 
 func isSmartCollection(collection string) bool {
-	switch strings.TrimSpace(collection) {
-	case "", "unread", "today", "starred", "all", "recent":
+	c := strings.TrimSpace(collection)
+	if strings.HasPrefix(c, "kept:") {
+		return true
+	}
+	switch c {
+	case "", "unread", "today", "starred", "all", "recent", "kept":
 		return true
 	default:
 		return false
@@ -59,6 +65,13 @@ func (s *Server) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/search", s.handleSearch)
 	mux.HandleFunc("POST /api/articles/{id}/read", s.handleSetRead)
 	mux.HandleFunc("POST /api/articles/{id}/star", s.handleSetStarred)
+	mux.HandleFunc("POST /api/articles/{id}/keep", s.handleSetKeep)
+	mux.HandleFunc("POST /api/articles/{id}/keep-folder", s.handleSetKeepFolder)
+	mux.HandleFunc("POST /api/articles/scan-keep", s.handleScanKeep)
+	mux.HandleFunc("GET /api/keep-folders", s.handleListKeepFolders)
+	mux.HandleFunc("POST /api/keep-folders", s.handleCreateKeepFolder)
+	mux.HandleFunc("POST /api/keep-folders/{id}/rename", s.handleRenameKeepFolder)
+	mux.HandleFunc("POST /api/keep-folders/{id}/delete", s.handleDeleteKeepFolder)
 	mux.HandleFunc("POST /api/articles/{id}/opened", s.handleRecordOpened)
 	mux.HandleFunc("POST /api/articles/mark-all-read", s.handleMarkAllRead)
 	mux.HandleFunc("GET /api/briefings", s.handleListBriefings)
@@ -118,6 +131,9 @@ func (s *Server) handleJobActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.deps.Briefing != nil {
 		a.BriefingState, a.BriefingPending, a.BriefingArticles = s.deps.Briefing.Snapshot()
+	}
+	if s.deps.Keep != nil {
+		a.KeepState, a.KeepPending, a.KeepLast = s.deps.Keep.Snapshot()
 	}
 	if s.deps.Library != nil {
 		a.ArticlesAdded = s.deps.Library.InsertedTotal()
@@ -432,6 +448,135 @@ func (s *Server) handleSetRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleSetKeep(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Library == nil || s.deps.Library.Articles == nil {
+		writeError(w, http.StatusServiceUnavailable, "library unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	var body struct {
+		Keep bool `json:"keep"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var err error
+	if body.Keep {
+		err = s.deps.Library.Articles.Keep(r.Context(), id, "", "manual", 1, nil)
+	} else {
+		err = s.deps.Library.Articles.Unkeep(r.Context(), id)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleSetKeepFolder(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Library == nil || s.deps.Library.Articles == nil {
+		writeError(w, http.StatusServiceUnavailable, "library unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	var body struct {
+		FolderID string `json:"folderId"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.deps.Library.Articles.SetKeepFolder(r.Context(), id, body.FolderID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleListKeepFolders(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Library == nil || s.deps.Library.KeepFolders == nil {
+		writeJSON(w, http.StatusOK, []model.KeepFolder{})
+		return
+	}
+	list, err := s.deps.Library.KeepFolders.List(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if list == nil {
+		list = []model.KeepFolder{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) handleCreateKeepFolder(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Library == nil || s.deps.Library.KeepFolders == nil {
+		writeError(w, http.StatusServiceUnavailable, "keep folders unavailable")
+		return
+	}
+	var body struct {
+		Name     string `json:"name"`
+		ParentID string `json:"parentId"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	f, err := s.deps.Library.KeepFolders.Create(r.Context(), body.Name, body.ParentID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
+}
+
+func (s *Server) handleRenameKeepFolder(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Library == nil || s.deps.Library.KeepFolders == nil {
+		writeError(w, http.StatusServiceUnavailable, "keep folders unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.deps.Library.KeepFolders.Rename(r.Context(), id, body.Name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleDeleteKeepFolder(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Library == nil || s.deps.Library.KeepFolders == nil {
+		writeError(w, http.StatusServiceUnavailable, "keep folders unavailable")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.deps.Library.KeepFolders.Delete(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleScanKeep(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Keep == nil {
+		writeError(w, http.StatusServiceUnavailable, "smart filter unavailable")
+		return
+	}
+	n, err := s.deps.Keep.EnqueueUnread(r.Context(), 0)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"queued": n})
 }
 
 func (s *Server) handleSetStarred(w http.ResponseWriter, r *http.Request) {

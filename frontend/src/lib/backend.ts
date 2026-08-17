@@ -9,6 +9,7 @@ import type {
   BriefingCite,
   BriefingPayload,
   BriefingTheme,
+  KeepFolder,
 } from "@/types/rss";
 import {
   captureWebTokenFromURL,
@@ -139,6 +140,25 @@ export function mapArticle(a: any) {
     starred: !!(a.isStarred ?? a.starred),
     imageUrl: a.imageUrl ?? a.ImageURL ?? undefined,
     fullContentFetched: !!(a.fullContentFetched ?? a.FullContentFetched),
+    kept: !!(a.isKept ?? a.kept ?? a.IsKept),
+    keepReason: (() => {
+      const r = a.keepReason ?? a.KeepReason ?? "";
+      return r ? String(r) : undefined;
+    })(),
+    keepConfidence: (() => {
+      const n = a.keepConfidence ?? a.KeepConfidence;
+      return typeof n === "number" && Number.isFinite(n) ? n : undefined;
+    })(),
+    keepSource: (() => {
+      const s = a.keepSource ?? a.KeepSource ?? "";
+      return s ? String(s) : undefined;
+    })(),
+    keepFolderId: (() => {
+      const v = a.keepFolderId ?? a.KeepFolderID ?? a.KeepFolderId;
+      if (v == null) return undefined;
+      const s = String(v).trim();
+      return s || undefined;
+    })(),
   };
 }
 
@@ -323,6 +343,53 @@ export function mapBriefing(raw: any): Briefing {
       sourceIds: payload.sourceIds,
     },
   };
+}
+
+export function mapKeepFolder(f: any): KeepFolder {
+  if (!f || typeof f !== "object") return { id: "", name: "" };
+  const parentRaw = f.parentId ?? f.ParentID ?? f.ParentId ?? "";
+  const parentId = parentRaw != null ? String(parentRaw).trim() : "";
+  const hintRaw = f.hint ?? f.Hint ?? "";
+  const sortRaw = f.sortOrder ?? f.SortOrder;
+  const unreadRaw = f.unreadCount ?? f.UnreadCount;
+  let sortOrder: number | undefined;
+  if (typeof sortRaw === "number" && Number.isFinite(sortRaw)) {
+    sortOrder = Math.floor(sortRaw);
+  } else if (typeof sortRaw === "string" && sortRaw.trim() !== "" && Number.isFinite(Number(sortRaw))) {
+    sortOrder = Math.floor(Number(sortRaw));
+  }
+  let unreadCount: number | undefined;
+  if (typeof unreadRaw === "number" && Number.isFinite(unreadRaw)) {
+    unreadCount = Math.max(0, Math.floor(unreadRaw));
+  } else if (
+    typeof unreadRaw === "string" &&
+    unreadRaw.trim() !== "" &&
+    Number.isFinite(Number(unreadRaw))
+  ) {
+    unreadCount = Math.max(0, Math.floor(Number(unreadRaw)));
+  }
+  return {
+    id: String(f.id ?? f.ID ?? f.Id ?? ""),
+    name: String(f.name ?? f.Name ?? ""),
+    parentId: parentId || undefined,
+    sortOrder,
+    hint: hintRaw ? String(hintRaw).trim() || undefined : undefined,
+    unreadCount,
+  };
+}
+
+export function mapKeepFolders(raw: unknown): KeepFolder[] {
+  let rows: unknown[] = [];
+  if (Array.isArray(raw)) {
+    rows = raw;
+  } else if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    const v = o.items ?? o.Items ?? o.folders ?? o.Folders ?? o.list ?? o.List;
+    if (Array.isArray(v)) rows = v;
+  }
+  return rows
+    .map((row) => mapKeepFolder(row))
+    .filter((f) => !!f.id);
 }
 
 export function mapFolder(f: any, feeds: { id: string; folderId?: string }[]) {

@@ -38,6 +38,12 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 	if cfg.SmartBriefing {
 		t.Fatal("SmartBriefing should default false")
 	}
+	if cfg.SmartFilterEnabled {
+		t.Fatal("SmartFilterEnabled should default false")
+	}
+	if cfg.SmartFilterStrictness != "standard" {
+		t.Fatalf("SmartFilterStrictness = %q want standard", cfg.SmartFilterStrictness)
+	}
 	if !cfg.EnableKeyboardShortcuts || !cfg.MarkAsReadOnOpen {
 		t.Fatal("expected keyboard shortcuts and markAsReadOnOpen true")
 	}
@@ -73,6 +79,7 @@ func TestUIPrefs_DefaultsAndRoundTrip(t *testing.T) {
 		HardwareAcceleration:    false,
 		ClearCacheOnQuit:        true,
 		DeveloperMode:           true,
+		SmartFilterStrictness:   "standard",
 	}
 	if err := store.SaveUIPrefs(ctx, want); err != nil {
 		t.Fatal(err)
@@ -149,6 +156,28 @@ func TestUIPrefs_SmartDisplayModes(t *testing.T) {
 	}
 	if cfg.SmartDisplayModes.Today != "" {
 		t.Fatalf("today list should store empty, got %q", cfg.SmartDisplayModes.Today)
+	}
+}
+
+func TestUIPrefs_NormalizeSmartFilterStrictness(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"", "standard"},
+		{"standard", "standard"},
+		{"STANDARD", "standard"},
+		{"unknown", "standard"},
+		{"loose", "loose"},
+		{"宽松", "loose"},
+		{"strict", "strict"},
+		{"严格", "strict"},
+		{"  Strict  ", "strict"},
+	}
+	for _, tt := range tests {
+		got := (settings.UIPrefs{SmartFilterStrictness: tt.in}).Normalize().SmartFilterStrictness
+		if got != tt.want {
+			t.Fatalf("strictness %q → %q want %q", tt.in, got, tt.want)
+		}
 	}
 }
 

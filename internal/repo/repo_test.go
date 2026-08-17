@@ -823,3 +823,105 @@ func TestRecordOpened_RecentCollection(t *testing.T) {
 		t.Fatalf("CountSmart.Recent=%d want 10", counts.Recent)
 	}
 }
+
+func TestArticleKeep_ManualFilterListUnkeepCount(t *testing.T) {
+	r, _ := openTestRepos(t, false)
+	ctx := context.Background()
+
+	feed := &model.Feed{Title: "F", FeedURL: "https://ex.com/keep"}
+	if err := r.Feeds.Insert(ctx, feed); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	body := "keep body"
+	if _, err := r.Articles.UpsertFromParsed(ctx, feed.ID, []repo.ParsedItem{
+		{GUID: "k1", URL: "https://ex.com/k1", Title: "Keep Me", ContentText: &body, PublishedAt: &now},
+		{GUID: "k2", URL: "https://ex.com/k2", Title: "Skip Me", ContentText: &body, PublishedAt: &now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := r.Articles.List(ctx, "all", repo.ListOpts{Limit: 10})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("list all: %v n=%d", err, len(all))
+	}
+	var keepID, skipID string
+	for _, a := range all {
+		if a.Title == "Keep Me" {
+			keepID = a.ID
+		} else {
+			skipID = a.ID
+		}
+	}
+
+	if err := r.Articles.Keep(ctx, keepID, "user pick", "manual", 1, []string{"news"}); err != nil {
+		t.Fatalf("Keep: %v", err)
+	}
+	// filter must not overwrite a manual row
+	if err := r.Articles.Keep(ctx, keepID, "llm reason", "filter", 0.4, []string{"x"}); err != nil {
+		t.Fatalf("Keep filter: %v", err)
+	}
+	got, err := r.Articles.Get(ctx, keepID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsKept || got.KeepReason != "user pick" || got.KeepSource != "manual" || got.KeepConfidence != 1 {
+		t.Fatalf("manual row overwritten: %+v", got)
+	}
+	kept, err := r.Articles.IsKept(ctx, keepID)
+	if err != nil || !kept {
+		t.Fatalf("IsKept keepID: %v %v", kept, err)
+	}
+	kept, err = r.Articles.IsKept(ctx, skipID)
+	if err != nil || kept {
+		t.Fatalf("IsKept skipID: %v %v", kept, err)
+	}
+
+	list, err := r.Articles.List(ctx, "kept", repo.ListOpts{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != keepID || !list[0].IsKept {
+		t.Fatalf("List kept = %+v", list)
+	}
+
+	counts, err := r.Articles.CountSmart(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.Kept != 1 {
+		t.Fatalf("CountSmart.Kept=%d want 1", counts.Kept)
+	}
+
+	if err := r.Articles.SetRead(ctx, keepID, true); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = r.Articles.CountSmart(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.Kept != 0 {
+		t.Fatalf("read kept badge = %d want 0", counts.Kept)
+	}
+
+	if err := r.Articles.Unkeep(ctx, keepID); err != nil {
+		t.Fatal(err)
+	}
+	list, err = r.Articles.List(ctx, "kept", repo.ListOpts{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("after Unkeep list=%+v", list)
+	}
+	got, err = r.Articles.Get(ctx, keepID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsKept {
+		t.Fatal("Get still IsKept after Unkeep")
+	}
+
+	if err := r.Articles.Keep(ctx, "missing-article", "x", "manual", 1, nil); err == nil {
+		t.Fatal("Keep missing article should fail FK")
+	}
+}

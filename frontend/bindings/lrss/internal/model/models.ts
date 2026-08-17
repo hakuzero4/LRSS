@@ -32,6 +32,15 @@ export interface Article {
      * Used to skip auto “partial body” detection on subsequent opens.
      */
     "fullContentFetched": boolean;
+
+    /**
+     * Keep fields are zero when the article is not in article_keeps.
+     */
+    "isKept": boolean;
+    "keepReason"?: string;
+    "keepConfidence"?: number;
+    "keepSource"?: string;
+    "keepFolderId"?: string;
 }
 
 /**
@@ -179,6 +188,20 @@ export interface Folder {
      * (or a feed inside it): "list" (default) or "cards" (image grid).
      */
     "displayMode": string;
+    "createdAt": string;
+    "updatedAt": string;
+}
+
+/**
+ * KeepFolder is a user folder under the virtual 精选 root (max depth 2).
+ */
+export interface KeepFolder {
+    "id": string;
+    "name": string;
+    "parentId"?: string | null;
+    "sortOrder": number;
+    "hint"?: string;
+    "unreadCount": number;
     "createdAt": string;
     "updatedAt": string;
 }

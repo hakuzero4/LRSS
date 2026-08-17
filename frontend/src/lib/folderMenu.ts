@@ -5,7 +5,14 @@
 
 import type { CollectionId, FolderDisplayMode, SmartDisplayModes, StartupCollectionId } from "@/types/rss";
 
-export const SMART_DISPLAY_IDS = ["unread", "today", "starred", "recent", "all"] as const satisfies readonly StartupCollectionId[];
+export const SMART_DISPLAY_IDS = [
+  "unread",
+  "today",
+  "starred",
+  "recent",
+  "all",
+  "kept",
+] as const satisfies readonly StartupCollectionId[];
 
 export function isSmartDisplayCollection(id: string): id is StartupCollectionId {
   return (SMART_DISPLAY_IDS as readonly string[]).includes(id);
@@ -59,6 +66,9 @@ export function resolveCollectionDisplayMode(
   smartModes?: Partial<Record<string, string>> | null,
 ): FolderDisplayMode {
   const col = (collectionId ?? "").trim();
+  if (col === "kept" || col.startsWith("kept:")) {
+    return normalizeFolderDisplayMode(smartModes?.kept);
+  }
   if (isSmartDisplayCollection(col)) {
     return normalizeFolderDisplayMode(smartModes?.[col]);
   }
@@ -96,6 +106,7 @@ export function canToggleDisplayMode(
   feeds: ReadonlyArray<{ id: string; folderId?: string | null }>,
 ): boolean {
   const col = (collectionId ?? "").trim();
+  if (col === "kept" || col.startsWith("kept:")) return true;
   if (isSmartDisplayCollection(col)) return true;
   return folderIdForDisplayMode(col, feeds) !== "";
 }

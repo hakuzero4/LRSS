@@ -55,7 +55,7 @@ type UIPrefs struct {
 	MicaBackdrop bool `json:"micaBackdrop"`
 	// LiquidGlass: WWDC 2025 refractive chrome (CSS + SVG displacement).
 	LiquidGlass bool   `json:"liquidGlass"`
-	FontSize     string `json:"fontSize"` // sm|md|lg
+	FontSize    string `json:"fontSize"` // sm|md|lg
 	// ReaderFontFamily is a CSS font family name for article body/title.
 	// Empty or "system" uses the app default sans stack.
 	ReaderFontFamily   string `json:"readerFontFamily"`
@@ -81,6 +81,12 @@ type UIPrefs struct {
 	AutoSummarize bool `json:"autoSummarize"`
 	// SmartBriefing: after feed refresh, generate an AI digest of new articles.
 	SmartBriefing bool `json:"smartBriefing"`
+	// SmartFilterEnabled: after refresh, LLM-judge unread articles into 精选.
+	SmartFilterEnabled bool `json:"smartFilterEnabled"`
+	// SmartFilterProfile is free-text taste / interest guidance for the judge.
+	SmartFilterProfile string `json:"smartFilterProfile"`
+	// SmartFilterStrictness is loose|standard|strict (default standard).
+	SmartFilterStrictness string `json:"smartFilterStrictness"`
 	// SelectTranslate: when true, selecting text in the reader shows AI 划词翻译.
 	SelectTranslate bool `json:"selectTranslate"`
 	// AutoFetchFull: when true, opening an article asks the LLM if the body is
@@ -106,6 +112,7 @@ type SmartDisplayModes struct {
 	Starred string `json:"starred,omitempty"`
 	Recent  string `json:"recent,omitempty"`
 	All     string `json:"all,omitempty"`
+	Kept    string `json:"kept,omitempty"`
 }
 
 // DefaultUIPrefs matches frontend default settings in useRssStore.
@@ -140,6 +147,9 @@ func DefaultUIPrefs() UIPrefs {
 		NsfwMode:                 true, // show all until user enables office hide
 		AutoSummarize:            false,
 		SmartBriefing:            false,
+		SmartFilterEnabled:       false,
+		SmartFilterProfile:       "",
+		SmartFilterStrictness:    "standard",
 		SelectTranslate:          true,  // 划词翻译 on by default when LLM is configured
 		AutoFetchFull:            false, // network + LLM; opt-in
 		TranslateReplaceOriginal: false, // keep original body; bilingual overlay only
@@ -220,7 +230,21 @@ func (c UIPrefs) Normalize() UIPrefs {
 	c.SmartDisplayModes.Starred = normalizeSmartDisplay(c.SmartDisplayModes.Starred)
 	c.SmartDisplayModes.Recent = normalizeSmartDisplay(c.SmartDisplayModes.Recent)
 	c.SmartDisplayModes.All = normalizeSmartDisplay(c.SmartDisplayModes.All)
+	c.SmartDisplayModes.Kept = normalizeSmartDisplay(c.SmartDisplayModes.Kept)
+	c.SmartFilterStrictness = normalizeSmartFilterStrictness(c.SmartFilterStrictness)
+	c.SmartFilterProfile = strings.TrimSpace(c.SmartFilterProfile)
 	return c
+}
+
+func normalizeSmartFilterStrictness(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "loose", "宽松":
+		return "loose"
+	case "strict", "严格":
+		return "strict"
+	default:
+		return "standard"
+	}
 }
 
 func normalizeSmartDisplay(raw string) string {

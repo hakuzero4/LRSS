@@ -7,6 +7,8 @@
 ```text
 folders 1──* feeds 1──* articles 1──0..1 article_embeddings
                               │
+                              ├── article_keeps (精选，多对一反向)
+                              │        └── keep_folders (文章树，与订阅 folders 无关)
                               └── articles_fts (FTS5，应用层同步)
 settings (KV JSON)
 jobs (后台任务)
@@ -20,6 +22,8 @@ schema_migrations
 | `folders` | 侧栏文件夹（可嵌套 parent_id） |
 | `feeds` | 订阅源；`feed_url` 唯一；`refresh_interval_minutes`（0=全局默认）；`title_user_set` 锁定改名 |
 | `articles` | 文章；`(feed_id, guid)` 去重 |
+| `article_keeps` | 智能精选 / 手动加入的文章（不搬走订阅）；`folder_id` 空=精选根 |
+| `keep_folders` | 精选文章树的用户子夹（与订阅 `folders` 无关）；删夹后文章回根 |
 | `article_embeddings` | FLOAT32 向量 BLOB；`status`=pending/ready/error/skipped |
 | `articles_fts` | FTS5 全文（title/summary/content_text） |
 | `settings` | 应用设置 JSON |

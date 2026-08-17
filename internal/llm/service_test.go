@@ -2,10 +2,10 @@ package llm_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -123,8 +123,8 @@ func TestService_TranslateAskClassify(t *testing.T) {
 	store, database := testStore(t)
 	stub := &stubChat{model: "test-model", content: "**Verdict:** organic\n\nAll good."}
 	svc := &llm.Service{
-		Store: store,
-		Cache: &llm.Cache{DB: database.SQL},
+		Store:      store,
+		Cache:      &llm.Cache{DB: database.SQL},
 		NewChatter: func(cfg settings.LLMConfig) (llm.Chatter, error) { return stub, nil },
 	}
 	a := llm.ArticleInput{ID: "a2", Title: "Hello", Body: "World content for AI."}
@@ -341,7 +341,7 @@ func TestService_SelectTranslate(t *testing.T) {
 func TestPromptsNonEmpty(t *testing.T) {
 	for _, f := range []string{
 		llm.FeatureSummarize, llm.FeatureTranslate, llm.FeatureSelectTranslate, llm.FeatureAsk,
-		llm.FeatureSuggest, llm.FeatureClassify,
+		llm.FeatureSuggest, llm.FeatureClassify, llm.FeatureKeep,
 	} {
 		if strings.TrimSpace(llm.SystemPromptFor(f, "zh-CN")) == "" {
 			t.Fatalf("empty system for %s", f)

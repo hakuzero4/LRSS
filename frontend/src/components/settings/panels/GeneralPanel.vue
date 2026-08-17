@@ -185,6 +185,7 @@ function patchBool(
               <SelectItem value="unread">{{ t("nav.unread") }}</SelectItem>
               <SelectItem value="today">{{ t("nav.today") }}</SelectItem>
               <SelectItem value="starred">{{ t("nav.starred") }}</SelectItem>
+              <SelectItem value="kept">{{ t("nav.kept") }}</SelectItem>
               <SelectItem value="all">{{ t("nav.all") }}</SelectItem>
               <SelectItem value="recent">{{ t("nav.recent") }}</SelectItem>
             </SelectContent>

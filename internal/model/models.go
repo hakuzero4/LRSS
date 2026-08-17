@@ -84,6 +84,34 @@ type Article struct {
 	// FullContentFetched is true after a successful full-page fetch replaced the body.
 	// Used to skip auto “partial body” detection on subsequent opens.
 	FullContentFetched bool `json:"fullContentFetched"`
+	// Keep fields are zero when the article is not in article_keeps.
+	IsKept         bool    `json:"isKept"`
+	KeepReason     string  `json:"keepReason,omitempty"`
+	KeepConfidence float64 `json:"keepConfidence,omitempty"`
+	KeepSource     string  `json:"keepSource,omitempty"`
+	KeepFolderID   string  `json:"keepFolderId,omitempty"`
+}
+
+// ArticleKeep is one row in article_keeps (manual or filter).
+type ArticleKeep struct {
+	ArticleID  string   `json:"articleId"`
+	Reason     string   `json:"reason"`
+	Confidence float64  `json:"confidence"`
+	Topics     []string `json:"topics"`
+	Source     string   `json:"source"`
+	CreatedAt  string   `json:"createdAt"`
+}
+
+// KeepFolder is a user folder under the virtual 精选 root (max depth 2).
+type KeepFolder struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	ParentID    *string `json:"parentId,omitempty"`
+	SortOrder   int     `json:"sortOrder"`
+	Hint        string  `json:"hint,omitempty"`
+	UnreadCount int     `json:"unreadCount"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
 }
 
 // EmbeddingStatus for article_embeddings.status.

@@ -79,17 +79,23 @@ func main() {
 	}
 	llmSvc := &llm.Service{Store: store, Cache: &llm.Cache{DB: database.SQL}}
 	briefingWorker := service.NewBriefingWorker(store, repos.Briefings, repos.Articles, repos.Feeds, repos.Folders, llmSvc)
-	library.OnArticlesInserted = briefingWorker.Enqueue
+	keepWorker := service.NewKeepWorker(store, repos.Articles, repos.Feeds, repos.Folders, llmSvc)
+	keepWorker.SetKeepFolders(repos.KeepFolders)
+	library.OnArticlesInserted = func(c context.Context, ids []string) {
+		briefingWorker.Enqueue(c, ids)
+		keepWorker.Enqueue(c, ids)
+	}
 	settingsAPI.SetLibrary(library)
 	feedAPI := appsvc.NewFeedService(library)
 	feedAPI.SetNotifier(notifier)
 	feedAPI.SetBriefingWorker(briefingWorker)
+	feedAPI.SetKeepWorker(keepWorker)
 	articleAPI := appsvc.NewArticleService(library, store)
 	aiAPI := appsvc.NewAI(store, library, database.SQL)
 	briefingAPI := appsvc.NewBriefingService(briefingWorker)
 	syncAPI := appsvc.NewSync(store, library)
 	// Keep in sync with frontend/src/lib/appMeta.ts APP_VERSION and git tags.
-	updateAPI := appsvc.NewUpdate("0.1.12")
+	updateAPI := appsvc.NewUpdate("0.1.13")
 
 	// Optional browser access (same SPA; reader tools + reading assistant + star/read; no settings UI).
 	webServer := web.New(web.APIDeps{
@@ -98,6 +104,7 @@ func main() {
 		Search:   searchSvc,
 		AI:       appsvc.NewWebAI(aiAPI),
 		Briefing: briefingWorker,
+		Keep:     keepWorker,
 	}, assets)
 	settingsAPI.SetWebServer(webServer)
 	defer func() {
@@ -118,6 +125,7 @@ func main() {
 	// Background auto-refresh (reads LibraryConfig each tick).
 	go runAutoRefresh(ctx, library, store, notifier, briefingWorker)
 	go runBriefingDrain(ctx, briefingWorker)
+	go runKeepDrain(ctx, keepWorker)
 	// Delayed retention purge so startup is not contending on SQLite.
 	go runStartupPurge(ctx, library, store)
 
@@ -338,6 +346,27 @@ func runAutoRefresh(ctx context.Context, library *service.Library, store *settin
 			timer.Reset(15 * time.Second)
 		} else {
 			timer.Reset(time.Minute)
+		}
+	}
+}
+
+func runKeepDrain(ctx context.Context, w *service.KeepWorker) {
+	if w == nil {
+		return
+	}
+	t := time.NewTicker(15 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			did, err := w.TryJudge(ctx)
+			if err != nil {
+				log.Printf("smart filter: %v", err)
+			} else if did {
+				log.Printf("smart filter: judged a batch")
+			}
 		}
 	}
 }

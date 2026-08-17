@@ -2,6 +2,7 @@ package appsvc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ type FeedService struct {
 	lib      *service.Library
 	notify   RefreshNotifier
 	briefing *service.BriefingWorker
+	keep     *service.KeepWorker
 }
 
 // RefreshNotifier is called after a successful refresh with new article count.
@@ -44,6 +46,16 @@ func (s *FeedService) SetBriefingWorker(w *service.BriefingWorker) {
 		return
 	}
 	s.briefing = w
+}
+
+// SetKeepWorker lets JobActivity include smart-filter progress.
+//
+//wails:ignore
+func (s *FeedService) SetKeepWorker(w *service.KeepWorker) {
+	if s == nil {
+		return
+	}
+	s.keep = w
 }
 
 // JobActivity is a live snapshot of feed refresh + briefing work.
@@ -77,6 +89,9 @@ func (s *FeedService) JobActivity() service.JobActivity {
 	}
 	if s.briefing != nil {
 		a.BriefingState, a.BriefingPending, a.BriefingArticles = s.briefing.Snapshot()
+	}
+	if s.keep != nil {
+		a.KeepState, a.KeepPending, a.KeepLast = s.keep.Snapshot()
 	}
 	a.ArticlesAdded = s.lib.InsertedTotal()
 	return a
@@ -249,6 +264,23 @@ func (s *FeedService) SetFeedKeepArticlesDays(id string, days int) error {
 	return s.lib.SetFeedKeepArticlesDays(context.Background(), id, days)
 }
 
+// ScanKeepResult is returned by ScanUnreadForKeep.
+type ScanKeepResult struct {
+	Queued int `json:"queued"`
+}
+
+// ScanUnreadForKeep queues unread articles for smart-filter judging.
+func (s *FeedService) ScanUnreadForKeep() (ScanKeepResult, error) {
+	if s == nil || s.keep == nil {
+		return ScanKeepResult{}, fmt.Errorf("smart filter unavailable")
+	}
+	n, err := s.keep.EnqueueUnread(context.Background(), 0)
+	if err != nil {
+		return ScanKeepResult{}, err
+	}
+	return ScanKeepResult{Queued: n}, nil
+}
+
 // OPMLImportResult is the Wails-facing import summary (mirrors service.OPMLImportResult).
 type OPMLImportResult struct {
 	FoldersCreated int      `json:"foldersCreated"`
@@ -314,7 +346,7 @@ func (s *ArticleService) excludeNsfw() bool {
 	return !prefs.NsfwMode
 }
 
-// List returns articles for a collection (unread|today|starred|all|recent|feed:ID|folder:ID).
+// List returns articles for a collection (unread|today|starred|all|recent|kept|feed:ID|folder:ID).
 // Office-mode NSFW filtering applies only to smart lists. Explicit feed:/folder:
 // collections always return their articles so a just-subscribed sensitive feed is
 // still readable after add (sidebar may still hide it).
@@ -324,8 +356,12 @@ func (s *ArticleService) List(collection string, limit, offset int) ([]model.Art
 }
 
 func isSmartCollection(collection string) bool {
-	switch strings.TrimSpace(collection) {
-	case "", "unread", "today", "starred", "all", "recent":
+	c := strings.TrimSpace(collection)
+	if strings.HasPrefix(c, "kept:") {
+		return true
+	}
+	switch c {
+	case "", "unread", "today", "starred", "all", "recent", "kept":
 		return true
 	default:
 		return false
@@ -377,4 +413,75 @@ func (s *ArticleService) SetStarred(id string, starred bool) error {
 // MarkAllRead marks a collection as read.
 func (s *ArticleService) MarkAllRead(collection string) error {
 	return s.lib.MarkAllRead(context.Background(), collection, s.excludeNsfw())
+}
+
+// ListKeepFolders returns user folders under the virtual 精选 root.
+func (s *ArticleService) ListKeepFolders() ([]model.KeepFolder, error) {
+	if s == nil || s.lib == nil || s.lib.KeepFolders == nil {
+		return []model.KeepFolder{}, nil
+	}
+	list, err := s.lib.KeepFolders.List(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		return []model.KeepFolder{}, nil
+	}
+	return list, nil
+}
+
+// CreateKeepFolder creates a 精选 child folder. Empty parentId = first level.
+func (s *ArticleService) CreateKeepFolder(name, parentId string) (model.KeepFolder, error) {
+	if s == nil || s.lib == nil || s.lib.KeepFolders == nil {
+		return model.KeepFolder{}, fmt.Errorf("keep folders unavailable")
+	}
+	return s.lib.KeepFolders.Create(context.Background(), name, parentId)
+}
+
+// RenameKeepFolder renames a 精选 folder.
+func (s *ArticleService) RenameKeepFolder(id, name string) error {
+	if s == nil || s.lib == nil || s.lib.KeepFolders == nil {
+		return fmt.Errorf("keep folders unavailable")
+	}
+	return s.lib.KeepFolders.Rename(context.Background(), id, name)
+}
+
+// DeleteKeepFolder removes a 精选 folder; articles return to the root.
+func (s *ArticleService) DeleteKeepFolder(id string) error {
+	if s == nil || s.lib == nil || s.lib.KeepFolders == nil {
+		return fmt.Errorf("keep folders unavailable")
+	}
+	return s.lib.KeepFolders.Delete(context.Background(), id)
+}
+
+// SetKeepFolder moves a kept article to a 精选 folder. Empty folderId = root.
+func (s *ArticleService) SetKeepFolder(articleId, folderId string) error {
+	if s == nil || s.lib == nil || s.lib.Articles == nil {
+		return fmt.Errorf("library unavailable")
+	}
+	return s.lib.Articles.SetKeepFolder(context.Background(), articleId, folderId)
+}
+
+// Keep files an article into the 精选 collection (manual).
+func (s *ArticleService) Keep(id string) error {
+	if s == nil || s.lib == nil || s.lib.Articles == nil {
+		return fmt.Errorf("library unavailable")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("article id required")
+	}
+	return s.lib.Articles.Keep(context.Background(), id, "", "manual", 1, nil)
+}
+
+// Unkeep removes an article from the 精选 collection.
+func (s *ArticleService) Unkeep(id string) error {
+	if s == nil || s.lib == nil || s.lib.Articles == nil {
+		return fmt.Errorf("library unavailable")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("article id required")
+	}
+	return s.lib.Articles.Unkeep(context.Background(), id)
 }

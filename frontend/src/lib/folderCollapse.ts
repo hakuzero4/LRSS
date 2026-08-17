@@ -5,10 +5,15 @@
 
 export const FOLDER_COLLAPSE_STORAGE_KEY = "lrss.folderCollapsed";
 
+/** Separate from feed-folder collapse so 精选 tree state does not collide. */
+export const KEEP_FOLDER_COLLAPSE_STORAGE_KEY = "lrss.keepFolders.collapsed";
+
 /** Load collapsed map from localStorage. Missing / invalid → {}. */
-export function loadCollapsedFolders(): Record<string, boolean> {
+export function loadCollapsedFolders(
+  storageKey: string = FOLDER_COLLAPSE_STORAGE_KEY,
+): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(FOLDER_COLLAPSE_STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -25,13 +30,16 @@ export function loadCollapsedFolders(): Record<string, boolean> {
 }
 
 /** Persist only entries that are collapsed (true). */
-export function saveCollapsedFolders(map: Record<string, boolean>): void {
+export function saveCollapsedFolders(
+  map: Record<string, boolean>,
+  storageKey: string = FOLDER_COLLAPSE_STORAGE_KEY,
+): void {
   try {
     const slim: Record<string, true> = {};
     for (const [id, v] of Object.entries(map)) {
       if (v && id.trim()) slim[id] = true;
     }
-    localStorage.setItem(FOLDER_COLLAPSE_STORAGE_KEY, JSON.stringify(slim));
+    localStorage.setItem(storageKey, JSON.stringify(slim));
   } catch {
     /* quota / private mode */
   }

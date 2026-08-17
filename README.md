@@ -58,8 +58,9 @@ Some folders are all image feeds. Set **Display → Image cards** on the folder 
 | **Read / star** | Toggle read state and favorites; mark all read on lists/folders |
 | **Mark-on-open / mark-on-scroll** | Configurable read behavior |
 | **Recently read** | Opening an article records it (independent of read/unread). Keep count is **Settings → General** (10–200, default 50); older entries are pruned |
+| **Picks / 精选** | **Settings → Filters**. Optional AI filing after refresh. 精选 is an **article tree** (not a feed folder): click the root for all picks, or a child folder you created. AI only files into **existing** child names (or the root); it never creates folders. Articles stay in their feeds. |
 | **Smart briefing** | **Settings → AI features**. After a refresh adds articles, the LLM writes a themed digest; bullets jump to the source article. Starred briefings appear in **Starred** and cannot be deleted or pruned |
-| **Unread-only list filter** | Hide read items (starred and recently-read collections exempt) |
+| **Unread-only list filter** | Hide read items (starred, recently-read, and Picks collections exempt) |
 | **Open original** | System browser (desktop) or new tab (web access) |
 | **In-body links** | Honor “open links in browser” preference |
 | **HTML safety** | Article HTML sanitized with bluemonday before store/display |
@@ -100,6 +101,7 @@ Many feeds only ship a teaser. LRSS can download the original page and replace t
 | **List search** | Filter current collection; backend FTS when connected |
 | **Duplicate titles** | Optional hide across list |
 | **Block keywords** | Comma-separated title/summary mute list |
+| **Smart picks** | Optional LLM judge after refresh; matches go into the sidebar **Picks tree** (feeds stay put). AI routes into an existing child folder by name, or the root |
 
 ### AI (optional, OpenAI-compatible)
 
@@ -113,6 +115,7 @@ Requires **Settings → Models** chat endpoint. Feature toggles under **AI featu
 | **Reading assistant** | Sidebar · 阅读助手 | One global multi-turn chat on desktop **and web access**. Attach the open article, filter/search the library, and click `[n]` to jump to a source |
 | **Folder / tag suggest** | Assistant chips | Local keywords + LLM; one-click move feed to folder |
 | **Promo / soft-ad classify** | Assistant chips | Manual organic / promo / unclear |
+| **Smart picks** | Settings → Filters | After refresh, quality + interest-profile gates file items into the **Picks tree**; AI may place a match into an existing child folder by name, otherwise the root. Unsure stays only in Unread |
 | **Auto full-fetch** | AI features toggle | Opens article → conservative partial check → fetch page |
 | **Cache** | Local SQLite | `article + feature + model + content fingerprint + locale` |
 | **Locale-aware prompts** | UI language | zh-CN UI → Chinese prompts/replies |

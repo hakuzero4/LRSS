@@ -32,6 +32,7 @@ export type {
     PurgeResult,
     RefreshAllResult,
     RefreshResult,
+    ScanKeepResult,
     SyncPullResult,
     SyncPushResult,
     SyncTestResult,

@@ -2,7 +2,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import i18n from "@/i18n";
 import { applyArticleFilters } from "@/lib/articleFilters";
-import { loadAppsvc, mapArticle, mapBriefing, mapFeed, mapFolder } from "@/lib/backend";
+import { loadAppsvc, mapArticle, mapBriefing, mapFeed, mapFolder, mapKeepFolders } from "@/lib/backend";
 import { applyAppLocale, resolveLocale } from "@/i18n";
 import { setLocalePersistHook } from "@/composables/useLocale";
 import { getWebToken, isWebMode, webMode } from "@/lib/webMode";
@@ -16,6 +16,12 @@ import {
   parseSmartDisplayModes,
   resolveCollectionDisplayMode,
 } from "@/lib/folderMenu";
+import {
+  isKeptCollection,
+  keepFolderDescendantIds,
+  normalizeKeepParentId,
+  parseKeepFolderId,
+} from "@/lib/keepFolders";
 import { applyShowUnreadOnly } from "@/lib/readingSettings";
 import { filterArticlesByNsfwMode, filterFeedsForSidebar } from "@/lib/nsfw";
 import {
@@ -33,6 +39,7 @@ import type {
   Feed,
   FeedFolder,
   FolderDisplayMode,
+  KeepFolder,
   LibraryConfig,
   SmartDisplayModes,
   OPMLImportProgress,
@@ -55,6 +62,7 @@ function t(key: string, params?: Record<string, unknown>): string {
 
 // Empty until backend bootstrap (or offline add-folder mock). No seed/demo library.
 const folders = ref<FeedFolder[]>([]);
+const keepFolders = ref<KeepFolder[]>([]);
 const feeds = ref<Feed[]>([]);
 const articles = ref<Article[]>([]);
 
@@ -93,6 +101,9 @@ export type JobActivity = {
   briefingState: "" | "queued" | "generating";
   briefingPending: number;
   briefingArticles: number;
+  keepState: "" | "queued" | "judging";
+  keepPending: number;
+  keepLast: number;
   articlesAdded: number;
 };
 
@@ -105,12 +116,16 @@ const idleJobActivity = (): JobActivity => ({
   briefingState: "",
   briefingPending: 0,
   briefingArticles: 0,
+  keepState: "",
+  keepPending: 0,
+  keepLast: 0,
   articlesAdded: 0,
 });
 
 const jobActivity = reactive<JobActivity>(idleJobActivity());
 let activityPollTimer: ReturnType<typeof setInterval> | null = null;
 let lastSeenInserted = 0;
+let lastSeenKeepLast = 0;
 let refreshCycleActive = false;
 let insertedAtRefreshStart = 0;
 let syncAfterInsertTimer: ReturnType<typeof setTimeout> | null = null;
@@ -133,6 +148,10 @@ function applyJobActivity(raw: unknown) {
   jobActivity.briefingState = state === "generating" || state === "queued" ? state : "";
   jobActivity.briefingPending = parseCountField(o.briefingPending ?? o.BriefingPending);
   jobActivity.briefingArticles = parseCountField(o.briefingArticles ?? o.BriefingArticles);
+  const keepState = String(o.keepState ?? o.KeepState ?? "").trim();
+  jobActivity.keepState = keepState === "judging" || keepState === "queued" ? keepState : "";
+  jobActivity.keepPending = parseCountField(o.keepPending ?? o.KeepPending);
+  jobActivity.keepLast = parseCountField(o.keepLast ?? o.KeepLast);
   jobActivity.articlesAdded = parseCountField(o.articlesAdded ?? o.ArticlesAdded);
   if (jobActivity.feedTitle || jobActivity.pending > 0) {
     jobActivity.refreshing = true;
@@ -144,6 +163,8 @@ function collectionShowsNewArticles(id: CollectionId): boolean {
     id === "unread" ||
     id === "today" ||
     id === "all" ||
+    id === "kept" ||
+    id.startsWith("kept:") ||
     id.startsWith("feed:") ||
     id.startsWith("folder:")
   );
@@ -170,7 +191,7 @@ async function mergeLatestArticles() {
 
 async function syncLibraryAfterNewArticles(opts?: { mergeList?: boolean; toastAdded?: number }) {
   if (!backendReady.value) return;
-  await Promise.all([reloadSmartCounts(), reloadLibraryFeedsOnly()]);
+  await Promise.all([reloadSmartCounts(), reloadLibraryFeedsOnly(), reloadKeepFolders()]);
   if (opts?.mergeList) {
     await mergeLatestArticles();
   }
@@ -208,6 +229,12 @@ async function refreshJobActivity() {
     lastSeenInserted = Math.max(lastSeenInserted, added);
     if (grew) {
       scheduleSyncAfterNewArticles({ mergeList: true, delay: 200 });
+    }
+    if (jobActivity.keepLast > lastSeenKeepLast) {
+      lastSeenKeepLast = jobActivity.keepLast;
+      scheduleSyncAfterNewArticles({ mergeList: true, delay: 250 });
+    } else {
+      lastSeenKeepLast = Math.max(lastSeenKeepLast, jobActivity.keepLast);
     }
     if (refreshCycleActive && !nowRefreshing && jobActivity.pending === 0) {
       refreshCycleActive = false;
@@ -1026,6 +1053,9 @@ const settings = reactive<AppSettings>({
   keepArticlesDays: 90,
   hideDuplicateTitles: true,
   blockKeywords: "",
+  smartFilterEnabled: false,
+  smartFilterProfile: "",
+  smartFilterStrictness: "standard",
   syncEnabled: false,
   syncProvider: "none",
   enableKeyboardShortcuts: true,
@@ -1065,6 +1095,7 @@ const smartCounts = reactive({
   starred: 0,
   recent: 0,
   all: 0,
+  kept: 0,
 } satisfies Record<Exclude<SmartCollectionId, "briefing">, number>);
 
 /** Article-only starred total; composeStarredBadge adds starred briefings. */
@@ -1093,6 +1124,7 @@ function applySmartCountsFromArticles() {
   // Do not invent open-history offline; recent is backend-only.
   smartCounts.recent = 0;
   smartCounts.all = list.length;
+  smartCounts.kept = list.filter((a) => a.kept && !a.read).length;
 }
 
 function parseCountField(v: unknown): number {
@@ -1114,6 +1146,7 @@ function applySmartCountsPayload(raw: unknown) {
   composeStarredBadge();
   smartCounts.recent = parseCountField(o.recent ?? o.Recent);
   smartCounts.all = parseCountField(o.all ?? o.All);
+  smartCounts.kept = parseCountField(o.kept ?? o.Kept);
 }
 
 async function reloadSmartCounts() {
@@ -1143,9 +1176,10 @@ function adjustSmartUnread(delta: number) {
  */
 async function syncAfterReadChange() {
   if (backendReady.value) {
-    await Promise.all([reloadSmartCounts(), reloadLibraryFeedsOnly()]);
+    await Promise.all([reloadSmartCounts(), reloadLibraryFeedsOnly(), reloadKeepFolders()]);
   } else {
     applySmartCountsFromArticles();
+    applyKeepFolderUnreadFromArticles();
   }
 }
 
@@ -1160,6 +1194,12 @@ const collectionTitle = computed(() => {
   if (id === "unread") return t("nav.unread");
   if (id === "today") return t("nav.today");
   if (id === "starred") return t("nav.starred");
+  if (id === "kept") return t("nav.kept");
+  if (id.startsWith("kept:")) {
+    return (
+      keepFolders.value.find((f) => f.id === id.slice("kept:".length))?.name ?? t("nav.kept")
+    );
+  }
   if (id === "recent") return t("nav.recent");
   if (id === "briefing") return t("nav.briefing");
   if (id === "all") return t("nav.all");
@@ -1193,6 +1233,11 @@ const filteredArticles = computed(() => {
       if (id === "unread") list = list.filter((a) => !a.read);
       else if (id === "today") list = list.filter((a) => isToday(a.publishedAt));
       else if (id === "starred") list = list.filter((a) => a.starred);
+      else if (id === "kept") list = list.filter((a) => a.kept);
+      else if (id.startsWith("kept:")) {
+        const fid = id.slice("kept:".length);
+        list = list.filter((a) => a.kept && a.keepFolderId === fid);
+      }
       else if (id === "recent") list = []; // no local open-history
       else if (id.startsWith("feed:")) list = list.filter((a) => a.feedId === id.slice(5));
       else if (id.startsWith("folder:")) {
@@ -1204,6 +1249,12 @@ const filteredArticles = computed(() => {
     // Always drop read items from the Unread smart list (even when list came from backend).
     if (collectionId.value === "unread") {
       list = list.filter((a) => !a.read);
+    }
+    // Manual unkeep / move-folder should leave the Picks list immediately.
+    if (isKeptCollection(collectionId.value)) {
+      list = list.filter((a) => a.kept);
+      const fid = parseKeepFolderId(collectionId.value);
+      if (fid) list = list.filter((a) => a.keepFolderId === fid);
     }
   }
 
@@ -1234,6 +1285,8 @@ const filteredArticles = computed(() => {
       col === "unread" ||
       col === "today" ||
       col === "starred" ||
+      col === "kept" ||
+      col.startsWith("kept:") ||
       col === "recent" ||
       col === "all";
     if (smart) {
@@ -1277,7 +1330,8 @@ const emptyListReason = computed(() => {
       !!settings.blockKeywords.trim() ||
       (settings.showUnreadOnly &&
         collectionId.value !== "starred" &&
-        collectionId.value !== "recent"),
+        collectionId.value !== "recent" &&
+        !isKeptCollection(collectionId.value)),
   });
 });
 
@@ -1315,7 +1369,7 @@ async function reloadLibrary() {
     bootstrapError.value = "";
     libraryLoading.value = false;
     void refreshLLMConfigured();
-    await Promise.all([reloadArticles(), reloadSmartCounts()]);
+    await Promise.all([reloadArticles(), reloadSmartCounts(), reloadKeepFolders()]);
     if (settings.smartBriefing) {
       void reloadBriefings();
     }
@@ -1456,6 +1510,7 @@ const SMART_COLLECTIONS: StartupCollectionId[] = [
   "unread",
   "today",
   "starred",
+  "kept",
   "all",
   "recent",
 ];
@@ -1494,6 +1549,9 @@ function buildUIPrefs(): UIPrefs {
     keepArticlesDays: settings.keepArticlesDays,
     hideDuplicateTitles: settings.hideDuplicateTitles,
     blockKeywords: settings.blockKeywords,
+    smartFilterEnabled: settings.smartFilterEnabled,
+    smartFilterProfile: settings.smartFilterProfile,
+    smartFilterStrictness: settings.smartFilterStrictness,
     enableKeyboardShortcuts: settings.enableKeyboardShortcuts,
     notifyOnNewArticles: settings.notifyOnNewArticles,
     notifySound: settings.notifySound,
@@ -1663,6 +1721,21 @@ function applyUIPrefs(prefs: Partial<UIPrefs> | Record<string, unknown> | null |
   const keywords = p.blockKeywords ?? p.BlockKeywords;
   if (typeof keywords === "string") {
     settings.blockKeywords = keywords;
+  }
+
+  const smartFilter = pickBool(p, "smartFilterEnabled", "SmartFilterEnabled");
+  if (smartFilter !== undefined) settings.smartFilterEnabled = smartFilter;
+
+  const profile = p.smartFilterProfile ?? p.SmartFilterProfile;
+  if (typeof profile === "string") settings.smartFilterProfile = profile;
+
+  const strictRaw = String(p.smartFilterStrictness ?? p.SmartFilterStrictness ?? "").trim();
+  if (strictRaw === "loose" || strictRaw === "standard" || strictRaw === "strict") {
+    settings.smartFilterStrictness = strictRaw;
+  } else if (strictRaw === "宽松") {
+    settings.smartFilterStrictness = "loose";
+  } else if (strictRaw === "严格") {
+    settings.smartFilterStrictness = "strict";
   }
 
   const kb = pickBool(p, "enableKeyboardShortcuts", "EnableKeyboardShortcuts");
@@ -2046,6 +2119,7 @@ async function clearAllSubscriptions(): Promise<{ feedsDeleted: number; foldersD
     const nFolders = folders.value.length;
     feeds.value = [];
     folders.value = [];
+    keepFolders.value = [];
     articles.value = [];
     selectedArticleId.value = null;
     collectionId.value = "unread";
@@ -2297,6 +2371,210 @@ async function reloadLibraryFeedsOnly() {
   if (!api?.FeedService) return;
   const rawFeeds = await api.FeedService.ListFeeds();
   feeds.value = (rawFeeds ?? []).map(mapFeed) as Feed[];
+}
+
+async function reloadKeepFolders() {
+  const api = await loadAppsvc();
+  const fn = api?.ArticleService?.ListKeepFolders;
+  if (typeof fn !== "function") return;
+  try {
+    keepFolders.value = mapKeepFolders(await fn());
+  } catch (e) {
+    console.warn("[lrss] ListKeepFolders failed", e);
+  }
+}
+
+function applyKeepFolderUnreadFromArticles() {
+  const counts = new Map<string, number>();
+  for (const a of articles.value) {
+    const fid = a.keepFolderId;
+    if (!a.kept || a.read || !fid) continue;
+    counts.set(fid, (counts.get(fid) ?? 0) + 1);
+  }
+  for (const f of keepFolders.value) {
+    f.unreadCount = counts.get(f.id) ?? 0;
+  }
+}
+
+function pickCreatedKeepFolderId(created: unknown, name: string): string {
+  if (created && typeof created === "object") {
+    const o = created as Record<string, unknown>;
+    const id = o.id ?? o.ID ?? o.Id;
+    if (id != null && String(id).trim()) return String(id);
+  }
+  return keepFolders.value.find((f) => f.name === name)?.id || "";
+}
+
+async function refreshKeepTreeCounts() {
+  if (backendReady.value) {
+    await Promise.all([reloadKeepFolders(), reloadSmartCounts()]);
+    return;
+  }
+  applyKeepFolderUnreadFromArticles();
+}
+
+async function createKeepFolder(name: string, parentId?: string): Promise<string> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error(t("keepFolder.emptyName"));
+  const parent = normalizeKeepParentId(parentId, keepFolders.value);
+  const api = await loadAppsvc();
+  const fn = api?.ArticleService?.CreateKeepFolder;
+  if (typeof fn === "function") {
+    const created = await fn(trimmed, parent ?? "");
+    await reloadKeepFolders();
+    return pickCreatedKeepFolderId(created, trimmed);
+  }
+  const id = `keep-${Date.now()}`;
+  keepFolders.value = [
+    ...keepFolders.value,
+    {
+      id,
+      name: trimmed,
+      parentId: parent,
+      sortOrder: keepFolders.value.length,
+      unreadCount: 0,
+    },
+  ];
+  return id;
+}
+
+async function renameKeepFolder(id: string, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error(t("keepFolder.emptyName"));
+  const folder = keepFolders.value.find((f) => f.id === id);
+  const prev = folder?.name;
+  if (folder) folder.name = trimmed;
+  const api = await loadAppsvc();
+  const fn = api?.ArticleService?.RenameKeepFolder;
+  if (typeof fn !== "function") return;
+  try {
+    await fn(id, trimmed);
+    await reloadKeepFolders();
+  } catch (e) {
+    if (folder && prev != null) folder.name = prev;
+    throw e;
+  }
+}
+
+async function deleteKeepFolder(id: string): Promise<void> {
+  const gone = new Set(keepFolderDescendantIds(keepFolders.value, id));
+  const viewing = parseKeepFolderId(collectionId.value);
+  const api = await loadAppsvc();
+  const fn = api?.ArticleService?.DeleteKeepFolder;
+  if (typeof fn === "function") {
+    await fn(id);
+  }
+  keepFolders.value = keepFolders.value.filter((f) => !gone.has(f.id));
+  const clear = (list: Article[]) => {
+    for (const a of list) {
+      if (a.keepFolderId && gone.has(a.keepFolderId)) a.keepFolderId = undefined;
+    }
+  };
+  clear(articles.value);
+  if (searchArticles.value) clear(searchArticles.value);
+  if (viewing && gone.has(viewing)) {
+    selectCollection("kept");
+  }
+  if (typeof fn === "function") {
+    await reloadKeepFolders();
+  } else {
+    applyKeepFolderUnreadFromArticles();
+  }
+}
+
+async function setKeepFolder(articleId: string, folderId: string): Promise<void> {
+  const article = resolveSelectedArticle(articleId, articles.value, searchArticles.value);
+  if (!article || !article.kept) return;
+  const next = (folderId ?? "").trim();
+  const prev = article.keepFolderId ?? "";
+  if (next === prev) return;
+  article.keepFolderId = next || undefined;
+  mergeArticleIntoPools(article, articles.value, searchArticles.value);
+  if (backendReady.value) {
+    const api = await loadAppsvc();
+    const fn = api?.ArticleService?.SetKeepFolder;
+    try {
+      if (typeof fn !== "function") throw new Error("unavailable");
+      await fn(articleId, next);
+    } catch (e) {
+      article.keepFolderId = prev || undefined;
+      mergeArticleIntoPools(article, articles.value, searchArticles.value);
+      console.warn("[lrss] SetKeepFolder failed", e);
+      throw e;
+    }
+  }
+  await refreshKeepTreeCounts();
+}
+
+async function toggleKeep(id: string, folderId?: string) {
+  const article = resolveSelectedArticle(id, articles.value, searchArticles.value);
+  if (!article) return;
+  const next = !article.kept;
+  const prevFolder = article.keepFolderId;
+  article.kept = next;
+  if (!next) {
+    article.keepReason = undefined;
+    article.keepSource = undefined;
+    article.keepFolderId = undefined;
+  } else {
+    article.keepSource = "manual";
+    // New keeps go to root unless a folder is specified.
+    article.keepFolderId = folderId != null ? folderId.trim() || undefined : undefined;
+  }
+  mergeArticleIntoPools(article, articles.value, searchArticles.value);
+  smartCounts.kept = Math.max(0, smartCounts.kept + (next && !article.read ? 1 : !next && !article.read ? -1 : 0));
+  if (backendReady.value) {
+    const api = await loadAppsvc();
+    try {
+      if (next) {
+        const fn = api?.ArticleService?.Keep;
+        if (typeof fn !== "function") throw new Error("unavailable");
+        await fn(id);
+        const dest = folderId != null ? folderId.trim() : "";
+        if (dest) {
+          const setFn = api?.ArticleService?.SetKeepFolder;
+          if (typeof setFn === "function") await setFn(id, dest);
+        }
+      } else {
+        const fn = api?.ArticleService?.Unkeep;
+        if (typeof fn !== "function") throw new Error("unavailable");
+        await fn(id);
+      }
+    } catch (e) {
+      article.kept = !next;
+      if (next) {
+        article.keepReason = undefined;
+        article.keepSource = undefined;
+        article.keepFolderId = prevFolder;
+      } else {
+        article.keepFolderId = prevFolder;
+      }
+      mergeArticleIntoPools(article, articles.value, searchArticles.value);
+      smartCounts.kept = Math.max(
+        0,
+        smartCounts.kept + (next && !article.read ? -1 : !next && !article.read ? 1 : 0),
+      );
+      console.warn("[lrss] Keep/Unkeep failed", e);
+      return;
+    }
+  }
+  await refreshKeepTreeCounts();
+}
+
+async function scanUnreadForKeep(): Promise<number> {
+  if (!backendReady.value) return 0;
+  const api = await loadAppsvc();
+  const fn = api?.FeedService?.ScanUnreadForKeep ?? api?.ArticleService?.ScanUnreadForKeep;
+  if (typeof fn !== "function") {
+    throw new Error("unavailable");
+  }
+  const raw = await fn();
+  if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(0, Math.floor(raw));
+  if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    return parseCountField(o.queued ?? o.Queued ?? o.n ?? o.N ?? o.count ?? o.Count);
+  }
+  return 0;
 }
 
 async function toggleStar(id: string) {
@@ -3448,6 +3726,10 @@ async function setCollectionDisplayMode(
   mode: FolderDisplayMode,
 ): Promise<void> {
   const col = collection.trim();
+  if (col === "kept" || col.startsWith("kept:")) {
+    await setSmartListDisplayMode("kept", mode);
+    return;
+  }
   if (isSmartDisplayCollection(col)) {
     await setSmartListDisplayMode(col, mode);
     return;
@@ -3506,6 +3788,9 @@ async function resetUIPrefsToDefaults(): Promise<void> {
     keepArticlesDays: 90,
     hideDuplicateTitles: true,
     blockKeywords: "",
+    smartFilterEnabled: false,
+    smartFilterProfile: "",
+    smartFilterStrictness: "standard",
     enableKeyboardShortcuts: true,
     notifyOnNewArticles: false,
     notifySound: false,
@@ -3628,6 +3913,7 @@ export function useRssStore() {
     isWebMode,
     webMode,
     folders,
+    keepFolders,
     feeds,
     sidebarFolders,
     sidebarFeeds,
@@ -3679,6 +3965,13 @@ export function useRssStore() {
     selectCollection,
     selectArticle,
     toggleStar,
+    toggleKeep,
+    reloadKeepFolders,
+    createKeepFolder,
+    renameKeepFolder,
+    deleteKeepFolder,
+    setKeepFolder,
+    scanUnreadForKeep,
     toggleRead,
     fetchFullContent,
     markAllRead,

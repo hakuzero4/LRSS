@@ -87,6 +87,14 @@ assert(
   "recent exempt from unread-only",
 );
 assert(
+  applyShowUnreadOnly(sample, true, "kept").length === 3,
+  "kept / 精选 exempt from unread-only",
+);
+assert(
+  applyShowUnreadOnly(sample, true, "kept:folder-1").length === 3,
+  "kept: child collection exempt from unread-only",
+);
+assert(
   applyShowUnreadOnly(sample, true, "unread").map((a) => a.id).join(",") === "1,3",
   "on in unread collection",
 );

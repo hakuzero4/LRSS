@@ -11,5 +11,6 @@ export type {
     ChatCitation,
     ChatMessage,
     Feed,
-    Folder
+    Folder,
+    KeepFolder
 } from "./models.js";

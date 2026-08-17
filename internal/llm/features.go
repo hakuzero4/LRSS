@@ -22,6 +22,7 @@ const (
 	FeatureClassify        = "classify"
 	FeatureBriefing        = "briefing"
 	FeatureChat            = "chat"
+	FeatureKeep            = "keep"
 )
 
 // Content fullness verdicts (DetectContentFullness / EnsureFullContent).
@@ -192,6 +193,8 @@ func SystemPromptFor(feature, locale string) string {
 		base = briefingSystemPromptBase
 	case FeatureChat:
 		base = articleChatSystemPromptBase
+	case FeatureKeep:
+		base = keepSystemPromptBase + " When subfolders are listed, pick at most one existing name or leave empty. Never invent folders."
 	default:
 		base = "You are a helpful RSS reading assistant. Reply in Markdown."
 	}

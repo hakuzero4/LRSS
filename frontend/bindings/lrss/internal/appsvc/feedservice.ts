@@ -133,6 +133,13 @@ export function RenameFolder(id: string, name: string): $CancellablePromise<void
 }
 
 /**
+ * ScanUnreadForKeep queues unread articles for smart-filter judging.
+ */
+export function ScanUnreadForKeep(): $CancellablePromise<$models.ScanKeepResult> {
+    return $Call.ByID(2994690584);
+}
+
+/**
  * SetFeedKeepArticlesDays sets per-feed article retention days.
  * 0 = use global UIPrefs keepArticlesDays; otherwise clamped to [7, 365].
  */

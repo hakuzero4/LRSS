@@ -69,8 +69,14 @@ assert(
   "unread can be cards",
 );
 assert(isSmartDisplayCollection("today"), "today is a smart display collection");
+assert(isSmartDisplayCollection("kept"), "kept is a smart display collection");
 assert(!isSmartDisplayCollection("briefing"), "briefing is not card-toggleable");
 assert(!isSmartDisplayCollection("folder:f1"), "folder is not a smart display id");
+assert(
+  resolveCollectionDisplayMode("kept:abc", [], [], { kept: "cards" }) === "cards",
+  "kept: child uses 精选 display mode",
+);
+assert(canToggleDisplayMode("kept:abc", []), "kept: child can toggle");
 assert(canToggleDisplayMode("unread", []), "unread can toggle");
 assert(canToggleDisplayMode("folder:f1", []), "folder can toggle");
 assert(!canToggleDisplayMode("feed:a", [{ id: "a" }]), "unfiled feed cannot toggle");

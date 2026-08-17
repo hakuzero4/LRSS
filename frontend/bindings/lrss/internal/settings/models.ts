@@ -81,6 +81,7 @@ export interface SmartDisplayModes {
     "starred"?: string;
     "recent"?: string;
     "all"?: string;
+    "kept"?: string;
 }
 
 /**
@@ -230,6 +231,21 @@ export interface UIPrefs {
      * SmartBriefing: after feed refresh, generate an AI digest of new articles.
      */
     "smartBriefing": boolean;
+
+    /**
+     * SmartFilterEnabled: after refresh, LLM-judge unread articles into 精选.
+     */
+    "smartFilterEnabled": boolean;
+
+    /**
+     * SmartFilterProfile is free-text taste / interest guidance for the judge.
+     */
+    "smartFilterProfile": string;
+
+    /**
+     * SmartFilterStrictness is loose|standard|strict (default standard).
+     */
+    "smartFilterStrictness": string;
 
     /**
      * SelectTranslate: when true, selecting text in the reader shows AI 划词翻译.

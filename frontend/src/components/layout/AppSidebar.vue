@@ -12,6 +12,7 @@ import {
   ListFilter,
   LocateFixed,
   Newspaper,
+  BookmarkPlus,
   Settings,
   Sparkles,
   Star,
@@ -22,14 +23,21 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { useRssStore } from "@/composables/useRssStore";
 import {
+  KEEP_FOLDER_COLLAPSE_STORAGE_KEY,
   loadCollapsedFolders,
   pruneCollapsedFolders,
   saveCollapsedFolders,
 } from "@/lib/folderCollapse";
 import { folderCollectionId } from "@/lib/folderMenu";
+import {
+  KEPT_ROOT_COLLAPSE_ID,
+  childKeepFolders,
+  firstLevelKeepFolders,
+  keepCollectionId,
+} from "@/lib/keepFolders";
 import { compactSidebarClass } from "@/lib/uiGaps";
 import { cn } from "@/lib/utils";
-import type { CollectionId, Feed, FeedFolder, FolderDisplayMode } from "@/types/rss";
+import type { CollectionId, Feed, FeedFolder, FolderDisplayMode, KeepFolder } from "@/types/rss";
 import FeedIcon from "@/components/feed/FeedIcon.vue";
 import {
   AlertDialog,
@@ -69,6 +77,7 @@ const { t } = useI18n();
 
 const {
   folders,
+  keepFolders,
   feeds,
   sidebarFolders,
   sidebarFeeds,
@@ -87,8 +96,11 @@ const {
   toggleAssistant,
   openFeedEdit,
   createFolder,
+  createKeepFolder,
   renameFolder,
+  renameKeepFolder,
   deleteFolder,
+  deleteKeepFolder,
   markFolderRead,
   refreshFolderFeeds,
   refreshOneFeed,
@@ -104,7 +116,12 @@ const {
 
 /** true = folder children hidden; persisted in localStorage (`lrss.folderCollapsed`). */
 const collapsedFolders = ref<Record<string, boolean>>(loadCollapsedFolders());
+/** 精选 tree collapse — separate key so feed-folder state is untouched. */
+const collapsedKeepFolders = ref<Record<string, boolean>>(
+  loadCollapsedFolders(KEEP_FOLDER_COLLAPSE_STORAGE_KEY),
+);
 const creatingFolder = ref(false);
+const creatingKeepFolder = ref(false);
 const folderBusyId = ref<string | null>(null);
 const feedBusyId = ref<string | null>(null);
 
@@ -115,6 +132,10 @@ const feedFilterInputEl = ref<HTMLInputElement | null>(null);
 
 watch(collapsedFolders, (map) => {
   saveCollapsedFolders(map);
+});
+
+watch(collapsedKeepFolders, (map) => {
+  saveCollapsedFolders(map, KEEP_FOLDER_COLLAPSE_STORAGE_KEY);
 });
 
 // Drop deleted folder ids from the map (and storage via the watch above).
@@ -128,11 +149,22 @@ watch(
   },
 );
 
+watch(
+  () => keepFolders.value.map((f) => f.id).join("\0"),
+  (ids) => {
+    const valid = ids ? [...ids.split("\0"), KEPT_ROOT_COLLAPSE_ID] : [KEPT_ROOT_COLLAPSE_ID];
+    const next = pruneCollapsedFolders(collapsedKeepFolders.value, valid);
+    if (next !== collapsedKeepFolders.value) {
+      collapsedKeepFolders.value = next;
+    }
+  },
+);
+
 const sidebarDensityClass = computed(() => compactSidebarClass(settings.compactSidebar));
 
 // Rename dialog (folder or feed)
 const renameOpen = ref(false);
-const renameKind = ref<"folder" | "feed">("folder");
+const renameKind = ref<"folder" | "feed" | "keep">("folder");
 const renameFolderId = ref<string | null>(null);
 const renameFeedId = ref<string | null>(null);
 const renameDraft = ref("");
@@ -140,9 +172,10 @@ const renameSaving = ref(false);
 
 // Delete confirm (folder or feed)
 const deleteOpen = ref(false);
-const deleteKind = ref<"folder" | "feed">("folder");
+const deleteKind = ref<"folder" | "feed" | "keep">("folder");
 const deleteTarget = ref<FeedFolder | null>(null);
 const deleteFeedTarget = ref<Feed | null>(null);
+const deleteKeepTarget = ref<KeepFolder | null>(null);
 const deleteBusy = ref(false);
 
 /** Sidebar-only feeds (office mode hides isNsfw). */
@@ -187,9 +220,10 @@ const feedsByFolderId = computed(() => {
 
 const feedsInFolder = (folderId: string) => feedsByFolderId.value.get(folderId) ?? EMPTY_FEEDS;
 
-const ctxKind = ref<"feed" | "folder" | null>(null);
+const ctxKind = ref<"feed" | "folder" | "keep-root" | "keep-folder" | null>(null);
 const ctxFeed = ref<Feed | null>(null);
 const ctxFolder = ref<FeedFolder | null>(null);
+const ctxKeepFolder = ref<KeepFolder | null>(null);
 
 function onLibraryContextCapture(e: MouseEvent) {
   const el = e.target as HTMLElement | null;
@@ -202,6 +236,7 @@ function onLibraryContextCapture(e: MouseEvent) {
     ctxKind.value = null;
     ctxFeed.value = null;
     ctxFolder.value = null;
+    ctxKeepFolder.value = null;
     e.stopPropagation();
     return;
   }
@@ -216,6 +251,7 @@ function onLibraryContextCapture(e: MouseEvent) {
       ctxKind.value = "feed";
       ctxFeed.value = feed;
       ctxFolder.value = null;
+      ctxKeepFolder.value = null;
       return;
     }
   }
@@ -227,12 +263,33 @@ function onLibraryContextCapture(e: MouseEvent) {
       ctxKind.value = "folder";
       ctxFolder.value = folder;
       ctxFeed.value = null;
+      ctxKeepFolder.value = null;
       return;
     }
+  }
+  const keepEl = el.closest("[data-keep-folder-id]") as HTMLElement | null;
+  const keepId = keepEl?.dataset.keepFolderId;
+  if (keepId) {
+    const folder = keepFolders.value.find((f) => f.id === keepId) ?? null;
+    if (folder) {
+      ctxKind.value = "keep-folder";
+      ctxKeepFolder.value = folder;
+      ctxFeed.value = null;
+      ctxFolder.value = null;
+      return;
+    }
+  }
+  if (el.closest("[data-keep-root]")) {
+    ctxKind.value = "keep-root";
+    ctxKeepFolder.value = null;
+    ctxFeed.value = null;
+    ctxFolder.value = null;
+    return;
   }
   ctxKind.value = null;
   ctxFeed.value = null;
   ctxFolder.value = null;
+  ctxKeepFolder.value = null;
   e.preventDefault();
   e.stopPropagation();
 }
@@ -423,6 +480,56 @@ async function onCreateFolder() {
   }
 }
 
+function isKeepRootCollapsed(): boolean {
+  return !!collapsedKeepFolders.value[KEPT_ROOT_COLLAPSE_ID];
+}
+
+function isKeepFolderCollapsed(id: string): boolean {
+  return !!collapsedKeepFolders.value[id];
+}
+
+function toggleKeepCollapse(id: string) {
+  const next = { ...collapsedKeepFolders.value };
+  if (next[id]) delete next[id];
+  else next[id] = true;
+  collapsedKeepFolders.value = next;
+}
+
+function expandKeepAncestors(parentId?: string) {
+  const next = { ...collapsedKeepFolders.value };
+  delete next[KEPT_ROOT_COLLAPSE_ID];
+  if (parentId) delete next[parentId];
+  collapsedKeepFolders.value = next;
+}
+
+const rootKeepFolders = computed(() => firstLevelKeepFolders(keepFolders.value));
+
+function keepChildren(id: string) {
+  return childKeepFolders(keepFolders.value, id);
+}
+
+async function onCreateKeepFolder(parentId?: string) {
+  if (webMode.value || creatingKeepFolder.value) return;
+  const name = window.prompt(t("keepFolder.newPrompt"));
+  if (name == null) return;
+  const trimmed = name.trim();
+  if (!trimmed) {
+    toast.error(t("keepFolder.emptyName"));
+    return;
+  }
+  creatingKeepFolder.value = true;
+  try {
+    await createKeepFolder(trimmed, parentId);
+    expandKeepAncestors(parentId);
+    toast.success(t("keepFolder.created"));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("keepFolder.createFailed"), { description: msg });
+  } finally {
+    creatingKeepFolder.value = false;
+  }
+}
+
 // —— Context menu actions ——
 
 function onFolderOpen(folder: FeedFolder) {
@@ -495,7 +602,9 @@ async function confirmRename() {
     toast.error(
       renameKind.value === "feed"
         ? t("feedMenu.renameEmpty")
-        : t("folderMenu.renameEmpty"),
+        : renameKind.value === "keep"
+          ? t("keepFolder.emptyName")
+          : t("folderMenu.renameEmpty"),
     );
     return;
   }
@@ -504,6 +613,9 @@ async function confirmRename() {
     if (renameKind.value === "feed" && renameFeedId.value) {
       await renameFeed(renameFeedId.value, name);
       toast.success(t("feedMenu.renameSaved"));
+    } else if (renameKind.value === "keep" && renameFolderId.value) {
+      await renameKeepFolder(renameFolderId.value, name);
+      toast.success(t("keepFolder.renameSaved"));
     } else if (renameFolderId.value) {
       await renameFolder(renameFolderId.value, name);
       toast.success(t("folderMenu.renameSaved"));
@@ -514,7 +626,9 @@ async function confirmRename() {
     toast.error(
       renameKind.value === "feed"
         ? t("feedMenu.renameFailed")
-        : t("folderMenu.renameFailed"),
+        : renameKind.value === "keep"
+          ? t("keepFolder.renameFailed")
+          : t("folderMenu.renameFailed"),
       { description: msg },
     );
   } finally {
@@ -525,6 +639,23 @@ async function confirmRename() {
 function openDelete(folder: FeedFolder) {
   deleteKind.value = "folder";
   deleteTarget.value = folder;
+  deleteFeedTarget.value = null;
+  deleteKeepTarget.value = null;
+  deleteOpen.value = true;
+}
+
+function openRenameKeep(folder: KeepFolder) {
+  renameKind.value = "keep";
+  renameFolderId.value = folder.id;
+  renameFeedId.value = null;
+  renameDraft.value = folder.name;
+  renameOpen.value = true;
+}
+
+function openDeleteKeep(folder: KeepFolder) {
+  deleteKind.value = "keep";
+  deleteKeepTarget.value = folder;
+  deleteTarget.value = null;
   deleteFeedTarget.value = null;
   deleteOpen.value = true;
 }
@@ -542,6 +673,7 @@ function onDeleteOpenChange(open: boolean) {
   if (!open) {
     deleteTarget.value = null;
     deleteFeedTarget.value = null;
+    deleteKeepTarget.value = null;
   }
 }
 
@@ -553,6 +685,9 @@ async function confirmDelete(ev: Event) {
     if (deleteKind.value === "feed" && deleteFeedTarget.value) {
       await deleteFeed(deleteFeedTarget.value.id);
       toast.success(t("feedMenu.deleteDone"));
+    } else if (deleteKind.value === "keep" && deleteKeepTarget.value) {
+      await deleteKeepFolder(deleteKeepTarget.value.id);
+      toast.success(t("keepFolder.deleteDone"));
     } else if (deleteTarget.value) {
       await deleteFolder(deleteTarget.value.id);
       toast.success(t("folderMenu.deleteDone"));
@@ -560,12 +695,15 @@ async function confirmDelete(ev: Event) {
     deleteOpen.value = false;
     deleteTarget.value = null;
     deleteFeedTarget.value = null;
+    deleteKeepTarget.value = null;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     toast.error(
       deleteKind.value === "feed"
         ? t("feedMenu.deleteFailed")
-        : t("folderMenu.deleteFailed"),
+        : deleteKind.value === "keep"
+          ? t("keepFolder.deleteFailed")
+          : t("folderMenu.deleteFailed"),
       { description: msg },
     );
   } finally {
@@ -666,7 +804,7 @@ async function onFeedMove(feed: Feed, folderId: string | null) {
   }
 }
 
-const smartItems = computed(() => [
+const smartItemsTop = computed(() => [
   // Read smartCounts.* inside the computed so badge numbers stay reactive.
   {
     id: "unread" as const,
@@ -686,6 +824,17 @@ const smartItems = computed(() => [
     icon: Star,
     count: smartCounts.starred,
   },
+]);
+
+/** Rendered as its own expandable block (not in the flat smartItems array). */
+const keptRootItem = computed(() => ({
+  id: "kept" as const,
+  label: t("nav.kept"),
+  icon: BookmarkPlus,
+  count: smartCounts.kept,
+}));
+
+const smartItemsBottom = computed(() => [
   {
     id: "all" as const,
     label: t("nav.all"),
@@ -709,6 +858,49 @@ const smartItems = computed(() => [
       ]
     : []),
 ]);
+
+const renameTitleKey = computed(() =>
+  renameKind.value === "feed"
+    ? "feedMenu.renameTitle"
+    : renameKind.value === "keep"
+      ? "keepFolder.renameTitle"
+      : "folderMenu.renameTitle",
+);
+const renameDescKey = computed(() =>
+  renameKind.value === "feed"
+    ? "feedMenu.renameDesc"
+    : renameKind.value === "keep"
+      ? "keepFolder.renameDesc"
+      : "folderMenu.renameDesc",
+);
+const renameLabelKey = computed(() =>
+  renameKind.value === "feed"
+    ? "feedMenu.renameLabel"
+    : renameKind.value === "keep"
+      ? "keepFolder.renameLabel"
+      : "folderMenu.renameLabel",
+);
+const renamePlaceholderKey = computed(() =>
+  renameKind.value === "feed"
+    ? "feedMenu.renamePlaceholder"
+    : renameKind.value === "keep"
+      ? "keepFolder.renamePlaceholder"
+      : "folderMenu.renamePlaceholder",
+);
+const deleteTitleKey = computed(() =>
+  deleteKind.value === "feed"
+    ? "feedMenu.deleteConfirmTitle"
+    : deleteKind.value === "keep"
+      ? "keepFolder.deleteConfirmTitle"
+      : "folderMenu.deleteConfirmTitle",
+);
+const deleteActionKey = computed(() =>
+  deleteKind.value === "feed"
+    ? "feedMenu.deleteConfirmAction"
+    : deleteKind.value === "keep"
+      ? "keepFolder.deleteConfirmAction"
+      : "folderMenu.deleteConfirmAction",
+);
 </script>
 
 <template>
@@ -731,7 +923,120 @@ const smartItems = computed(() => [
         <section>
           <p class="section-label px-2">{{ t("nav.smartLists") }}</p>
           <ul class="mt-1.5 space-y-0.5">
-            <li v-for="item in smartItems" :key="item.id">
+            <li v-for="item in smartItemsTop" :key="item.id">
+              <button
+                type="button"
+                :class="cn('nav-row', isActive(item.id) && 'nav-row-active')"
+                @click="goCollection(item.id)"
+              >
+                <component :is="item.icon" class="nav-icon" />
+                <span class="min-w-0 flex-1 truncate text-left">{{ item.label }}</span>
+                <span
+                  v-if="item.count > 0"
+                  class="tabular-nums text-[11px] text-muted-foreground"
+                >
+                  {{ item.count }}
+                </span>
+              </button>
+            </li>
+            <li>
+              <div class="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  data-keep-root="1"
+                  :class="cn('nav-row flex-1', isActive(keptRootItem.id) && 'nav-row-active')"
+                  @click="goCollection(keptRootItem.id)"
+                >
+                  <component :is="keptRootItem.icon" class="nav-icon" />
+                  <span class="min-w-0 flex-1 truncate text-left">{{ keptRootItem.label }}</span>
+                  <button
+                    v-if="!webMode"
+                    type="button"
+                    class="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    :disabled="creatingKeepFolder"
+                    :aria-label="t('keepFolder.new')"
+                    :title="t('keepFolder.new')"
+                    @click.stop="onCreateKeepFolder()"
+                  >
+                    <FolderPlus class="size-3" />
+                  </button>
+                  <span
+                    v-if="keptRootItem.count > 0"
+                    class="tabular-nums text-[11px] text-muted-foreground"
+                  >
+                    {{ keptRootItem.count }}
+                  </span>
+                  <ChevronRight
+                    class="nav-icon !opacity-50 transition-transform duration-200"
+                    :class="!isKeepRootCollapsed() && 'rotate-90'"
+                    @click.stop="toggleKeepCollapse(KEPT_ROOT_COLLAPSE_ID)"
+                  />
+                </button>
+              </div>
+              <ul
+                v-if="!isKeepRootCollapsed() && rootKeepFolders.length"
+                class="mt-0.5 ml-3 space-y-0.5 border-l border-border pl-1.5"
+              >
+                <li v-for="kf in rootKeepFolders" :key="kf.id">
+                  <div class="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      :data-keep-folder-id="kf.id"
+                      :class="
+                        cn(
+                          'nav-row flex-1',
+                          isActive(keepCollectionId(kf.id)) && 'nav-row-active',
+                        )
+                      "
+                      @click="goCollection(keepCollectionId(kf.id))"
+                    >
+                      <Folder class="nav-icon" />
+                      <span class="min-w-0 flex-1 truncate text-left">{{ kf.name }}</span>
+                      <span
+                        v-if="(kf.unreadCount ?? 0) > 0"
+                        class="tabular-nums text-[11px] font-medium text-foreground/70"
+                      >
+                        {{ kf.unreadCount }}
+                      </span>
+                      <ChevronRight
+                        v-if="keepChildren(kf.id).length"
+                        class="nav-icon !opacity-50 transition-transform duration-200"
+                        :class="!isKeepFolderCollapsed(kf.id) && 'rotate-90'"
+                        @click.stop="toggleKeepCollapse(kf.id)"
+                      />
+                    </button>
+                  </div>
+                  <ul
+                    v-if="keepChildren(kf.id).length && !isKeepFolderCollapsed(kf.id)"
+                    class="mt-0.5 ml-3 space-y-0.5 border-l border-border pl-1.5"
+                  >
+                    <li v-for="child in keepChildren(kf.id)" :key="child.id">
+                      <button
+                        type="button"
+                        :data-keep-folder-id="child.id"
+                        :class="
+                          cn(
+                            'nav-row',
+                            isActive(keepCollectionId(child.id)) && 'nav-row-active',
+                          )
+                        "
+                        @click="goCollection(keepCollectionId(child.id))"
+                      >
+                        <Folder class="nav-icon" />
+                        <span class="min-w-0 flex-1 truncate text-left">{{ child.name }}</span>
+                        <span
+                          v-if="(child.unreadCount ?? 0) > 0"
+                          class="tabular-nums text-[11px] font-medium text-foreground/70"
+                        >
+                          {{ child.unreadCount }}
+                        </span>
+                      </button>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li v-for="item in smartItemsBottom" :key="item.id">
               <button
                 type="button"
                 :class="cn('nav-row', isActive(item.id) && 'nav-row-active')"
@@ -953,7 +1258,59 @@ const smartItems = computed(() => [
       </nav>
       </ContextMenuTrigger>
       <ContextMenuContent class="w-52">
-        <template v-if="ctxKind === 'folder' && ctxFolder">
+        <template v-if="ctxKind === 'keep-root'">
+        <ContextMenuItem @select="goCollection('kept')">
+          {{ t("folderMenu.open") }}
+        </ContextMenuItem>
+        <ContextMenuItem @select="toggleKeepCollapse(KEPT_ROOT_COLLAPSE_ID)">
+          {{
+            isKeepRootCollapsed()
+              ? t("folderMenu.expand")
+              : t("folderMenu.collapse")
+          }}
+        </ContextMenuItem>
+        <template v-if="!webMode">
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            :disabled="creatingKeepFolder"
+            @select="onCreateKeepFolder()"
+          >
+            {{ t("keepFolder.new") }}
+          </ContextMenuItem>
+        </template>
+        </template>
+        <template v-else-if="ctxKind === 'keep-folder' && ctxKeepFolder">
+        <ContextMenuItem @select="goCollection(keepCollectionId(ctxKeepFolder.id))">
+          {{ t("folderMenu.open") }}
+        </ContextMenuItem>
+        <ContextMenuItem
+          v-if="keepChildren(ctxKeepFolder.id).length"
+          @select="toggleKeepCollapse(ctxKeepFolder.id)"
+        >
+          {{
+            isKeepFolderCollapsed(ctxKeepFolder.id)
+              ? t("folderMenu.expand")
+              : t("folderMenu.collapse")
+          }}
+        </ContextMenuItem>
+        <template v-if="!webMode">
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            v-if="!ctxKeepFolder.parentId"
+            :disabled="creatingKeepFolder"
+            @select="onCreateKeepFolder(ctxKeepFolder.id)"
+          >
+            {{ t("keepFolder.newChild") }}
+          </ContextMenuItem>
+          <ContextMenuItem @select="openRenameKeep(ctxKeepFolder)">
+            {{ t("keepFolder.rename") }}
+          </ContextMenuItem>
+          <ContextMenuItem variant="destructive" @select="openDeleteKeep(ctxKeepFolder)">
+            {{ t("keepFolder.delete") }}
+          </ContextMenuItem>
+        </template>
+        </template>
+        <template v-else-if="ctxKind === 'folder' && ctxFolder">
         <ContextMenuItem @select="onFolderOpen(ctxFolder)">
           {{ t("folderMenu.open") }}
         </ContextMenuItem>
@@ -1103,37 +1460,17 @@ const smartItems = computed(() => [
     <Dialog :open="renameOpen" @update:open="(v) => (renameOpen = v)">
       <DialogContent class="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>
-            {{
-              renameKind === "feed"
-                ? t("feedMenu.renameTitle")
-                : t("folderMenu.renameTitle")
-            }}
-          </DialogTitle>
-          <DialogDescription>
-            {{
-              renameKind === "feed"
-                ? t("feedMenu.renameDesc")
-                : t("folderMenu.renameDesc")
-            }}
-          </DialogDescription>
+          <DialogTitle>{{ t(renameTitleKey) }}</DialogTitle>
+          <DialogDescription>{{ t(renameDescKey) }}</DialogDescription>
         </DialogHeader>
         <div class="space-y-2 py-1">
           <label class="text-[12.5px] font-medium" for="folder-rename-input">
-            {{
-              renameKind === "feed"
-                ? t("feedMenu.renameLabel")
-                : t("folderMenu.renameLabel")
-            }}
+            {{ t(renameLabelKey) }}
           </label>
           <Input
             id="folder-rename-input"
             v-model="renameDraft"
-            :placeholder="
-              renameKind === 'feed'
-                ? t('feedMenu.renamePlaceholder')
-                : t('folderMenu.renamePlaceholder')
-            "
+            :placeholder="t(renamePlaceholderKey)"
             class="h-9"
             :disabled="renameSaving"
             @keydown.enter.prevent="confirmRename"
@@ -1168,22 +1505,20 @@ const smartItems = computed(() => [
           <AlertDialogMedia class="bg-destructive/10 text-destructive">
             <TriangleAlert />
           </AlertDialogMedia>
-          <AlertDialogTitle>
-            {{
-              deleteKind === "feed"
-                ? t("feedMenu.deleteConfirmTitle")
-                : t("folderMenu.deleteConfirmTitle")
-            }}
-          </AlertDialogTitle>
+          <AlertDialogTitle>{{ t(deleteTitleKey) }}</AlertDialogTitle>
           <AlertDialogDescription class="text-[13px] leading-relaxed">
             {{
               deleteKind === "feed"
                 ? t("feedMenu.deleteConfirmBody", {
                     name: deleteFeedTarget?.title ?? "",
                   })
-                : t("folderMenu.deleteConfirmBody", {
-                    name: deleteTarget?.name ?? "",
-                  })
+                : deleteKind === "keep"
+                  ? t("keepFolder.deleteConfirmBody", {
+                      name: deleteKeepTarget?.name ?? "",
+                    })
+                  : t("folderMenu.deleteConfirmBody", {
+                      name: deleteTarget?.name ?? "",
+                    })
             }}
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -1200,9 +1535,7 @@ const smartItems = computed(() => [
             {{
               deleteBusy
                 ? t("common.loading")
-                : deleteKind === "feed"
-                  ? t("feedMenu.deleteConfirmAction")
-                  : t("folderMenu.deleteConfirmAction")
+                : t(deleteActionKey)
             }}
           </AlertDialogAction>
         </AlertDialogFooter>

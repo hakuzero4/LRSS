@@ -6,6 +6,7 @@ import {
   pruneCollapsedFolders,
   saveCollapsedFolders,
   FOLDER_COLLAPSE_STORAGE_KEY,
+  KEEP_FOLDER_COLLAPSE_STORAGE_KEY,
 } from "./folderCollapse";
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -38,5 +39,10 @@ assert(loaded.b === undefined, "false not stored");
 const pruned = pruneCollapsedFolders({ a: true, gone: true }, ["a", "x"]);
 assert(pruned.a === true && !pruned.gone, "prune removes missing");
 assert(FOLDER_COLLAPSE_STORAGE_KEY === "lrss.folderCollapsed", "key");
+assert(KEEP_FOLDER_COLLAPSE_STORAGE_KEY === "lrss.keepFolders.collapsed", "keep collapse key");
+saveCollapsedFolders({ k1: true }, KEEP_FOLDER_COLLAPSE_STORAGE_KEY);
+const keepLoaded = loadCollapsedFolders(KEEP_FOLDER_COLLAPSE_STORAGE_KEY);
+assert(keepLoaded.k1 === true, "keep collapse round-trip");
+assert(loadCollapsedFolders().a === true, "default key still feed folders");
 
 console.log("folderCollapse.selftest: OK");

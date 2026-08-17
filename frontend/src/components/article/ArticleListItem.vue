@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Star } from "@lucide/vue";
+import { BookmarkPlus, Star } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { Article, Feed } from "@/types/rss";
@@ -68,6 +68,11 @@ const isCard = computed(() => props.layout === "card");
         class="article-card-star size-3.5 fill-amber-500 text-amber-500"
         :aria-label="t('article.starred')"
       />
+      <BookmarkPlus
+        v-if="article.kept"
+        class="absolute bottom-1.5 right-1.5 size-3.5 text-primary"
+        :aria-label="t('article.kept')"
+      />
     </div>
     <div class="article-card-meta">
       <h3
@@ -117,6 +122,11 @@ const isCard = computed(() => props.layout === "card");
             class="size-3 shrink-0 fill-amber-500 text-amber-500"
             :aria-label="t('article.starred')"
           />
+          <BookmarkPlus
+            v-if="article.kept"
+            class="size-3 shrink-0 text-primary"
+            :aria-label="t('article.kept')"
+          />
         </div>
         <h3
           class="mt-1 line-clamp-2 text-[13.5px] leading-snug tracking-[-0.01em]"
@@ -124,6 +134,12 @@ const isCard = computed(() => props.layout === "card");
         >
           {{ article.title }}
         </h3>
+        <p
+          v-if="article.kept && article.keepReason"
+          class="mt-1 truncate text-[11.5px] text-muted-foreground"
+        >
+          {{ article.keepReason }}
+        </p>
         <p v-if="teaser" class="article-teaser">
           {{ teaser }}
         </p>

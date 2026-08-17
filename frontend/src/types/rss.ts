@@ -4,12 +4,27 @@ export type SmartCollectionId =
   | "starred"
   | "all"
   | "recent"
+  | "kept"
   | "briefing";
 
 /** Article smart lists only — never include briefing in open-on-startup. */
 export type StartupCollectionId = Exclude<SmartCollectionId, "briefing">;
 
-export type CollectionId = SmartCollectionId | `feed:${string}` | `folder:${string}`;
+export type CollectionId =
+  | SmartCollectionId
+  | `feed:${string}`
+  | `folder:${string}`
+  | `kept:${string}`;
+
+/** User-created node under the virtual 精选 root (`parentId` empty = first level). */
+export interface KeepFolder {
+  id: string;
+  name: string;
+  parentId?: string;
+  sortOrder?: number;
+  hint?: string;
+  unreadCount?: number;
+}
 
 export type SettingsSectionId =
   | "general"
@@ -80,6 +95,13 @@ export interface Article {
   imageUrl?: string;
   /** True after full-page fetch replaced the body; skip auto re-fetch. */
   fullContentFetched?: boolean;
+  /** Filed into the smart-filter 精选 collection. */
+  kept?: boolean;
+  keepReason?: string;
+  keepConfidence?: number;
+  keepSource?: "filter" | "manual" | string;
+  /** Keep-tree folder; empty/undefined = 精选 root. */
+  keepFolderId?: string;
 }
 
 export interface ReaderSelection {
@@ -225,6 +247,12 @@ export interface UIPrefs {
   keepArticlesDays: number; // 7–365
   hideDuplicateTitles: boolean;
   blockKeywords: string;
+  /** After refresh, LLM files matching articles into the 精选 list. */
+  smartFilterEnabled: boolean;
+  /** Natural-language interest profile. Empty = quality-only. */
+  smartFilterProfile: string;
+  /** loose | standard | strict */
+  smartFilterStrictness: "loose" | "standard" | "strict";
   enableKeyboardShortcuts: boolean;
   notifyOnNewArticles: boolean;
   notifySound: boolean;
@@ -300,6 +328,9 @@ export interface AppSettings {
   // 过滤规则
   hideDuplicateTitles: boolean;
   blockKeywords: string;
+  smartFilterEnabled: boolean;
+  smartFilterProfile: string;
+  smartFilterStrictness: "loose" | "standard" | "strict";
 
   // 同步 (not in UIPrefs / S6 non-goal)
   /** UI-only mirror; real sync config lives in SyncService / app.sync_config. */

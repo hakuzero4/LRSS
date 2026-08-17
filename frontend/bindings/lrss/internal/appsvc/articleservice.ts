@@ -18,6 +18,20 @@ import * as model$0 from "../model/models.js";
 import * as repo$0 from "../repo/models.js";
 
 /**
+ * CreateKeepFolder creates a 精选 child folder. Empty parentId = first level.
+ */
+export function CreateKeepFolder(name: string, parentId: string): $CancellablePromise<model$0.KeepFolder> {
+    return $Call.ByID(422116441, name, parentId);
+}
+
+/**
+ * DeleteKeepFolder removes a 精选 folder; articles return to the root.
+ */
+export function DeleteKeepFolder(id: string): $CancellablePromise<void> {
+    return $Call.ByID(682911526, id);
+}
+
+/**
  * FetchFullContent downloads the original article page (fingerprint HTTP / surf),
  * extracts full HTML body, saves it, and returns the updated article.
  * Use when the feed only ships a partial summary in XML.
@@ -35,13 +49,27 @@ export function Get(id: string): $CancellablePromise<model$0.Article> {
 }
 
 /**
- * List returns articles for a collection (unread|today|starred|all|recent|feed:ID|folder:ID).
+ * Keep files an article into the 精选 collection (manual).
+ */
+export function Keep(id: string): $CancellablePromise<void> {
+    return $Call.ByID(365744413, id);
+}
+
+/**
+ * List returns articles for a collection (unread|today|starred|all|recent|kept|feed:ID|folder:ID).
  * Office-mode NSFW filtering applies only to smart lists. Explicit feed:/folder:
  * collections always return their articles so a just-subscribed sensitive feed is
  * still readable after add (sidebar may still hide it).
  */
 export function List(collection: string, limit: number, offset: number): $CancellablePromise<model$0.Article[] | null> {
     return $Call.ByID(3903554996, collection, limit, offset);
+}
+
+/**
+ * ListKeepFolders returns user folders under the virtual 精选 root.
+ */
+export function ListKeepFolders(): $CancellablePromise<model$0.KeepFolder[] | null> {
+    return $Call.ByID(3352086970);
 }
 
 /**
@@ -57,6 +85,20 @@ export function MarkAllRead(collection: string): $CancellablePromise<void> {
  */
 export function RecordOpened(id: string): $CancellablePromise<void> {
     return $Call.ByID(398197724, id);
+}
+
+/**
+ * RenameKeepFolder renames a 精选 folder.
+ */
+export function RenameKeepFolder(id: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(3445320663, id, name);
+}
+
+/**
+ * SetKeepFolder moves a kept article to a 精选 folder. Empty folderId = root.
+ */
+export function SetKeepFolder(articleId: string, folderId: string): $CancellablePromise<void> {
+    return $Call.ByID(3324360765, articleId, folderId);
 }
 
 /**
@@ -78,4 +120,11 @@ export function SetStarred(id: string, starred: boolean): $CancellablePromise<vo
  */
 export function SmartCounts(): $CancellablePromise<repo$0.SmartCounts> {
     return $Call.ByID(1651368005);
+}
+
+/**
+ * Unkeep removes an article from the 精选 collection.
+ */
+export function Unkeep(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1966284558, id);
 }

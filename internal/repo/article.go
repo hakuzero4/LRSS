@@ -81,6 +81,8 @@ type SmartCounts struct {
 	Starred int `json:"starred"`
 	All     int `json:"all"`
 	Recent  int `json:"recent"`
+	// Kept is the unread count of articles in article_keeps (sidebar badge).
+	Kept int `json:"kept"`
 }
 
 // nsfwFeedExcludeSQL is AND-ed when ExcludeNsfw / CountSmart hideNsfw.
@@ -91,6 +93,20 @@ const nsfwFeedExcludeSQL = `feed_id NOT IN (
 	WHERE f.is_nsfw = 1 OR IFNULL(fo.is_nsfw, 0) = 1
 )`
 
+// nsfwKeepExcludeSQL is the same office-mode hide, qualified for article_keeps joins.
+const nsfwKeepExcludeSQL = `a.feed_id NOT IN (
+	SELECT f.id FROM feeds f
+	LEFT JOIN folders fo ON fo.id = f.folder_id
+	WHERE f.is_nsfw = 1 OR IFNULL(fo.is_nsfw, 0) = 1
+)`
+
+// articleKeepSelect is LEFT JOIN columns scanned after full_content_fetched.
+const articleKeepSelect = `CASE WHEN k.article_id IS NOT NULL THEN 1 ELSE 0 END,
+		       IFNULL(k.reason, ''),
+		       IFNULL(k.confidence, 0),
+		       IFNULL(k.source, ''),
+		       IFNULL(k.folder_id, '')`
+
 // CountSmart returns true totals for smart lists (not capped by list limit).
 // "today" uses the same UTC day window as collectionWhere("today").
 // excludeNsfw=true omits articles belonging to is_nsfw feeds (office mode).
@@ -98,8 +114,10 @@ func (r *ArticleRepo) CountSmart(ctx context.Context, excludeNsfw bool) (SmartCo
 	start := time.Now().UTC().Truncate(24 * time.Hour)
 	end := start.Add(24 * time.Hour)
 	nsfw := ""
+	nsfwKept := ""
 	if excludeNsfw {
 		nsfw = " AND " + nsfwFeedExcludeSQL
+		nsfwKept = " AND " + nsfwKeepExcludeSQL
 	}
 	var c SmartCounts
 	err := r.DB.QueryRowContext(ctx, `
@@ -110,9 +128,12 @@ func (r *ArticleRepo) CountSmart(ctx context.Context, excludeNsfw bool) (SmartCo
 			    AND COALESCE(published_at, fetched_at) < ?`+nsfw+`),
 			(SELECT COUNT(*) FROM articles WHERE is_starred = 1`+nsfw+`),
 			(SELECT COUNT(*) FROM articles WHERE 1=1`+nsfw+`),
-			(SELECT COUNT(*) FROM articles WHERE last_opened_at IS NOT NULL`+nsfw+`)`,
+			(SELECT COUNT(*) FROM articles WHERE last_opened_at IS NOT NULL`+nsfw+`),
+			(SELECT COUNT(*) FROM article_keeps k
+			  JOIN articles a ON a.id = k.article_id
+			  WHERE a.is_read = 0`+nsfwKept+`)`,
 		start.Format(time.RFC3339), end.Format(time.RFC3339),
-	).Scan(&c.Unread, &c.Today, &c.Starred, &c.All, &c.Recent)
+	).Scan(&c.Unread, &c.Today, &c.Starred, &c.All, &c.Recent, &c.Kept)
 	if err != nil {
 		return SmartCounts{}, fmt.Errorf("count smart: %w", err)
 	}
@@ -120,7 +141,7 @@ func (r *ArticleRepo) CountSmart(ctx context.Context, excludeNsfw bool) (SmartCo
 }
 
 // List returns articles for a collection filter with optional opts.
-// collection: unread | today | starred | all | recent | feed:<id> | folder:<id>
+// collection: unread | today | starred | all | recent | kept | kept:<id> | feed:<id> | folder:<id>
 func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts) ([]model.Article, error) {
 	if opts.Limit <= 0 {
 		opts.Limit = 50
@@ -154,8 +175,10 @@ func (r *ArticleRepo) List(ctx context.Context, collection string, opts ListOpts
 		SELECT id, feed_id, guid, url, title, author, summary,
 		       ` + bodyCols + `,
 		       image_url, published_at,
-		       fetched_at, is_read, is_starred, full_content_fetched
-		FROM articles`
+		       fetched_at, is_read, is_starred, full_content_fetched,
+		       ` + articleKeepSelect + `
+		FROM articles
+		LEFT JOIN article_keeps k ON k.article_id = articles.id`
 	if len(where) > 0 {
 		sqlStr += ` WHERE ` + strings.Join(where, ` AND `)
 	}
@@ -195,8 +218,11 @@ func (r *ArticleRepo) Get(ctx context.Context, articleID string) (model.Article,
 		SELECT id, feed_id, guid, url, title, author, summary,
 		       content_html, content_text, translation_raw, translation_lang,
 		       image_url, published_at,
-		       fetched_at, is_read, is_starred, full_content_fetched
-		FROM articles WHERE id = ?`, articleID)
+		       fetched_at, is_read, is_starred, full_content_fetched,
+		       `+articleKeepSelect+`
+		FROM articles
+		LEFT JOIN article_keeps k ON k.article_id = articles.id
+		WHERE articles.id = ?`, articleID)
 	a, err := scanArticle(row)
 	if err == sql.ErrNoRows {
 		return model.Article{}, fmt.Errorf("article not found: %s", articleID)
@@ -673,6 +699,15 @@ func collectionWhere(collection string) (where []string, args []any, err error) 
 		args = append(args, start.Format(time.RFC3339), end.Format(time.RFC3339))
 	case c == "recent":
 		where = append(where, `last_opened_at IS NOT NULL`)
+	case c == "kept":
+		where = append(where, `id IN (SELECT article_id FROM article_keeps)`)
+	case strings.HasPrefix(c, "kept:"):
+		folderID := strings.TrimPrefix(c, "kept:")
+		if folderID == "" {
+			return nil, nil, fmt.Errorf("invalid collection %q", collection)
+		}
+		where = append(where, `articles.id IN (SELECT article_id FROM article_keeps WHERE folder_id = ?)`)
+		args = append(args, folderID)
 	case strings.HasPrefix(c, "feed:"):
 		feedID := strings.TrimPrefix(c, "feed:")
 		if feedID == "" {
@@ -697,12 +732,15 @@ func scanArticle(row scannable) (model.Article, error) {
 	var a model.Article
 	var guid, author, summary, contentHTML, contentText, translationRaw, translationLang sql.NullString
 	var imageURL, published sql.NullString
-	var read, starred, fullFetched int
+	var read, starred, fullFetched, kept int
+	var keepReason, keepSource, keepFolderID string
+	var keepConf float64
 	if err := row.Scan(
 		&a.ID, &a.FeedID, &guid, &a.URL, &a.Title, &author, &summary,
 		&contentHTML, &contentText, &translationRaw, &translationLang,
 		&imageURL, &published,
 		&a.FetchedAt, &read, &starred, &fullFetched,
+		&kept, &keepReason, &keepConf, &keepSource, &keepFolderID,
 	); err != nil {
 		return model.Article{}, err
 	}
@@ -718,5 +756,12 @@ func scanArticle(row scannable) (model.Article, error) {
 	a.IsRead = read != 0
 	a.IsStarred = starred != 0
 	a.FullContentFetched = fullFetched != 0
+	if kept != 0 {
+		a.IsKept = true
+		a.KeepReason = keepReason
+		a.KeepConfidence = keepConf
+		a.KeepSource = keepSource
+		a.KeepFolderID = keepFolderID
+	}
 	return a, nil
 }

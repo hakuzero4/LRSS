@@ -41,6 +41,7 @@ Web 访问走同一套 `AIService`：`GET/POST /api/ai/chat`、`POST /api/ai/cha
 | **标签 / 文件夹建议** | 助手建议条 | 本地关键词 + LLM；可一键移文件夹 |
 | **广告 / 软文判断** | 助手建议条 | organic / promo / unclear |
 | **自动请求全文** | 设置 → AI 功能（可选） | 打开文章时判断 partial 并抓取 |
+| **智能精选** | 设置 → 过滤规则 | 刷新后批次判断质量 + 兴趣画像；符合则链到侧栏「精选」树（`article_keeps` + `keep_folders`）。能对上**已有**子夹名则放入该夹，否则放根。模型不得新建夹。不确定不归档。 |
 
 **共性**
 
@@ -86,7 +87,7 @@ Web 访问走同一套 `AIService`：`GET/POST /api/ai/chat`、`POST /api/ai/cha
 | 功能 | 说明 |
 | --- | --- |
 | **智能标签 / 文件夹建议** | 根据正文建议标签（先本地规则，再 LLM 兜底） |
-| **过滤增强** | 用 LLM 判断是否广告/软文（与关键词过滤互补，需明确开销与离线策略） |
+| **过滤增强** | 已落地为智能精选：批次 JSON 判断 + `article_keeps`，与关键词屏蔽互补 |
 
 ### P2 — 深度能力
 
@@ -107,7 +108,7 @@ Settings(LLMConfig)
  internal/llm.Client  ──httpx/surf──►  OpenAI-compatible API
        │
        ├── feature: summarize / translate / ask / select_translate
-       ├── feature: content_fullness / suggest / classify
+       ├── feature: content_fullness / suggest / classify / keep
        └── (later) rag.Query(library, q)
 ```
 

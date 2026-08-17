@@ -12,6 +12,9 @@ type JobActivity struct {
 	BriefingState    string   `json:"briefingState,omitempty"` // queued | generating
 	BriefingPending  int      `json:"briefingPending,omitempty"`
 	BriefingArticles int      `json:"briefingArticles,omitempty"`
+	KeepState        string   `json:"keepState,omitempty"` // queued | judging
+	KeepPending      int      `json:"keepPending,omitempty"`
+	KeepLast         int      `json:"keepLast,omitempty"`
 	// ArticlesAdded is a process-lifetime insert counter (not a per-tick delta).
 	ArticlesAdded int `json:"articlesAdded"`
 }

@@ -97,6 +97,7 @@ export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
       ListFolders: () => getJSON("/api/folders"),
       ListFeeds: () => getJSON("/api/feeds"),
       JobActivity: () => getJSON("/api/activity"),
+      ScanUnreadForKeep: () => postJSON("/api/articles/scan-keep", {}),
     },
     ArticleService: {
       List: (collection: string, limit: number, offset: number) => {
@@ -113,6 +114,22 @@ export async function tryHttpAppsvc(): Promise<Record<string, unknown> | null> {
         postJSON(`/api/articles/${encodeURIComponent(id)}/read`, { read }),
       SetStarred: (id: string, starred: boolean) =>
         postJSON(`/api/articles/${encodeURIComponent(id)}/star`, { starred }),
+      Keep: (id: string) =>
+        postJSON(`/api/articles/${encodeURIComponent(id)}/keep`, { keep: true }),
+      Unkeep: (id: string) =>
+        postJSON(`/api/articles/${encodeURIComponent(id)}/keep`, { keep: false }),
+      ListKeepFolders: () => getJSON("/api/keep-folders"),
+      CreateKeepFolder: (name: string, parentId?: string) =>
+        postJSON("/api/keep-folders", { name, parentId }),
+      RenameKeepFolder: (id: string, name: string) =>
+        postJSON(`/api/keep-folders/${encodeURIComponent(id)}/rename`, { name }),
+      DeleteKeepFolder: (id: string) =>
+        postJSON(`/api/keep-folders/${encodeURIComponent(id)}/delete`, {}),
+      SetKeepFolder: (articleId: string, folderId: string) =>
+        postJSON(`/api/articles/${encodeURIComponent(articleId)}/keep-folder`, {
+          folderId,
+        }),
+      ScanUnreadForKeep: () => postJSON("/api/articles/scan-keep", {}),
       RecordOpened: (id: string) =>
         postJSON(`/api/articles/${encodeURIComponent(id)}/opened`, {}),
       MarkAllRead: (collection: string) =>

@@ -62,7 +62,14 @@ export function applyShowUnreadOnly<T extends { read?: boolean }>(
   collectionId: string,
 ): T[] {
   if (!showUnreadOnly) return articles.slice();
-  if (collectionId === "starred" || collectionId === "recent") return articles.slice();
+  if (
+    collectionId === "starred" ||
+    collectionId === "recent" ||
+    collectionId === "kept" ||
+    collectionId.startsWith("kept:")
+  ) {
+    return articles.slice();
+  }
   return articles.filter((a) => !a.read);
 }
 

@@ -19,6 +19,13 @@ export interface JobActivity {
     "briefingArticles"?: number;
 
     /**
+     * queued | judging
+     */
+    "keepState"?: string;
+    "keepPending"?: number;
+    "keepLast"?: number;
+
+    /**
      * ArticlesAdded is a process-lifetime insert counter (not a per-tick delta).
      */
     "articlesAdded": number;

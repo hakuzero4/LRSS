@@ -10,4 +10,9 @@ export interface SmartCounts {
     "starred": number;
     "all": number;
     "recent": number;
+
+    /**
+     * Kept is the unread count of articles in article_keeps (sidebar badge).
+     */
+    "kept": number;
 }

@@ -48,6 +48,10 @@ type ArticleStore interface {
 	MarkAllRead(ctx context.Context, collection string, excludeNsfw bool) error
 	PurgeOlderThan(ctx context.Context, days int) (int, error)
 	CountSmart(ctx context.Context, excludeNsfw bool) (repo.SmartCounts, error)
+	Keep(ctx context.Context, articleID, reason, source string, confidence float64, topics []string) error
+	Unkeep(ctx context.Context, articleID string) error
+	IsKept(ctx context.Context, articleID string) (bool, error)
+	SetKeepFolder(ctx context.Context, articleID, folderID string) error
 }
 
 // BriefingStore persists AI briefings (satisfied by *repo.BriefingRepo).
@@ -81,6 +85,15 @@ type FolderStore interface {
 	SetDisplayMode(ctx context.Context, folderID, mode string) error
 	Delete(ctx context.Context, folderID string) error
 	DeleteAll(ctx context.Context) (int, error)
+}
+
+// KeepFolderStore persists 精选 folders (satisfied by *repo.KeepFolderRepo).
+type KeepFolderStore interface {
+	List(ctx context.Context) ([]model.KeepFolder, error)
+	Create(ctx context.Context, name, parentID string) (model.KeepFolder, error)
+	Rename(ctx context.Context, id, name string) error
+	Delete(ctx context.Context, id string) error
+	Get(ctx context.Context, id string) (model.KeepFolder, error)
 }
 
 // RSSFetcher fetches feeds (satisfied by *rss.Client).

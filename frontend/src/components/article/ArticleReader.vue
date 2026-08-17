@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  BookmarkPlus,
   BookOpenText,
   Check,
   ClipboardCopy,
@@ -26,6 +27,7 @@ import {
   shouldMarkReadOnScrollEnd,
 } from "@/lib/readingSettings";
 import { cn } from "@/lib/utils";
+import { keepFolderOptions } from "@/lib/keepFolders";
 import { articleDisplayHTML } from "@/lib/youtubeEmbed";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +56,9 @@ const {
   selectedFeed,
   settings,
   toggleStar,
+  toggleKeep,
+  setKeepFolder,
+  keepFolders,
   toggleRead,
   fetchFullContent,
   backendReady,
@@ -110,6 +115,25 @@ const translateBusy = computed(
     translateView.busy &&
     translateView.articleId === selectedArticle.value?.id,
 );
+const keepFolderChoices = computed(() => keepFolderOptions(keepFolders.value));
+
+const currentKeepFolderLabel = computed(() => {
+  const id = selectedArticle.value?.keepFolderId;
+  if (!id) return t("keepFolder.root");
+  return keepFolders.value.find((f) => f.id === id)?.name ?? t("keepFolder.root");
+});
+
+async function onSetKeepFolder(folderId: string) {
+  const article = selectedArticle.value;
+  if (!article?.kept) return;
+  try {
+    await setKeepFolder(article.id, folderId);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error(t("article.keepFailed"), { description: msg });
+  }
+}
+
 const showBilingual = computed(
   () =>
     !!selectedArticle.value &&
@@ -769,6 +793,68 @@ watch(
             <h1 class="reader-title mt-2 font-semibold tracking-[-0.025em] text-balance">
               {{ selectedArticle.title }}
             </h1>
+            <div class="mt-2.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11.5px] leading-5 transition-colors"
+                :class="
+                  selectedArticle.kept
+                    ? 'border-primary/30 bg-primary/10 text-primary'
+                    : 'border-border/70 text-muted-foreground hover:bg-muted/60'
+                "
+                :aria-pressed="!!selectedArticle.kept"
+                @click="toggleKeep(selectedArticle.id)"
+              >
+                <BookmarkPlus class="size-3 shrink-0" />
+                <span class="truncate">
+                  {{
+                    selectedArticle.kept
+                      ? selectedArticle.keepReason || t("article.kept")
+                      : t("article.keep")
+                  }}
+                </span>
+                <X
+                  v-if="selectedArticle.kept"
+                  class="size-3 shrink-0 opacity-70"
+                />
+              </button>
+              <DropdownMenu v-if="selectedArticle.kept">
+                <DropdownMenuTrigger as-child>
+                  <button
+                    type="button"
+                    class="inline-flex max-w-full items-center gap-1 rounded-full border border-border/70 px-2.5 py-0.5 text-[11.5px] leading-5 text-muted-foreground transition-colors hover:bg-muted/60"
+                    :aria-label="t('keepFolder.moveTo')"
+                    :title="t('keepFolder.moveTo')"
+                  >
+                    <span class="truncate">{{ currentKeepFolderLabel }}</span>
+                    <span class="text-[10px] opacity-70">▾</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" class="w-52">
+                  <DropdownMenuLabel>{{ t("keepFolder.moveTo") }}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem @select="() => void onSetKeepFolder('')">
+                    {{ t("keepFolder.root") }}
+                    <span
+                      v-if="!selectedArticle.keepFolderId"
+                      class="ml-auto text-[11px] text-muted-foreground"
+                    >✓</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    v-for="opt in keepFolderChoices"
+                    :key="opt.id"
+                    :class="opt.depth ? 'pl-6' : ''"
+                    @select="() => void onSetKeepFolder(opt.id)"
+                  >
+                    {{ opt.name }}
+                    <span
+                      v-if="selectedArticle.keepFolderId === opt.id"
+                      class="ml-auto text-[11px] text-muted-foreground"
+                    >✓</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
             <!-- Summary deck: feed or AI (streams in place above body) -->
             <aside

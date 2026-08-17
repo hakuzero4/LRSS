@@ -134,6 +134,13 @@ export interface RefreshResult {
 }
 
 /**
+ * ScanKeepResult is returned by ScanUnreadForKeep.
+ */
+export interface ScanKeepResult {
+    "queued": number;
+}
+
+/**
  * SyncPullResult is returned after downloading and importing OPML.
  */
 export interface SyncPullResult {

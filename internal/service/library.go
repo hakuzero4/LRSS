@@ -26,10 +26,11 @@ import (
 
 // Library orchestrates feed fetch, persistence, and article mutations.
 type Library struct {
-	Feeds    FeedStore
-	Articles ArticleStore
-	Folders  FolderStore
-	RSS      RSSFetcher
+	Feeds       FeedStore
+	Articles    ArticleStore
+	Folders     FolderStore
+	KeepFolders KeepFolderStore
+	RSS         RSSFetcher
 
 	// Fulltext fetches original article pages (surf fingerprint client).
 	// Optional; nil uses fulltext.Fetch defaults.
@@ -65,10 +66,10 @@ type Library struct {
 	// while holding refresh locks — enqueue only.
 	OnArticlesInserted func(ctx context.Context, ids []string)
 
-	actMu          sync.Mutex
-	actFeedID      string
-	actFeedTitle   string
-	actInserted    int
+	actMu        sync.Mutex
+	actFeedID    string
+	actFeedTitle string
+	actInserted  int
 }
 
 // AutoFulltextMaxPerTick caps original-page fetches per background drain.
@@ -108,7 +109,11 @@ func NewLibrary(feeds FeedStore, articles ArticleStore, folders FolderStore, rss
 
 // NewLibraryFromRepos wires a repo.Repos + rss client.
 func NewLibraryFromRepos(r *repo.Repos, rssClient RSSFetcher) *Library {
-	return NewLibrary(r.Feeds, r.Articles, r.Folders, rssClient)
+	lib := NewLibrary(r.Feeds, r.Articles, r.Folders, rssClient)
+	if r != nil {
+		lib.KeepFolders = r.KeepFolders
+	}
+	return lib
 }
 
 func (lib *Library) emitInserted(ctx context.Context, ids []string) {
